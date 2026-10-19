@@ -1,0 +1,11 @@
+PURPLE CHARM LAUNCHER — PROTÓTIPO PARA ANDROID 14+
+
+Este é um protótipo de launcher independente com interface roxa e gaveta de aplicativos. Ele declara a categoria HOME para poder ser selecionado como tela inicial padrão do Android. Inclui workflow de compilação pelo GitHub Actions.
+
+IMPORTANTE:
+- Este ZIP é código-fonte, não um APK já compilado.
+- A primeira versão usa os ícones atuais dos aplicativos instalados, estilizados numa grade roxa. Os ícones originais do Purple Charm ainda precisam ser extraídos, identificados e associados manualmente; não são magicamente aplicados nesta versão.
+- O launcher é um protótipo e não foi compilado nem testado em dispositivo real neste ambiente.
+- Não substitui nem desinstala o launcher atual. Ao abrir o APK, o Android permite escolher o launcher padrão nas configurações/tela de início.
+- Não contém anúncios, compras ou acesso a contas.
+- Para compilar: envie o conteúdo extraído deste ZIP à raiz de um repositório GitHub, mantendo a pasta .github/workflows. Vá a Actions e execute “Build Purple Charm Launcher”. Baixe o artifact PurpleCharm-Launcher-debug-apk e extraia app-debug.apk.
