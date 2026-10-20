@@ -72,6 +72,44 @@ class MainActivity : Activity() {
     private var dragging = false
     private var switchingPage = false
     private val homeCapacity = 40
+    private val maxPages = 8
+
+    private fun pageCount(): Int = prefs.getInt("layout_page_count", 3).coerceIn(3, maxPages)
+
+    private fun managePages() {
+        val options = arrayOf("＋ Adicionar página", "－ Excluir página atual (se vazia)")
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("✦ Páginas Purple Charm • ${pageCount()} de $maxPages")
+            .setItems(options) { _, which ->
+                if (which == 0) {
+                    if (pageCount() >= maxPages) {
+                        Toast.makeText(this, "Limite de $maxPages páginas", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val newPage = pageCount()
+                        prefs.edit().putInt("layout_page_count", newPage + 1)
+                            .putString("layout_page_$newPage", "").apply()
+                        pageIndex = newPage
+                        showHome()
+                    }
+                } else {
+                    if (pageCount() <= 3) {
+                        Toast.makeText(this, "Mantenha pelo menos 3 páginas", Toast.LENGTH_SHORT).show()
+                    } else if (savedPage(pageIndex).isNotEmpty()) {
+                        Toast.makeText(this, "Remova os atalhos desta página antes de excluir", Toast.LENGTH_LONG).show()
+                    } else {
+                        val count = pageCount()
+                        val edit = prefs.edit()
+                        for (i in pageIndex until count - 1) {
+                            edit.putString("layout_page_$i", savedPage(i + 1).joinToString("|"))
+                        }
+                        edit.remove("layout_page_${count - 1}")
+                            .putInt("layout_page_count", count - 1).apply()
+                        pageIndex = pageIndex.coerceAtMost(count - 2)
+                        showHome()
+                    }
+                }
+            }.setNegativeButton("Cancelar", null).show()
+    }
 
     private fun savedPage(index: Int): MutableList<String> {
         val raw = prefs.getString("layout_page_$index", null)
@@ -79,7 +117,8 @@ class MainActivity : Activity() {
         val initial = when (index) {
             0 -> apps.take(20)
             1 -> favorites()
-            else -> apps.drop(20).take(30)
+            2 -> apps.drop(20).take(30)
+            else -> emptyList()
         }.map { appKey(it) }
         return initial.toMutableList()
     }
@@ -142,7 +181,7 @@ class MainActivity : Activity() {
         list.remove(key)
         val at = (position ?: list.size).coerceIn(0, list.size)
         list.add(at, key)
-        for (other in 0..2) if (other != index) {
+        for (other in 0 until pageCount()) if (other != index) {
             val others = savedPage(other)
             if (others.remove(key)) savePage(other, others)
         }
@@ -182,7 +221,7 @@ class MainActivity : Activity() {
         if (oldSlot >= 0) slots[oldSlot] = ""
         slots[destination] = key
         saveDockSlots(slots)
-        for (page in 0..2) {
+        for (page in 0 until pageCount()) {
             val list = savedPage(page)
             if (list.remove(key)) savePage(page, list)
         }
@@ -195,7 +234,7 @@ class MainActivity : Activity() {
 
     private fun removeShortcut(key: String) {
         var changed = false
-        for (page in 0..2) {
+        for (page in 0 until pageCount()) {
             val list = savedPage(page)
             if (list.remove(key)) {
                 savePage(page, list)
@@ -229,7 +268,7 @@ class MainActivity : Activity() {
         labels: Array<String>, values: Array<String>, default: String
     ) {
         val selectedIndex = values.indexOf(setting(key, default)).coerceAtLeast(0)
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(title)
             .setSingleChoiceItems(labels, selectedIndex) { dialog, index ->
                 saveSetting(key, values[index])
@@ -282,6 +321,7 @@ class MainActivity : Activity() {
                 arrayOf("4 colunas", "5 colunas", "6 colunas"),
                 arrayOf("4", "5", "6"), "5")
         }
+        option("✦ Gerenciar páginas (${pageCount()})") { managePages() }
         option("✦ Papéis de parede Purple Charm") { wallpaperMenu() }
         option("✦ Aplicar Olho de Cristal na tela de bloqueio") { confirmLockWallpaper() }
         option("✦ Efeito de transição: " + transitionName(setting("transition", "cube"))) {
@@ -290,7 +330,7 @@ class MainActivity : Activity() {
                 arrayOf("cube", "flip", "zoom", "slide", "none"), "cube")
         }
         option("✦ Restaurar gestos e grade") {
-            AlertDialog.Builder(this).setTitle("Restaurar configurações?")
+            AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Restaurar configurações?")
                 .setMessage("Isso não altera seus wallpapers nem a organização.")
                 .setPositiveButton("Restaurar") { _, _ ->
                     prefs.edit().remove("pc_swipe_up").remove("pc_swipe_down").remove("pc_double_tap")
@@ -299,11 +339,12 @@ class MainActivity : Activity() {
                 }.setNegativeButton("Cancelar", null).show()
         }
         option("✦ Restaurar organização dos ícones") {
-            AlertDialog.Builder(this).setTitle("Restaurar organização?")
+            AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Restaurar organização?")
                 .setMessage("As posições das páginas e do dock serão apagadas.")
                 .setPositiveButton("Restaurar") { _, _ ->
-                    prefs.edit().remove("layout_page_0").remove("layout_page_1")
-                        .remove("layout_page_2").remove("layout_dock")
+                    val edit = prefs.edit()
+                    for (i in 0 until maxPages) edit.remove("layout_page_$i")
+                    edit.remove("layout_page_count").remove("layout_dock")
                         .remove("layout_dock_slots").apply()
                     showHome()
                 }.setNegativeButton("Cancelar", null).show()
@@ -559,7 +600,7 @@ class MainActivity : Activity() {
     }
 
     private fun wallpaperMenu() {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("✦ Papéis de parede Purple Charm")
             .setItems(arrayOf(
                 "Floral original (padrão)",
@@ -592,7 +633,7 @@ class MainActivity : Activity() {
     }
 
     private fun confirmLockWallpaper() {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("Olho de Cristal • tela de bloqueio")
             .setMessage("Aplicar a primeira arte do olho na tela de bloqueio do Android? " +
                 "O sistema do POCO pode impedir ou substituir essa alteração.")
@@ -860,7 +901,7 @@ class MainActivity : Activity() {
         )
 
         panel.addView(
-            label("Crystal Gestures • 2.10", 12f).apply {
+            label("Ghost Fire Stable • 3.0", 12f).apply {
                 setTextColor(lilac)
                 setPadding(0, dp(3), 0, 0)
             }
@@ -929,7 +970,7 @@ class MainActivity : Activity() {
 
     private fun changePage(destination: Int) {
         if (drawerOpen || dragging || switchingPage || !::pages.isInitialized) return
-        val target = destination.coerceIn(0, 2)
+        val target = destination.coerceIn(0, pageCount() - 1)
         if (target == pageIndex) return
         val style = setting("transition", "cube")
         val forward = target > pageIndex
@@ -961,7 +1002,7 @@ class MainActivity : Activity() {
         pages = ViewFlipper(this)
         switchingPage = false
 
-        for (index in 0..2) {
+        for (index in 0 until pageCount()) {
             pages.addView(homePage(index))
         }
 
@@ -970,7 +1011,7 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(-1, 0, 1f)
         )
 
-        pageIndex = pageIndex.coerceIn(0, 2)
+        pageIndex = pageIndex.coerceIn(0, pageCount() - 1)
         pages.displayedChild = pageIndex
 
         dots = label("", 19f).apply {
@@ -997,11 +1038,15 @@ class MainActivity : Activity() {
         val pageTargets = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
-        for (destination in 0..2) {
+        val pageTargetsScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(pageTargets)
+        }
+        for (destination in 0 until pageCount()) {
             if (destination == index) continue
             val target = glassButton("⇢ Página ${destination + 1}", 12f)
             acceptDrop(target) { key -> placeOnPage(key, destination) }
-            pageTargets.addView(target, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+            pageTargets.addView(target, LinearLayout.LayoutParams(dp(106), dp(48)).apply {
                 setMargins(dp(2), dp(4), dp(2), dp(4))
             })
         }
@@ -1032,9 +1077,12 @@ class MainActivity : Activity() {
         val remove = glassButton("× Solte aqui para remover o atalho", 12f)
         acceptDrop(remove) { key -> removeShortcut(key) }
         val tools = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        tools.addView(pageTargets)
+        tools.addView(pageTargetsScroll)
         tools.addView(add)
         tools.addView(remove)
+        tools.addView(glassButton("✦ Gerenciar páginas", 13f).apply {
+            setOnClickListener { managePages() }
+        })
         tools.visibility = View.GONE
         val toggle = label("✦ Editar área de trabalho", 12f).apply {
             setTextColor(lilac)
@@ -1050,7 +1098,7 @@ class MainActivity : Activity() {
     }
 
     private fun updateDots() {
-        dots.text = (0..2).joinToString("     ") {
+        dots.text = (0 until pageCount()).joinToString("  ") {
             if (it == pageIndex) "◉" else "○"
         }
     }
@@ -1110,6 +1158,12 @@ class MainActivity : Activity() {
         }
         fun refresh(query: String) {
             results.removeAllViews()
+            if (query.isBlank()) {
+                results.addView(label("Digite o nome de um aplicativo", 14f).apply {
+                    setPadding(0, dp(18), 0, dp(18))
+                })
+                return
+            }
             val filtered = apps.filter {
                 normalize(it.loadLabel(packageManager).toString())
                     .contains(normalize(query.trim()))
@@ -1151,6 +1205,8 @@ class MainActivity : Activity() {
         dialog.show()
         dialog.window?.setLayout(-1, (resources.displayMetrics.heightPixels * 0.72f).toInt())
         refresh("")
+        input.requestFocus()
+        dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
     }
 
     private fun crystalSearchBar(): View =
@@ -1162,24 +1218,19 @@ class MainActivity : Activity() {
 
     // Substitui os alvos permanentes da gaveta por um menu no toque longo.
     private fun appPlacementMenu(app: ResolveInfo) {
-        val options = arrayOf(
-            "Adicionar à página 1", "Adicionar à página 2",
-            "Adicionar à página 3", "Adicionar ao dock",
-            "Arrastar ícone"
-        )
-        AlertDialog.Builder(this)
+        val options = (1..pageCount()).map { "Adicionar à página $it" } +
+            listOf("Adicionar ao dock", "Gerenciar páginas")
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(app.loadLabel(packageManager).toString())
-            .setItems(options) { _, index ->
+            .setItems(options.toTypedArray()) { _, index ->
                 val key = appKey(app)
-                when (index) {
-                    0, 1, 2 -> placeOnPage(key, index)
-                    3 -> {
+                when {
+                    index < pageCount() -> placeOnPage(key, index)
+                    index == pageCount() -> {
                         val free = dockSlots().indexOfFirst { it.isEmpty() }
                         placeInDock(key, if (free >= 0) free else 3)
                     }
-                    else -> Toast.makeText(this,
-                        "Para organizar, use Adicionar à página ou ao dock",
-                        Toast.LENGTH_SHORT).show()
+                    else -> managePages()
                 }
             }.show()
     }
