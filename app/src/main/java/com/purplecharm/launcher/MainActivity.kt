@@ -282,7 +282,7 @@ class MainActivity : Activity() {
                 arrayOf("4 colunas", "5 colunas", "6 colunas"),
                 arrayOf("4", "5", "6"), "5")
         }
-        option("✦ Papéis de parede Crystal Eye") { wallpaperMenu() }
+        option("✦ Papéis de parede Purple Charm") { wallpaperMenu() }
         option("✦ Aplicar Olho de Cristal na tela de bloqueio") { confirmLockWallpaper() }
         option("✦ Efeito de transição: " + transitionName(setting("transition", "cube"))) {
             chooseSetting("Transição entre páginas", "transition",
@@ -537,6 +537,7 @@ class MainActivity : Activity() {
         when (prefs.getString("pc_wallpaper_choice", "floral")) {
             "eye_crystal" -> backgroundImage.setImageResource(R.drawable.purple_eye_crystal)
             "eye_royal" -> backgroundImage.setImageResource(R.drawable.purple_eye_royal)
+            "ghost_fire" -> backgroundImage.setImageResource(R.drawable.wallpaper_ghost_fire)
             "gallery" -> {
                 val saved = prefs.getString("wallpaper_uri", null)
                 if (!saved.isNullOrEmpty()) {
@@ -559,11 +560,12 @@ class MainActivity : Activity() {
 
     private fun wallpaperMenu() {
         AlertDialog.Builder(this)
-            .setTitle("✦ Papéis de parede Crystal Eye")
+            .setTitle("✦ Papéis de parede Purple Charm")
             .setItems(arrayOf(
                 "Floral original (padrão)",
                 "Olho de Cristal • primeira arte",
                 "Olho Royal • segunda arte",
+                "Ghost Fire • caveira roxa",
                 "Escolher imagem da galeria",
                 "Aplicar Olho de Cristal na tela de bloqueio"
             )) { _, choice ->
@@ -571,7 +573,8 @@ class MainActivity : Activity() {
                     0 -> chooseBuiltInWallpaper("floral")
                     1 -> chooseBuiltInWallpaper("eye_crystal")
                     2 -> chooseBuiltInWallpaper("eye_royal")
-                    3 -> {
+                    3 -> chooseBuiltInWallpaper("ghost_fire")
+                    4 -> {
                         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                             addCategory(Intent.CATEGORY_OPENABLE)
                             type = "image/*"
@@ -583,7 +586,7 @@ class MainActivity : Activity() {
                             Toast.makeText(this, "Não foi possível abrir a galeria", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    4 -> confirmLockWallpaper()
+                    5 -> confirmLockWallpaper()
                 }
             }.setNegativeButton("Cancelar", null).show()
     }
