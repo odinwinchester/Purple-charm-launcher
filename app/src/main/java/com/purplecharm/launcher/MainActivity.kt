@@ -418,7 +418,7 @@ class MainActivity : Activity() {
 
         backgroundImage = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
-            setImageResource(R.drawable.wallpaper_neon)
+            setImageResource(R.drawable.purple_original_wallpaper)
         }
 
         frame.addView(
@@ -473,7 +473,7 @@ class MainActivity : Activity() {
 
         if (saved.isNullOrEmpty()) {
             backgroundImage.setImageResource(
-                R.drawable.wallpaper_neon
+                R.drawable.purple_original_wallpaper
             )
             return
         }
@@ -482,12 +482,12 @@ class MainActivity : Activity() {
             backgroundImage.setImageURI(Uri.parse(saved))
             if (backgroundImage.drawable == null) {
                 backgroundImage.setImageResource(
-                    R.drawable.wallpaper_neon
+                    R.drawable.purple_original_wallpaper
                 )
             }
         } catch (_: Exception) {
             backgroundImage.setImageResource(
-                R.drawable.wallpaper_neon
+                R.drawable.purple_original_wallpaper
             )
         }
     }
@@ -498,7 +498,7 @@ class MainActivity : Activity() {
             .setItems(
                 arrayOf(
                     "Escolher imagem da galeria",
-                    "Restaurar fundo neon"
+                    "Restaurar wallpaper original"
                 )
             ) { _, choice ->
                 if (choice == 0) {
@@ -533,7 +533,7 @@ class MainActivity : Activity() {
                     applyWallpaper()
                     Toast.makeText(
                         this,
-                        "Fundo neon restaurado",
+                        "Wallpaper original restaurado",
                         Toast.LENGTH_SHORT
                     ).show()
                 }
@@ -779,7 +779,7 @@ class MainActivity : Activity() {
         )
 
         panel.addView(
-            label("Crystal Glass • Organização 2.6", 12f).apply {
+            label("Original Theme Edition • 2.7", 12f).apply {
                 setTextColor(lilac)
                 setPadding(0, dp(3), 0, 0)
             }
@@ -794,7 +794,8 @@ class MainActivity : Activity() {
 
         val root = buildRoot()
 
-        root.addView(titlePanel())
+        // Layout clássico: ícones e wallpaper têm prioridade visual.
+        // O título permanece disponível nas configurações.
 
         pages = ViewFlipper(this)
 
@@ -818,12 +819,6 @@ class MainActivity : Activity() {
         root.addView(dots)
         updateDots()
 
-        root.addView(
-            glassButton("⚙ Configurações", 13f).apply {
-                setOnClickListener { settingsMenu() }
-            }
-        )
-
         root.addView(dock())
     }
 
@@ -835,7 +830,7 @@ class MainActivity : Activity() {
         }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val titles = arrayOf("✦ Minha página", "✦ Favoritos", "✦ Mais aplicativos")
-        content.addView(sectionHeader(titles[index], "Segure e arraste para organizar"))
+        // Sem o grande cabeçalho de vidro que não existe no tema original.
         // Solte nos botões para enviar o ícone a outra página.
         val pageTargets = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -848,7 +843,6 @@ class MainActivity : Activity() {
                 setMargins(dp(2), dp(4), dp(2), dp(4))
             })
         }
-        content.addView(pageTargets)
         val list = savedPage(index)
         val grid = GridLayout(this).apply {
             columnCount = setting("columns", "5").toIntOrNull()?.coerceIn(4, 6) ?: 5
@@ -867,20 +861,29 @@ class MainActivity : Activity() {
         content.addView(grid)
         val add = glassButton("＋ Solte aqui para adicionar à página ${index + 1}", 13f)
         acceptDrop(add) { key -> placeOnPage(key, index) }
-        content.addView(add)
         val remove = glassButton("× Solte aqui para remover o atalho", 12f)
         acceptDrop(remove) { key -> removeShortcut(key) }
-        content.addView(remove)
-        content.addView(glassButton("✦ Abrir gaveta de aplicativos", 13f).apply {
-            setOnClickListener { showDrawer() }
-        })
+        val tools = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        tools.addView(pageTargets)
+        tools.addView(add)
+        tools.addView(remove)
+        tools.visibility = View.GONE
+        val toggle = label("✦ Editar área de trabalho", 12f).apply {
+            setTextColor(lilac)
+            setPadding(dp(6), dp(7), dp(6), dp(7))
+            setOnClickListener {
+                tools.visibility = if (tools.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            }
+        }
+        content.addView(toggle)
+        content.addView(tools)
         scroll.addView(content)
         return scroll
     }
 
     private fun updateDots() {
-        dots.text = (0..2).joinToString("    ") {
-            if (it == pageIndex) "●" else "○"
+        dots.text = (0..2).joinToString("     ") {
+            if (it == pageIndex) "◉" else "○"
         }
     }
 
@@ -888,18 +891,24 @@ class MainActivity : Activity() {
         val outer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            background = glass(26, true)
-            setPadding(dp(4), dp(7), dp(4), dp(7))
+            background = resources.getDrawable(R.drawable.purple_original_dock, theme)
+            setPadding(dp(4), dp(5), dp(4), dp(5))
         }
         val keys = dockSlots()
         for (slot in 0..4) {
             val child: View = if (slot == 2) {
-                glassButton("▦\nApps", 13f).apply { setOnClickListener { showDrawer() } }
+                ImageView(this).apply {
+                    setImageResource(R.drawable.purple_original_apps)
+                    setPadding(dp(10), dp(10), dp(10), dp(10))
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    setOnClickListener { showDrawer() }
+                    setOnLongClickListener { settingsMenu(); true }
+                }
             } else {
                 val dockIndex = if (slot < 2) slot else slot - 1
                 val app = keys.getOrNull(dockIndex)?.takeIf { it.isNotEmpty() }?.let { resolveKey(it) }
                 val view = if (app != null) appTile(app, false, true)
-                           else glassButton("✧", 23f)
+                           else label("+", 22f).apply { setTextColor(lilac) }
                 acceptDrop(view) { key -> placeInDock(key, dockIndex) }
                 view
             }
@@ -916,12 +925,9 @@ class MainActivity : Activity() {
 
         val root = buildRoot()
 
-        root.addView(
-            sectionHeader(
-                "✦ Aplicativos ✦",
-                "Segure um ícone e solte em uma página abaixo"
-            )
-        )
+        root.addView(label("Aplicativos", 19f, true).apply {
+            setPadding(0, dp(6), 0, dp(6))
+        })
 
         val scroll = ScrollView(this).apply {
             clipToPadding = false
@@ -1025,7 +1031,7 @@ class MainActivity : Activity() {
         val iconSize = if (compact) 35 else 43
 
         val iconFrame = FrameLayout(this).apply {
-            background = glassTile()
+            background = resources.getDrawable(R.drawable.purple_original_iconback, theme)
             elevation = dp(2).toFloat()
         }
 
