@@ -113,36 +113,84 @@ class MainActivity : Activity() {
 
     private fun placeOnPage(key: String, index: Int, position: Int? = null) {
         val list = savedPage(index)
-        list.remove(key)
-        val at = (position ?: list.size).coerceIn(0, list.size)
         if (list.size >= homeCapacity && key !in list) {
             Toast.makeText(this, "Página cheia", Toast.LENGTH_SHORT).show()
             return
         }
+        list.remove(key)
+        val at = (position ?: list.size).coerceIn(0, list.size)
         list.add(at, key)
         for (other in 0..2) if (other != index) {
             val others = savedPage(other)
             if (others.remove(key)) savePage(other, others)
         }
-        val dock = savedDock()
-        if (dock.remove(key)) saveDock(dock)
+        val slots = dockSlots()
+        val dockAt = slots.indexOf(key)
+        if (dockAt >= 0) {
+            slots[dockAt] = ""
+            saveDockSlots(slots)
+        }
         savePage(index, list)
         pageIndex = index
         showHome()
     }
 
+    // O dock usa quatro posições fixas, sem deslocar os outros ícones.
+    private fun dockSlots(): MutableList<String> {
+        val raw = prefs.getString("layout_dock_slots", null)
+        if (raw != null) {
+            return raw.split("|").take(4).toMutableList().apply {
+                while (size < 4) add("")
+            }
+        }
+        return savedDock().take(4).toMutableList().apply {
+            while (size < 4) add("")
+        }
+    }
+
+    private fun saveDockSlots(slots: List<String>) {
+        prefs.edit().putString("layout_dock_slots", slots.take(4).joinToString("|")).apply()
+    }
+
     private fun placeInDock(key: String, position: Int) {
-        val dock = savedDock()
-        dock.remove(key)
-        val at = position.coerceIn(0, dock.size)
-        if (dock.size >= 4) dock.removeAt(if (at >= 4) 3 else at)
-        dock.add(at.coerceAtMost(dock.size), key)
-        saveDock(dock)
+        val slots = dockSlots()
+        val destination = position.coerceIn(0, 3)
+        val previous = slots[destination]
+        val oldSlot = slots.indexOf(key)
+        if (oldSlot >= 0) slots[oldSlot] = ""
+        slots[destination] = key
+        saveDockSlots(slots)
         for (page in 0..2) {
             val list = savedPage(page)
             if (list.remove(key)) savePage(page, list)
         }
+        // O atalho substituído continua disponível na gaveta.
+        if (previous.isNotEmpty() && previous != key && oldSlot < 0) {
+            Toast.makeText(this, "Atalho anterior disponível na gaveta", Toast.LENGTH_SHORT).show()
+        }
         showHome()
+    }
+
+    private fun removeShortcut(key: String) {
+        var changed = false
+        for (page in 0..2) {
+            val list = savedPage(page)
+            if (list.remove(key)) {
+                savePage(page, list)
+                changed = true
+            }
+        }
+        val slots = dockSlots()
+        val at = slots.indexOf(key)
+        if (at >= 0) {
+            slots[at] = ""
+            saveDockSlots(slots)
+            changed = true
+        }
+        if (changed) {
+            Toast.makeText(this, "Atalho removido (aplicativo mantido)", Toast.LENGTH_SHORT).show()
+            showHome()
+        }
     }
 
     private val lilac = Color.rgb(236, 201, 255)
@@ -196,7 +244,8 @@ class MainActivity : Activity() {
                         .setMessage("As posições personalizadas das páginas e do dock serão apagadas.")
                         .setPositiveButton("Restaurar") { _, _ ->
                             prefs.edit().remove("layout_page_0").remove("layout_page_1")
-                                .remove("layout_page_2").remove("layout_dock").apply()
+                                .remove("layout_page_2").remove("layout_dock")
+                                .remove("layout_dock_slots").apply()
                             showHome()
                         }
                         .setNegativeButton("Cancelar", null).show()
@@ -730,7 +779,7 @@ class MainActivity : Activity() {
         )
 
         panel.addView(
-            label("Crystal Glass • Organização 2.5", 12f).apply {
+            label("Crystal Glass • Organização 2.6", 12f).apply {
                 setTextColor(lilac)
                 setPadding(0, dp(3), 0, 0)
             }
@@ -787,6 +836,19 @@ class MainActivity : Activity() {
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val titles = arrayOf("✦ Minha página", "✦ Favoritos", "✦ Mais aplicativos")
         content.addView(sectionHeader(titles[index], "Segure e arraste para organizar"))
+        // Solte nos botões para enviar o ícone a outra página.
+        val pageTargets = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        for (destination in 0..2) {
+            if (destination == index) continue
+            val target = glassButton("⇢ Página ${destination + 1}", 12f)
+            acceptDrop(target) { key -> placeOnPage(key, destination) }
+            pageTargets.addView(target, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                setMargins(dp(2), dp(4), dp(2), dp(4))
+            })
+        }
+        content.addView(pageTargets)
         val list = savedPage(index)
         val grid = GridLayout(this).apply {
             columnCount = setting("columns", "5").toIntOrNull()?.coerceIn(4, 6) ?: 5
@@ -806,6 +868,9 @@ class MainActivity : Activity() {
         val add = glassButton("＋ Solte aqui para adicionar à página ${index + 1}", 13f)
         acceptDrop(add) { key -> placeOnPage(key, index) }
         content.addView(add)
+        val remove = glassButton("× Solte aqui para remover o atalho", 12f)
+        acceptDrop(remove) { key -> removeShortcut(key) }
+        content.addView(remove)
         content.addView(glassButton("✦ Abrir gaveta de aplicativos", 13f).apply {
             setOnClickListener { showDrawer() }
         })
@@ -826,13 +891,13 @@ class MainActivity : Activity() {
             background = glass(26, true)
             setPadding(dp(4), dp(7), dp(4), dp(7))
         }
-        val keys = savedDock()
+        val keys = dockSlots()
         for (slot in 0..4) {
             val child: View = if (slot == 2) {
                 glassButton("▦\nApps", 13f).apply { setOnClickListener { showDrawer() } }
             } else {
                 val dockIndex = if (slot < 2) slot else slot - 1
-                val app = keys.getOrNull(dockIndex)?.let { resolveKey(it) }
+                val app = keys.getOrNull(dockIndex)?.takeIf { it.isNotEmpty() }?.let { resolveKey(it) }
                 val view = if (app != null) appTile(app, false, true)
                            else glassButton("✧", 23f)
                 acceptDrop(view) { key -> placeInDock(key, dockIndex) }
@@ -872,15 +937,28 @@ class MainActivity : Activity() {
             setPadding(dp(3), dp(10), dp(3), dp(10))
         }
 
-        container.addView(appGrid(apps, true))
+        // Destinos ficam acima da grade para não exigir rolar por todos os apps.
         for (page in 0..2) {
             val target = glassButton("＋ Solte aqui para adicionar à página ${page + 1}", 13f)
             acceptDrop(target) { key -> placeOnPage(key, page) }
             container.addView(target)
         }
         val dockTarget = glassButton("✧ Solte aqui para adicionar ao dock", 13f)
-        acceptDrop(dockTarget) { key -> placeInDock(key, savedDock().size) }
+        acceptDrop(dockTarget) { key ->
+            val free = dockSlots().indexOfFirst { it.isEmpty() }
+            placeInDock(key, if (free >= 0) free else 3)
+        }
         container.addView(dockTarget)
+        val dockRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        for (slot in 0..3) {
+            val target = glassButton("Dock ${slot + 1}", 12f)
+            acceptDrop(target) { key -> placeInDock(key, slot) }
+            dockRow.addView(target, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                setMargins(dp(2), dp(4), dp(2), dp(4))
+            })
+        }
+        container.addView(dockRow)
+        container.addView(appGrid(apps, true))
         scroll.addView(container)
 
         root.addView(
