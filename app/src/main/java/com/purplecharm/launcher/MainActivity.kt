@@ -1,6 +1,15 @@
 package com.purplecharm.launcher
 
 import android.app.Activity
+import android.graphics.Camera
+import android.graphics.Matrix
+import android.view.animation.Animation
+import android.view.animation.Transformation
+import android.view.animation.AlphaAnimation
+import android.view.animation.ScaleAnimation
+import android.view.animation.TranslateAnimation
+import android.view.animation.AnimationSet
+import android.view.animation.DecelerateInterpolator
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipDescription
@@ -49,6 +58,7 @@ class MainActivity : Activity() {
     private var downY = 0f
 
     private var dragging = false
+    private var switchingPage = false
     private val homeCapacity = 40
 
     private fun savedPage(index: Int): MutableList<String> {
@@ -225,7 +235,8 @@ class MainActivity : Activity() {
             "✦ Colunas da gaveta: " + setting("columns", "5"),
             "✦ Papel de parede",
             "✦ Restaurar configurações de gestos e grade",
-            "✦ Restaurar organização dos ícones"
+            "✦ Restaurar organização dos ícones",
+            "✦ Efeito de transição: " + transitionName(setting("transition", "cube"))
         )
         AlertDialog.Builder(this)
             .setTitle("✦ Purple Charm • Configurações")
@@ -249,6 +260,11 @@ class MainActivity : Activity() {
                             showHome()
                         }
                         .setNegativeButton("Cancelar", null).show()
+                    6 -> chooseSetting(
+                        "Transição entre páginas", "transition",
+                        arrayOf("Cubo 3D", "Giro 3D", "Zoom Crystal", "Deslizar", "Sem animação"),
+                        arrayOf("cube", "flip", "zoom", "slide", "none"), "cube"
+                    )
                     4 -> AlertDialog.Builder(this)
                         .setTitle("Restaurar configurações?")
                         .setMessage("Isso não altera os favoritos nem o wallpaper.")
@@ -262,6 +278,14 @@ class MainActivity : Activity() {
             }
             .setNegativeButton("Fechar", null)
             .show()
+    }
+
+    private fun transitionName(value: String): String = when (value) {
+        "cube" -> "Cubo 3D"
+        "flip" -> "Giro 3D"
+        "zoom" -> "Zoom Crystal"
+        "slide" -> "Deslizar"
+        else -> "Sem animação"
     }
 
     private fun gestureName(value: String): String = when (value) {
@@ -779,13 +803,93 @@ class MainActivity : Activity() {
         )
 
         panel.addView(
-            label("Original Theme Edition • 2.7", 12f).apply {
+            label("Original Theme Edition • 2.8", 12f).apply {
                 setTextColor(lilac)
                 setPadding(0, dp(3), 0, 0)
             }
         )
 
         return panel
+    }
+
+    // Animações nativas: não exigem bibliotecas adicionais nem novos recursos.
+    private class Rotation3D(
+        private val startDegrees: Float,
+        private val endDegrees: Float,
+        private val pivotAtRight: Boolean
+    ) : Animation() {
+        private val camera = Camera()
+        private var centerX = 0f
+        private var centerY = 0f
+        override fun initialize(width: Int, height: Int, parentWidth: Int, parentHeight: Int) {
+            super.initialize(width, height, parentWidth, parentHeight)
+            centerX = if (pivotAtRight) width.toFloat() else 0f
+            centerY = height / 2f
+        }
+        override fun applyTransformation(interpolatedTime: Float, t: Transformation) {
+            val degrees = startDegrees + (endDegrees - startDegrees) * interpolatedTime
+            val matrix: Matrix = t.matrix
+            camera.save()
+            camera.rotateY(degrees)
+            camera.getMatrix(matrix)
+            camera.restore()
+            // Ajuste da perspectiva: o Android Camera trabalha em pixels de câmera.
+            matrix.preTranslate(-centerX, -centerY)
+            matrix.postTranslate(centerX, centerY)
+        }
+    }
+
+    private fun pageAnimation(style: String, incoming: Boolean, forward: Boolean): Animation {
+        val duration = 380L
+        val animation: Animation = when (style) {
+            "cube", "flip" -> {
+                val angle = if (style == "cube") 88f else 72f
+                val start = if (incoming) (if (forward) -angle else angle) else 0f
+                val end = if (incoming) 0f else (if (forward) angle else -angle)
+                val rightPivot = if (incoming) forward else !forward
+                Rotation3D(start, end, rightPivot)
+            }
+            "zoom" -> AnimationSet(true).apply {
+                val from = if (incoming) 0.72f else 1f
+                val to = if (incoming) 1f else 1.15f
+                addAnimation(ScaleAnimation(from, to, from, to,
+                    Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f))
+                addAnimation(AlphaAnimation(if (incoming) 0.2f else 1f,
+                    if (incoming) 1f else 0f))
+            }
+            else -> TranslateAnimation(
+                Animation.RELATIVE_TO_SELF, if (incoming) (if (forward) 1f else -1f) else 0f,
+                Animation.RELATIVE_TO_SELF, if (incoming) 0f else (if (forward) -1f else 1f),
+                Animation.RELATIVE_TO_SELF, 0f,
+                Animation.RELATIVE_TO_SELF, 0f
+            )
+        }
+        animation.duration = duration
+        animation.interpolator = DecelerateInterpolator(1.15f)
+        animation.fillAfter = false
+        return animation
+    }
+
+    private fun changePage(destination: Int) {
+        if (drawerOpen || dragging || switchingPage || !::pages.isInitialized) return
+        val target = destination.coerceIn(0, 2)
+        if (target == pageIndex) return
+        val style = setting("transition", "cube")
+        val forward = target > pageIndex
+        if (style == "none") {
+            pages.inAnimation = null
+            pages.outAnimation = null
+        } else {
+            pages.inAnimation = pageAnimation(style, true, forward)
+            pages.outAnimation = pageAnimation(style, false, forward)
+        }
+        pageIndex = target
+        pages.displayedChild = target
+        updateDots()
+        if (style != "none") {
+            switchingPage = true
+            pages.postDelayed({ switchingPage = false }, 410L)
+        }
     }
 
     private fun showHome() {
@@ -798,6 +902,7 @@ class MainActivity : Activity() {
         // O título permanece disponível nas configurações.
 
         pages = ViewFlipper(this)
+        switchingPage = false
 
         for (index in 0..2) {
             pages.addView(homePage(index))
@@ -1115,13 +1220,7 @@ class MainActivity : Activity() {
                         abs(dx) > dp(65) &&
                         abs(dx) > abs(dy) * 1.3f
                     ) {
-                        pageIndex = (
-                            pageIndex +
-                                if (dx < 0) 1 else -1
-                        ).coerceIn(0, 2)
-
-                        pages.displayedChild = pageIndex
-                        updateDots()
+                        changePage(pageIndex + if (dx < 0) 1 else -1)
                         return true
                     }
 
