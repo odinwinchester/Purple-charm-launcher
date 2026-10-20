@@ -44,7 +44,6 @@ class MainActivity : Activity() {
     private var downX = 0f
     private var downY = 0f
 
-    private val white = Color.WHITE
     private val lilac = Color.rgb(236, 201, 255)
     private val wallpaperRequest = 2202
 
@@ -98,7 +97,7 @@ class MainActivity : Activity() {
     ): TextView = TextView(this).apply {
         text = value
         textSize = size
-        setTextColor(white)
+        setTextColor(Color.WHITE)
         gravity = Gravity.CENTER
         if (bold) {
             typeface = Typeface.create("serif", Typeface.BOLD)
@@ -134,19 +133,22 @@ class MainActivity : Activity() {
         }
     }
 
+    // CRYSTAL GLASS:
+    // Apenas o quadrado do ícone tem vidro.
+    // O espaço entre ícones fica transparente.
     private fun glassTile(): GradientDrawable =
         GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
             intArrayOf(
-                Color.argb(105, 227, 174, 255),
-                Color.argb(45, 127, 59, 173),
-                Color.argb(75, 48, 20, 94)
+                Color.argb(60, 227, 174, 255),
+                Color.argb(20, 127, 59, 173),
+                Color.argb(38, 48, 20, 94)
             )
         ).apply {
             cornerRadius = dp(17).toFloat()
             setStroke(
                 dp(1).coerceAtLeast(1),
-                Color.argb(100, 241, 202, 255)
+                Color.argb(150, 241, 202, 255)
             )
         }
 
@@ -288,9 +290,7 @@ class MainActivity : Activity() {
             backgroundImage.setImageURI(uri)
 
             if (backgroundImage.drawable == null) {
-                throw IllegalArgumentException(
-                    "Imagem inválida"
-                )
+                throw IllegalArgumentException("Imagem inválida")
             }
 
             prefs.edit()
@@ -303,6 +303,7 @@ class MainActivity : Activity() {
                 Toast.LENGTH_SHORT
             ).show()
         } catch (_: Exception) {
+            applyWallpaper()
             Toast.makeText(
                 this,
                 "Não foi possível aplicar a imagem",
@@ -442,7 +443,7 @@ class MainActivity : Activity() {
             "play store" in name ||
             "market" in name -> "market"
 
-            "local" == name -> "local"
+            name == "local" -> "local"
 
             else -> ""
         }
@@ -500,7 +501,7 @@ class MainActivity : Activity() {
         )
 
         panel.addView(
-            label("Neon Glass Edition 2.2", 12f).apply {
+            label("Crystal Glass Edition 2.2", 12f).apply {
                 setTextColor(lilac)
                 setPadding(0, dp(3), 0, 0)
             }
@@ -696,9 +697,12 @@ class MainActivity : Activity() {
             setPadding(0, dp(9), 0, dp(9))
         }
 
+        // CRYSTAL GLASS:
+        // Sem painel roxo escuro atrás da grade.
+        // O wallpaper fica visível entre os ícones.
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = glass(24, true)
+            background = null
             setPadding(dp(3), dp(10), dp(3), dp(10))
         }
 
@@ -734,6 +738,7 @@ class MainActivity : Activity() {
     ): GridLayout {
         val grid = GridLayout(this).apply {
             columnCount = 5
+            background = null
             setPadding(dp(1), dp(12), dp(1), dp(12))
         }
 
@@ -761,6 +766,7 @@ class MainActivity : Activity() {
         val tile = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
+            background = null
             setPadding(dp(2), dp(6), dp(2), dp(8))
         }
 
