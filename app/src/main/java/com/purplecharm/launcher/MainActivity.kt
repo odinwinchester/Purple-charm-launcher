@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -28,10 +29,14 @@ import kotlin.math.abs
 class MainActivity : Activity() {
 
     private val prefs by lazy {
-        getSharedPreferences("purple_charm_favorites", MODE_PRIVATE)
+        getSharedPreferences(
+            "purple_charm_favorites",
+            MODE_PRIVATE
+        )
     }
 
     private val apps = mutableListOf<ResolveInfo>()
+
     private lateinit var root: LinearLayout
     private lateinit var pages: ViewFlipper
     private lateinit var dots: TextView
@@ -41,18 +46,25 @@ class MainActivity : Activity() {
     private var downX = 0f
     private var downY = 0f
 
+    private val white = Color.WHITE
+    private val lilac = Color.rgb(236, 201, 255)
+    private val pink = Color.rgb(255, 130, 238)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        window.statusBarColor = Color.rgb(43, 13, 60)
-        window.navigationBarColor = Color.rgb(31, 11, 46)
+        window.statusBarColor = Color.rgb(39, 12, 61)
+        window.navigationBarColor = Color.rgb(28, 9, 44)
 
         loadApps()
         showHome()
     }
 
-    private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int {
+        return (
+            value * resources.displayMetrics.density
+        ).toInt()
+    }
 
     private fun loadApps() {
         val intent = Intent(Intent.ACTION_MAIN)
@@ -65,25 +77,45 @@ class MainActivity : Activity() {
         )
 
         apps.clear()
+
         apps.addAll(
             found.filter {
                 it.activityInfo.packageName != packageName
             }.sortedBy {
-                it.loadLabel(packageManager).toString()
+                it.loadLabel(packageManager)
+                    .toString()
                     .lowercase(Locale.ROOT)
             }
         )
     }
 
-    private fun appKey(app: ResolveInfo): String =
-        app.activityInfo.packageName + "/" +
-            app.activityInfo.name
+    private fun appKey(app: ResolveInfo): String {
+        return app.activityInfo.packageName +
+            "/" + app.activityInfo.name
+    }
 
-    private fun selected(): Set<String> =
-        prefs.getStringSet("apps", emptySet()) ?: emptySet()
+    private fun selected(): Set<String> {
+        return prefs.getStringSet(
+            "apps",
+            emptySet()
+        ) ?: emptySet()
+    }
 
-    private fun favorites(): List<ResolveInfo> =
-        apps.filter { selected().contains(appKey(it)) }
+    private fun favorites(): List<ResolveInfo> {
+        return apps.filter {
+            selected().contains(appKey(it))
+        }
+    }
+
+    private fun dpLayout(
+        width: Int,
+        height: Int
+    ): LinearLayout.LayoutParams {
+        return LinearLayout.LayoutParams(
+            width,
+            height
+        )
+    }
 
     private fun label(
         value: String,
@@ -93,8 +125,9 @@ class MainActivity : Activity() {
         return TextView(this).apply {
             text = value
             textSize = size
-            setTextColor(Color.WHITE)
+            setTextColor(white)
             gravity = Gravity.CENTER
+            includeFontPadding = true
 
             if (bold) {
                 typeface = Typeface.create(
@@ -105,34 +138,105 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun background(): GradientDrawable {
+    private fun wallpaper(): GradientDrawable {
         return GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
             intArrayOf(
-                Color.rgb(45, 14, 65),
-                Color.rgb(109, 42, 126),
-                Color.rgb(40, 12, 58)
+                Color.rgb(36, 9, 60),
+                Color.rgb(83, 25, 115),
+                Color.rgb(122, 45, 142),
+                Color.rgb(43, 13, 71)
             )
         )
+    }
+
+    private fun glass(
+        radius: Int = 24,
+        strong: Boolean = false
+    ): GradientDrawable {
+        val colors = if (strong) {
+            intArrayOf(
+                Color.argb(205, 111, 65, 150),
+                Color.argb(190, 55, 22, 92),
+                Color.argb(210, 34, 13, 63)
+            )
+        } else {
+            intArrayOf(
+                Color.argb(145, 182, 112, 220),
+                Color.argb(95, 91, 42, 139),
+                Color.argb(145, 43, 17, 83)
+            )
+        }
+
+        return GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            colors
+        ).apply {
+            cornerRadius = dp(radius).toFloat()
+
+            setStroke(
+                dp(1).coerceAtLeast(1),
+                Color.argb(165, 235, 189, 255)
+            )
+        }
+    }
+
+    private fun glassTile(): GradientDrawable {
+        return GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(
+                Color.argb(105, 227, 174, 255),
+                Color.argb(45, 127, 59, 173),
+                Color.argb(75, 48, 20, 94)
+            )
+        ).apply {
+            cornerRadius = dp(17).toFloat()
+
+            setStroke(
+                dp(1).coerceAtLeast(1),
+                Color.argb(100, 241, 202, 255)
+            )
+        }
+    }
+
+    private fun glassButton(
+        value: String,
+        size: Float = 16f
+    ): TextView {
+        return label(value, size).apply {
+            background = glass(18)
+            setPadding(
+                dp(12),
+                dp(10),
+                dp(12),
+                dp(10)
+            )
+        }
     }
 
     private fun buildRoot() {
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = background()
-            setPadding(dp(5), dp(7), dp(5), dp(4))
+            background = wallpaper()
+
+            setPadding(
+                dp(9),
+                dp(9),
+                dp(9),
+                dp(8)
+            )
         }
 
         setContentView(root)
     }
 
     private fun normalize(value: String): String {
-        val text = Normalizer.normalize(
+        val normalized = Normalizer.normalize(
             value.lowercase(Locale.ROOT),
             Normalizer.Form.NFD
         )
 
-        return text.replace(
+        return normalized.replace(
             Regex("\\p{InCombiningDiacriticalMarks}+"),
             ""
         )
@@ -147,109 +251,85 @@ class MainActivity : Activity() {
         )
 
         val iconName = when {
-            "whatsapp" in pkg || "whatsapp" in name ->
-                "whatsapp"
+            "whatsapp" in pkg ||
+            "whatsapp" in name -> "whatsapp"
 
-            "instagram" in pkg || "instagram" in name ->
-                "instagram"
+            "instagram" in pkg ||
+            "instagram" in name -> "instagram"
 
-            "facebook" in pkg || "facebook" in name ->
-                "facebook"
+            "facebook" in pkg ||
+            "facebook" in name -> "facebook"
 
-            "youtube" in pkg || "youtube" in name ->
-                "icon_youtube"
+            "youtube" in pkg ||
+            "youtube" in name -> "icon_youtube"
 
-            "gmail" in pkg || "gmail" in name ->
-                "gmail"
+            "gmail" in pkg ||
+            "gmail" in name -> "gmail"
 
-            "maps" in pkg || "mapas" in name ->
-                "maps"
+            "maps" in pkg ||
+            "mapas" in name -> "maps"
 
-            "docs" in pkg && "google" in pkg ->
-                "googledrive"
-
-            "drive" in name ->
-                "googledrive"
+            "drive" in name ||
+            "onedrive" in name -> "googledrive"
 
             "chrome" in name ||
             "brave" in name ||
             "browser" in name ||
-            "navegador" in name ->
-                "browser"
+            "navegador" in name -> "browser"
 
             "calculadora" in name ||
-            "calculator" in name ->
-                "calculator"
+            "calculator" in name -> "calculator"
 
             "agenda" in name ||
-            "calendario" in name ->
-                "calendar"
+            "calendario" in name -> "calendar"
 
-            "camera" in name ->
-                "camera"
+            "camera" in name -> "camera"
 
             "relogio" in name ||
-            "clock" in name ->
-                "clock"
+            "clock" in name -> "clock"
 
             "contatos" in name ||
-            "contacts" in name ->
-                "contacts"
+            "contacts" in name -> "contacts"
 
-            "downloads" in name ->
-                "downloads"
+            "downloads" in name -> "downloads"
 
             "telefone" in name ||
-            "phone" in name ->
-                "phone"
+            "phone" in name -> "phone"
 
             "configuracoes" in name ||
-            "settings" in name ->
-                "settings"
+            "settings" in name -> "settings"
 
             "mensagens" in name ||
-            "messages" in name ->
-                "messaging"
+            "messages" in name -> "messaging"
 
             "musica" in name ||
-            "music" in name ->
-                "music"
+            "music" in name -> "music"
 
             "fotos" in name ||
             "galeria" in name ||
-            "gallery" in name ->
-                "gallery"
+            "gallery" in name -> "gallery"
 
-            "email" in name ->
-                "email"
+            "email" in name -> "email"
 
-            "pinterest" in name ->
-                "pinterest"
+            "pinterest" in name -> "pinterest"
 
-            "skype" in name ->
-                "skype"
+            "skype" in name -> "skype"
 
-            "twitter" in name ->
-                "twitter"
+            "twitter" in name ||
+            name == "x" -> "twitter"
 
-            "foursquare" in name ->
-                "foursquare"
+            "foursquare" in name -> "foursquare"
 
-            "flipboard" in name ->
-                "flipboard"
+            "flipboard" in name -> "flipboard"
 
-            "mplayer" in name ->
-                "mplayer"
+            "mplayer" in name -> "mplayer"
 
-            "soundhound" in name ->
-                "soundhound"
+            "soundhound" in name -> "soundhound"
 
-            "gravador" in name ->
-                "soundrecorder"
+            "gravador" in name -> "soundrecorder"
 
             "market" in name ||
-            "play store" in name ->
-                "market"
+            "play store" in name -> "market"
 
             else -> ""
         }
@@ -264,10 +344,9 @@ class MainActivity : Activity() {
             if (id != 0) {
                 try {
                     @Suppress("DEPRECATION")
-                    val icon = resources.getDrawable(id)
-                    return icon
+                    return resources.getDrawable(id)
                 } catch (_: Exception) {
-                    // Usa o icone normal como alternativa.
+                    // Mantem o icone original.
                 }
             }
         }
@@ -275,18 +354,45 @@ class MainActivity : Activity() {
         return app.loadIcon(packageManager)
     }
 
+    private fun titlePanel(): View {
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = glass(25)
+
+            setPadding(
+                dp(8),
+                dp(12),
+                dp(8),
+                dp(12)
+            )
+        }
+
+        panel.addView(
+            label("✦ Purple Charm ✦", 25f, true)
+        )
+
+        panel.addView(
+            label("Glass Edition 2.1", 12f).apply {
+                setTextColor(lilac)
+                setPadding(0, dp(3), 0, 0)
+            }
+        )
+
+        return panel
+    }
+
     private fun showHome() {
         drawerOpen = false
+        loadApps()
         buildRoot()
 
         root.addView(
-            label("Purple Charm", 28f, true)
-        )
-
-        root.addView(
-            label("Meu universo roxo ✦", 13f).apply {
-                setPadding(0, 0, 0, dp(12))
-            }
+            titlePanel(),
+            dpLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
         )
 
         pages = ViewFlipper(this)
@@ -307,56 +413,104 @@ class MainActivity : Activity() {
         pageIndex = pageIndex.coerceIn(0, 2)
         pages.displayedChild = pageIndex
 
-        dots = label("", 19f)
+        dots = label("", 19f).apply {
+            setTextColor(lilac)
+            setPadding(0, dp(4), 0, dp(5))
+        }
+
         root.addView(dots)
         updateDots()
 
         root.addView(dock())
     }
 
+    private fun sectionHeader(
+        heading: String,
+        subtitle: String
+    ): View {
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = glass(22)
+
+            setPadding(
+                dp(8),
+                dp(12),
+                dp(8),
+                dp(12)
+            )
+        }
+
+        panel.addView(
+            label(heading, 22f)
+        )
+
+        panel.addView(
+            label(subtitle, 12f).apply {
+                setTextColor(lilac)
+                setPadding(0, dp(4), 0, 0)
+            }
+        )
+
+        return panel
+    }
+
     private fun homePage(index: Int): View {
         val scroll = ScrollView(this).apply {
             isFillViewport = true
+            clipToPadding = false
+            setPadding(0, dp(10), 0, dp(6))
         }
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(4), dp(12), dp(4), dp(8))
         }
 
         when (index) {
             0 -> {
                 content.addView(
-                    label("✦ Minha página", 23f)
+                    sectionHeader(
+                        "✦ Minha página",
+                        "Deslize para navegar"
+                    )
                 )
 
                 content.addView(
-                    label("Deslize para navegar", 12f).apply {
-                        setPadding(0, dp(5), 0, dp(12))
-                    }
-                )
-
-                content.addView(
-                    appGrid(apps.take(20), false)
+                    appGrid(
+                        apps.take(20),
+                        false
+                    )
                 )
             }
 
             1 -> {
                 content.addView(
-                    label("✦ Favoritos", 23f)
+                    sectionHeader(
+                        "✦ Favoritos",
+                        "Seus aplicativos especiais"
+                    )
                 )
 
                 val pinned = favorites()
 
                 if (pinned.isEmpty()) {
                     content.addView(
-                        label(
+                        glassButton(
                             "Abra Apps e segure um ícone para favoritar",
                             13f
                         ).apply {
                             setPadding(
-                                dp(8), dp(18), dp(8), 0
+                                dp(10),
+                                dp(20),
+                                dp(10),
+                                dp(20)
                             )
+                        },
+                        LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            topMargin = dp(14)
                         }
                     )
                 } else {
@@ -368,11 +522,17 @@ class MainActivity : Activity() {
 
             else -> {
                 content.addView(
-                    label("✦ Mais aplicativos", 23f)
+                    sectionHeader(
+                        "✦ Mais aplicativos",
+                        "Seu universo de aplicativos"
+                    )
                 )
 
                 content.addView(
-                    appGrid(apps.drop(20).take(30), false)
+                    appGrid(
+                        apps.drop(20).take(30),
+                        false
+                    )
                 )
             }
         }
@@ -382,68 +542,72 @@ class MainActivity : Activity() {
     }
 
     private fun updateDots() {
-        dots.text = (0..2).joinToString("   ") {
+        dots.text = (0..2).joinToString("    ") {
             if (it == pageIndex) "●" else "○"
         }
     }
 
     private fun dock(): View {
-        val bar = LinearLayout(this).apply {
+        val outer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(2), dp(7), dp(2), dp(7))
-            setBackgroundColor(
-                Color.argb(145, 25, 9, 41)
+            background = glass(26, true)
+
+            setPadding(
+                dp(4),
+                dp(7),
+                dp(4),
+                dp(7)
             )
         }
 
         val pinned = favorites().take(4)
 
         for (slot in 0..4) {
-            val child: View = when {
-                slot == 2 -> {
-                    label("▦\nApps", 14f).apply {
-                        setOnClickListener {
-                            showDrawer()
-                        }
+            val child: View = if (slot == 2) {
+                glassButton("▦\nApps", 13f).apply {
+                    setOnClickListener {
+                        showDrawer()
                     }
                 }
+            } else {
+                val favIndex =
+                    if (slot < 2) slot else slot - 1
 
-                else -> {
-                    val favIndex =
-                        if (slot < 2) slot else slot - 1
-
-                    if (favIndex < pinned.size) {
-                        appTile(
-                            pinned[favIndex],
-                            false,
-                            true
-                        )
-                    } else {
-                        label("✧", 25f).apply {
-                            setOnClickListener {
-                                Toast.makeText(
-                                    this@MainActivity,
-                                    "Segure um app na gaveta para adicionar aos favoritos",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
+                if (favIndex < pinned.size) {
+                    appTile(
+                        pinned[favIndex],
+                        false,
+                        true
+                    )
+                } else {
+                    glassButton("✧", 23f).apply {
+                        setOnClickListener {
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Segure um aplicativo na gaveta para favoritar",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                 }
             }
 
-            bar.addView(
+            outer.addView(
                 child,
                 LinearLayout.LayoutParams(
                     0,
-                    dp(62),
+                    dp(61),
                     1f
-                )
+                ).apply {
+                    setMargins(
+                        dp(2), 0, dp(2), 0
+                    )
+                }
             )
         }
 
-        return bar
+        return outer
     }
 
     private fun showDrawer() {
@@ -451,24 +615,35 @@ class MainActivity : Activity() {
         loadApps()
         buildRoot()
 
-        val header = label("✦ Aplicativos ✦", 24f)
-        header.setOnClickListener { showHome() }
-        root.addView(header)
-
         root.addView(
-            label(
-                "Toque para abrir • segure para favoritar",
-                12f
-            ).apply {
-                setPadding(0, dp(5), 0, dp(12))
-            }
+            sectionHeader(
+                "✦ Aplicativos ✦",
+                "Toque para abrir • segure para favoritar"
+            )
         )
 
-        val scroll = ScrollView(this)
+        val scroll = ScrollView(this).apply {
+            clipToPadding = false
+            setPadding(0, dp(9), 0, dp(9))
+        }
 
-        scroll.addView(
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = glass(24, true)
+
+            setPadding(
+                dp(3),
+                dp(10),
+                dp(3),
+                dp(10)
+            )
+        }
+
+        container.addView(
             appGrid(apps, true)
         )
+
+        scroll.addView(container)
 
         root.addView(
             scroll,
@@ -480,9 +655,12 @@ class MainActivity : Activity() {
         )
 
         root.addView(
-            label("⌂ Voltar à tela inicial", 16f).apply {
-                setPadding(0, dp(10), 0, dp(10))
+            glassButton(
+                "⌂ Voltar à tela inicial",
+                15f
+            ).apply {
                 setOnClickListener {
+                    pageIndex = 0
                     showHome()
                 }
             }
@@ -495,14 +673,22 @@ class MainActivity : Activity() {
     ): GridLayout {
         val grid = GridLayout(this).apply {
             columnCount = 5
+
             setPadding(
-                dp(1), dp(10), dp(1), dp(12)
+                dp(1),
+                dp(12),
+                dp(1),
+                dp(12)
             )
         }
 
         items.forEach { app ->
             grid.addView(
-                appTile(app, allowFavorite, false),
+                appTile(
+                    app,
+                    allowFavorite,
+                    false
+                ),
                 GridLayout.LayoutParams().apply {
                     width = 0
                     height =
@@ -527,24 +713,43 @@ class MainActivity : Activity() {
         val tile = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
+
             setPadding(
-                dp(2), dp(6), dp(2), dp(8)
+                dp(2),
+                dp(6),
+                dp(2),
+                dp(8)
             )
         }
 
+        val iconSize = if (compact) 35 else 43
+
+        val iconFrame = FrameLayout(this).apply {
+            background = glassTile()
+
+            elevation = dp(2).toFloat()
+        }
+
+        val icon = ImageView(this).apply {
+            setImageDrawable(customIcon(app))
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+
+        iconFrame.addView(
+            icon,
+            FrameLayout.LayoutParams(
+                dp(iconSize),
+                dp(iconSize),
+                Gravity.CENTER
+            )
+        )
+
         tile.addView(
-            ImageView(this).apply {
-                setImageDrawable(customIcon(app))
-
-                scaleType =
-                    ImageView.ScaleType.FIT_CENTER
-
-                layoutParams =
-                    LinearLayout.LayoutParams(
-                        dp(if (compact) 33 else 42),
-                        dp(if (compact) 33 else 42)
-                    )
-            }
+            iconFrame,
+            LinearLayout.LayoutParams(
+                dp(iconSize + 10),
+                dp(iconSize + 10)
+            )
         )
 
         if (!compact) {
@@ -556,6 +761,13 @@ class MainActivity : Activity() {
                 ).apply {
                     maxLines = 2
                     minLines = 2
+
+                    setPadding(
+                        0,
+                        dp(6),
+                        0,
+                        0
+                    )
                 }
             )
         }
@@ -616,7 +828,9 @@ class MainActivity : Activity() {
         return tile
     }
 
-    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+    override fun dispatchTouchEvent(
+        event: MotionEvent
+    ): Boolean {
         if (!drawerOpen) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
