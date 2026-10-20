@@ -20,15 +20,14 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.ViewFlipper
+import java.text.Normalizer
+import java.util.Locale
 import kotlin.math.abs
 
 class MainActivity : Activity() {
 
     private val prefs by lazy {
-        getSharedPreferences(
-            "purple_charm_favorites",
-            MODE_PRIVATE
-        )
+        getSharedPreferences("purple_charm_favorites", MODE_PRIVATE)
     }
 
     private val apps = mutableListOf<ResolveInfo>()
@@ -54,40 +53,36 @@ class MainActivity : Activity() {
         showHome()
     }
 
+    @Suppress("DEPRECATION")
     private fun loadApps() {
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
 
-        @Suppress("DEPRECATION")
         val found = packageManager.queryIntentActivities(
             intent,
             PackageManager.MATCH_ALL
         )
 
         apps.clear()
-
         apps.addAll(
             found.filter {
                 it.activityInfo.packageName != packageName
             }.sortedBy {
                 it.loadLabel(packageManager)
                     .toString()
-                    .lowercase()
+                    .lowercase(Locale.getDefault())
             }
         )
     }
 
-    private fun selected(): Set<String> {
-        return prefs.getStringSet(
-            "apps",
-            emptySet()
-        ) ?: emptySet()
-    }
-
     private fun appKey(app: ResolveInfo): String {
         return app.activityInfo.packageName +
-            "/" +
-            app.activityInfo.name
+            "/" + app.activityInfo.name
+    }
+
+    private fun selected(): Set<String> {
+        return prefs.getStringSet("apps", emptySet())
+            ?: emptySet()
     }
 
     private fun favorites(): List<ResolveInfo> {
@@ -189,8 +184,6 @@ class MainActivity : Activity() {
     }
 
     private fun homePage(index: Int): View {
-
-        // CORREÇÃO DO ERRO fillViewport
         val scroll = ScrollView(this).apply {
             isFillViewport = true
         }
@@ -207,17 +200,13 @@ class MainActivity : Activity() {
         }
 
         when (index) {
-
             0 -> {
                 content.addView(
                     label("✦ Minha página", 23f)
                 )
 
                 content.addView(
-                    label(
-                        "Deslize para navegar",
-                        12f
-                    ).apply {
+                    label("Deslize para navegar", 12f).apply {
                         setPadding(
                             0,
                             dp(5),
@@ -228,10 +217,7 @@ class MainActivity : Activity() {
                 )
 
                 content.addView(
-                    appGrid(
-                        apps.take(20),
-                        false
-                    )
+                    appGrid(apps.take(20), false)
                 )
             }
 
@@ -265,10 +251,7 @@ class MainActivity : Activity() {
 
             else -> {
                 content.addView(
-                    label(
-                        "✦ Mais aplicativos",
-                        23f
-                    )
+                    label("✦ Mais aplicativos", 23f)
                 )
 
                 content.addView(
@@ -289,12 +272,8 @@ class MainActivity : Activity() {
         return scroll
     }
 
-    private fun handleSwipe(
-        event: MotionEvent
-    ): Boolean {
-
+    private fun handleSwipe(event: MotionEvent): Boolean {
         when (event.actionMasked) {
-
             MotionEvent.ACTION_DOWN -> {
                 downX = event.x
                 downY = event.y
@@ -339,7 +318,6 @@ class MainActivity : Activity() {
     }
 
     private fun dock(): View {
-
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -359,39 +337,33 @@ class MainActivity : Activity() {
         val pinned = favorites().take(4)
 
         for (slot in 0..4) {
-
-            val child: View = when {
-
-                slot == 2 -> {
-                    label("▦\nApps", 14f).apply {
-                        setOnClickListener {
-                            showDrawer()
-                        }
+            val child: View = if (slot == 2) {
+                label("▦\nApps", 14f).apply {
+                    setOnClickListener {
+                        showDrawer()
                     }
                 }
+            } else {
+                val favIndex = if (slot < 2) {
+                    slot
+                } else {
+                    slot - 1
+                }
 
-                else -> {
-                    val favIndex = if (slot < 2) {
-                        slot
-                    } else {
-                        slot - 1
-                    }
-
-                    if (favIndex < pinned.size) {
-                        appTile(
-                            pinned[favIndex],
-                            false,
-                            compact = true
-                        )
-                    } else {
-                        label("✧", 25f).apply {
-                            setOnClickListener {
-                                Toast.makeText(
-                                    this@MainActivity,
-                                    "Segure um app na gaveta para adicioná-lo aos favoritos",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
+                if (favIndex < pinned.size) {
+                    appTile(
+                        pinned[favIndex],
+                        false,
+                        true
+                    )
+                } else {
+                    label("✧", 25f).apply {
+                        setOnClickListener {
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Segure um app na gaveta para adicioná-lo aos favoritos",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                 }
@@ -415,16 +387,9 @@ class MainActivity : Activity() {
         loadApps()
         buildRoot()
 
-        val header = label(
-            "✦ Aplicativos ✦",
-            24f
+        root.addView(
+            label("✦ Aplicativos ✦", 24f)
         )
-
-        header.setOnClickListener {
-            showHome()
-        }
-
-        root.addView(header)
 
         root.addView(
             label(
@@ -480,8 +445,6 @@ class MainActivity : Activity() {
     ): GridLayout {
 
         val grid = GridLayout(this).apply {
-
-            // CINCO ÍCONES POR LINHA
             columnCount = 5
 
             setPadding(
@@ -493,12 +456,11 @@ class MainActivity : Activity() {
         }
 
         items.forEach { app ->
-
             grid.addView(
                 appTile(
                     app,
                     allowFavorite,
-                    compact = false
+                    false
                 ),
                 GridLayout.LayoutParams().apply {
                     width = 0
@@ -515,6 +477,123 @@ class MainActivity : Activity() {
         }
 
         return grid
+    }
+
+    private fun customIcon(app: ResolveInfo): Int {
+        val pkg = app.activityInfo.packageName
+            .lowercase(Locale.ROOT)
+
+        val rawName = app.loadLabel(packageManager)
+            .toString()
+            .lowercase(Locale.ROOT)
+
+        val name = Normalizer.normalize(
+            rawName,
+            Normalizer.Form.NFD
+        ).replace(
+            Regex("\\p{M}+"),
+            ""
+        )
+
+        val iconName = when {
+            "whatsapp" in pkg ||
+                "whatsapp" in name -> "whatsapp"
+
+            "instagram" in pkg ||
+                "instagram" in name -> "instagram"
+
+            "facebook" in pkg ||
+                name == "facebook" -> "facebook"
+
+            "youtube" in pkg ||
+                "youtube" in name -> "icon_youtube"
+
+            "gmail" in pkg ||
+                name == "gmail" -> "gmail"
+
+            ("drive" in pkg && "google" in pkg) ||
+                name == "drive" -> "googledrive"
+
+            "maps" in pkg ||
+                name == "maps" -> "maps"
+
+            "chrome" in pkg ||
+                "brave" in pkg ||
+                "browser" in name ||
+                "navegador" in name -> "browser"
+
+            "calculator" in pkg ||
+                "calculadora" in name -> "calculator"
+
+            "calendar" in pkg ||
+                "agenda" in name ||
+                "calendario" in name -> "calendar"
+
+            "camera" in pkg ||
+                "camera" in name -> "camera"
+
+            "contacts" in pkg ||
+                "contatos" in name -> "contacts"
+
+            "downloads" in name -> "downloads"
+
+            "settings" in pkg ||
+                "configuracoes" in name -> "settings"
+
+            "clock" in pkg ||
+                "relogio" in name -> "clock"
+
+            "gallery" in pkg ||
+                "galeria" in name -> "gallery"
+
+            "photos" in pkg ||
+                "fotos" in name -> "gallery"
+
+            "email" in name ||
+                "e-mail" in name -> "email"
+
+            "messag" in pkg ||
+                "mensagens" in name -> "messaging"
+
+            "dialer" in pkg ||
+                "telefone" in name -> "phone"
+
+            "music" in name ||
+                "musica" in name -> "music"
+
+            "pinterest" in pkg ||
+                "pinterest" in name -> "pinterest"
+
+            "skype" in pkg ||
+                "skype" in name -> "skype"
+
+            "twitter" in pkg ||
+                name == "x" -> "twitter"
+
+            "foursquare" in pkg -> "foursquare"
+
+            "soundhound" in pkg -> "soundhound"
+
+            "gravador" in name ||
+                "recorder" in name -> "soundrecorder"
+
+            name == "google" -> "googlesearch"
+
+            "play store" in name ||
+                "playstore" in pkg -> "market"
+
+            else -> ""
+        }
+
+        return if (iconName.isEmpty()) {
+            0
+        } else {
+            resources.getIdentifier(
+                iconName,
+                "drawable",
+                packageName
+            )
+        }
     }
 
     private fun appTile(
@@ -537,43 +616,52 @@ class MainActivity : Activity() {
 
         tile.addView(
             ImageView(this).apply {
+                val id = customIcon(app)
 
-                setImageDrawable(
-                    app.loadIcon(packageManager)
-                )
+                if (id != 0) {
+                    setImageResource(id)
+                } else {
+                    setImageDrawable(
+                        app.loadIcon(packageManager)
+                    )
+                }
 
                 scaleType =
                     ImageView.ScaleType.FIT_CENTER
 
+                val iconSize = if (compact) 33 else 42
+
                 layoutParams =
                     LinearLayout.LayoutParams(
-                        dp(if (compact) 33 else 42),
-                        dp(if (compact) 33 else 42)
+                        dp(iconSize),
+                        dp(iconSize)
                     )
             }
         )
 
         if (!compact) {
-
             tile.addView(
                 label(
-                    app.loadLabel(
-                        packageManager
-                    ).toString(),
+                    app.loadLabel(packageManager)
+                        .toString(),
                     10f
                 ).apply {
                     maxLines = 2
                     minLines = 2
+
+                    setPadding(
+                        0,
+                        dp(5),
+                        0,
+                        0
+                    )
                 }
             )
         }
 
         tile.setOnClickListener {
-
             try {
-
                 val launch = Intent().apply {
-
                     setClassName(
                         app.activityInfo.packageName,
                         app.activityInfo.name
@@ -585,9 +673,7 @@ class MainActivity : Activity() {
                 }
 
                 startActivity(launch)
-
             } catch (_: Exception) {
-
                 Toast.makeText(
                     this,
                     "Não foi possível abrir o aplicativo",
@@ -597,22 +683,19 @@ class MainActivity : Activity() {
         }
 
         if (allowFavorite) {
-
             tile.setOnLongClickListener {
-
                 val key = appKey(app)
+                val updated = selected().toMutableSet()
 
-                val updated =
-                    selected().toMutableSet()
-
-                val added =
-                    if (updated.contains(key)) {
-                        updated.remove(key)
-                        false
-                    } else {
-                        updated.add(key)
-                        true
-                    }
+                val added = if (
+                    updated.contains(key)
+                ) {
+                    updated.remove(key)
+                    false
+                } else {
+                    updated.add(key)
+                    true
+                }
 
                 prefs.edit()
                     .putStringSet("apps", updated)
@@ -637,14 +720,10 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-
         if (drawerOpen || pageIndex != 0) {
-
             pageIndex = 0
             showHome()
-
         } else {
-
             super.onBackPressed()
         }
     }
