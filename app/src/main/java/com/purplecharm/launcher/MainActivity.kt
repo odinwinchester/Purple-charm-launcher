@@ -1,6 +1,10 @@
 package com.purplecharm.launcher
 
 import android.app.Activity
+import android.app.Dialog
+import android.app.WallpaperManager
+import android.graphics.BitmapFactory
+import java.io.IOException
 import android.graphics.Camera
 import android.graphics.Matrix
 import android.view.animation.Animation
@@ -228,56 +232,79 @@ class MainActivity : Activity() {
             .show()
     }
 
+    // Janela de configurações com o fundo neon independente da tela inicial.
     private fun settingsMenu() {
-        val options = arrayOf(
-            "✦ Deslizar para cima: " + gestureName(setting("swipe_up", "drawer")),
-            "✦ Deslizar para baixo: " + gestureName(setting("swipe_down", "none")),
-            "✦ Colunas da gaveta: " + setting("columns", "5"),
-            "✦ Papel de parede",
-            "✦ Restaurar configurações de gestos e grade",
-            "✦ Restaurar organização dos ícones",
-            "✦ Efeito de transição: " + transitionName(setting("transition", "cube"))
-        )
-        AlertDialog.Builder(this)
-            .setTitle("✦ Purple Charm • Configurações")
-            .setItems(options) { _, index ->
-                when (index) {
-                    0 -> gestureSetting("Deslizar para cima", "swipe_up", "drawer")
-                    1 -> gestureSetting("Deslizar para baixo", "swipe_down", "none")
-                    2 -> chooseSetting(
-                        "Colunas da gaveta", "columns",
-                        arrayOf("4 colunas", "5 colunas", "6 colunas"),
-                        arrayOf("4", "5", "6"), "5"
-                    )
-                    3 -> wallpaperMenu()
-                    5 -> AlertDialog.Builder(this)
-                        .setTitle("Restaurar organização?")
-                        .setMessage("As posições personalizadas das páginas e do dock serão apagadas.")
-                        .setPositiveButton("Restaurar") { _, _ ->
-                            prefs.edit().remove("layout_page_0").remove("layout_page_1")
-                                .remove("layout_page_2").remove("layout_dock")
-                                .remove("layout_dock_slots").apply()
-                            showHome()
-                        }
-                        .setNegativeButton("Cancelar", null).show()
-                    6 -> chooseSetting(
-                        "Transição entre páginas", "transition",
-                        arrayOf("Cubo 3D", "Giro 3D", "Zoom Crystal", "Deslizar", "Sem animação"),
-                        arrayOf("cube", "flip", "zoom", "slide", "none"), "cube"
-                    )
-                    4 -> AlertDialog.Builder(this)
-                        .setTitle("Restaurar configurações?")
-                        .setMessage("Isso não altera os favoritos nem o wallpaper.")
-                        .setPositiveButton("Restaurar") { _, _ ->
-                            prefs.edit().remove("pc_swipe_up")
-                                .remove("pc_swipe_down").remove("pc_columns").apply()
-                            showHome()
-                        }
-                        .setNegativeButton("Cancelar", null).show()
-                }
+        val dialog = Dialog(this)
+        val frame = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val backdrop = ImageView(this).apply {
+            setImageResource(R.drawable.wallpaper_neon)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }
+        frame.addView(backdrop, FrameLayout.LayoutParams(-1, -1))
+        frame.addView(View(this).apply { setBackgroundColor(Color.argb(145, 0, 0, 0)) },
+            FrameLayout.LayoutParams(-1, -1))
+        val scroll = ScrollView(this)
+        val menu = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(28), dp(16), dp(32))
+        }
+        menu.addView(label("✦ Purple Charm • Configurações", 22f, true).apply {
+            setPadding(dp(4), dp(10), dp(4), dp(24))
+        })
+        fun option(name: String, action: () -> Unit) {
+            val item = glassButton(name, 15f).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                setOnClickListener { dialog.dismiss(); action() }
             }
-            .setNegativeButton("Fechar", null)
-            .show()
+            menu.addView(item, LinearLayout.LayoutParams(-1, -2).apply {
+                setMargins(0, dp(5), 0, dp(5))
+            })
+        }
+        option("✦ Deslizar para cima: " + gestureName(setting("swipe_up", "drawer"))) {
+            gestureSetting("Deslizar para cima", "swipe_up", "drawer")
+        }
+        option("✦ Deslizar para baixo: " + gestureName(setting("swipe_down", "none"))) {
+            gestureSetting("Deslizar para baixo", "swipe_down", "none")
+        }
+        option("✦ Colunas da gaveta: " + setting("columns", "5")) {
+            chooseSetting("Colunas da gaveta", "columns",
+                arrayOf("4 colunas", "5 colunas", "6 colunas"),
+                arrayOf("4", "5", "6"), "5")
+        }
+        option("✦ Papéis de parede Crystal Eye") { wallpaperMenu() }
+        option("✦ Aplicar Olho de Cristal na tela de bloqueio") { confirmLockWallpaper() }
+        option("✦ Efeito de transição: " + transitionName(setting("transition", "cube"))) {
+            chooseSetting("Transição entre páginas", "transition",
+                arrayOf("Cubo 3D", "Giro 3D", "Zoom Crystal", "Deslizar", "Sem animação"),
+                arrayOf("cube", "flip", "zoom", "slide", "none"), "cube")
+        }
+        option("✦ Restaurar gestos e grade") {
+            AlertDialog.Builder(this).setTitle("Restaurar configurações?")
+                .setMessage("Isso não altera seus wallpapers nem a organização.")
+                .setPositiveButton("Restaurar") { _, _ ->
+                    prefs.edit().remove("pc_swipe_up").remove("pc_swipe_down")
+                        .remove("pc_columns").apply()
+                    showHome()
+                }.setNegativeButton("Cancelar", null).show()
+        }
+        option("✦ Restaurar organização dos ícones") {
+            AlertDialog.Builder(this).setTitle("Restaurar organização?")
+                .setMessage("As posições das páginas e do dock serão apagadas.")
+                .setPositiveButton("Restaurar") { _, _ ->
+                    prefs.edit().remove("layout_page_0").remove("layout_page_1")
+                        .remove("layout_page_2").remove("layout_dock")
+                        .remove("layout_dock_slots").apply()
+                    showHome()
+                }.setNegativeButton("Cancelar", null).show()
+        }
+        option("✕ Fechar") { }
+        scroll.addView(menu)
+        frame.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+        dialog.setContentView(frame)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setLayout(-1, -1)
+        dialog.show()
+        dialog.window?.setLayout(-1, -1)
     }
 
     private fun transitionName(value: String): String = when (value) {
@@ -492,78 +519,91 @@ class MainActivity : Activity() {
         return content
     }
 
+    // A escolha do wallpaper do launcher não altera o wallpaper do sistema.
     private fun applyWallpaper() {
-        val saved = prefs.getString("wallpaper_uri", null)
-
-        if (saved.isNullOrEmpty()) {
-            backgroundImage.setImageResource(
-                R.drawable.purple_original_wallpaper
-            )
-            return
-        }
-
-        try {
-            backgroundImage.setImageURI(Uri.parse(saved))
-            if (backgroundImage.drawable == null) {
-                backgroundImage.setImageResource(
-                    R.drawable.purple_original_wallpaper
-                )
+        when (prefs.getString("pc_wallpaper_choice", "floral")) {
+            "eye_crystal" -> backgroundImage.setImageResource(R.drawable.purple_eye_crystal)
+            "eye_royal" -> backgroundImage.setImageResource(R.drawable.purple_eye_royal)
+            "gallery" -> {
+                val saved = prefs.getString("wallpaper_uri", null)
+                if (!saved.isNullOrEmpty()) {
+                    try {
+                        backgroundImage.setImageURI(Uri.parse(saved))
+                        if (backgroundImage.drawable != null) return
+                    } catch (_: Exception) { }
+                }
+                backgroundImage.setImageResource(R.drawable.purple_original_wallpaper)
             }
-        } catch (_: Exception) {
-            backgroundImage.setImageResource(
-                R.drawable.purple_original_wallpaper
-            )
+            else -> backgroundImage.setImageResource(R.drawable.purple_original_wallpaper)
         }
+    }
+
+    private fun chooseBuiltInWallpaper(value: String) {
+        prefs.edit().putString("pc_wallpaper_choice", value).apply()
+        applyWallpaper()
+        Toast.makeText(this, "Wallpaper aplicado à tela inicial", Toast.LENGTH_SHORT).show()
     }
 
     private fun wallpaperMenu() {
         AlertDialog.Builder(this)
-            .setTitle("✦ Papel de parede")
-            .setItems(
-                arrayOf(
-                    "Escolher imagem da galeria",
-                    "Restaurar wallpaper original"
-                )
-            ) { _, choice ->
-                if (choice == 0) {
-                    val intent = Intent(
-                        Intent.ACTION_OPEN_DOCUMENT
-                    ).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type = "image/*"
-                        addFlags(
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
-                        addFlags(
-                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-                        )
+            .setTitle("✦ Papéis de parede Crystal Eye")
+            .setItems(arrayOf(
+                "Floral original (padrão)",
+                "Olho de Cristal • primeira arte",
+                "Olho Royal • segunda arte",
+                "Escolher imagem da galeria",
+                "Aplicar Olho de Cristal na tela de bloqueio"
+            )) { _, choice ->
+                when (choice) {
+                    0 -> chooseBuiltInWallpaper("floral")
+                    1 -> chooseBuiltInWallpaper("eye_crystal")
+                    2 -> chooseBuiltInWallpaper("eye_royal")
+                    3 -> {
+                        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "image/*"
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                        }
+                        try { startActivityForResult(intent, wallpaperRequest) }
+                        catch (_: Exception) {
+                            Toast.makeText(this, "Não foi possível abrir a galeria", Toast.LENGTH_SHORT).show()
+                        }
                     }
-
-                    try {
-                        startActivityForResult(
-                            intent, wallpaperRequest
-                        )
-                    } catch (_: Exception) {
-                        Toast.makeText(
-                            this,
-                            "Não foi possível abrir a galeria",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                } else {
-                    prefs.edit()
-                        .remove("wallpaper_uri")
-                        .apply()
-                    applyWallpaper()
-                    Toast.makeText(
-                        this,
-                        "Wallpaper original restaurado",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    4 -> confirmLockWallpaper()
                 }
+            }.setNegativeButton("Cancelar", null).show()
+    }
+
+    private fun confirmLockWallpaper() {
+        AlertDialog.Builder(this)
+            .setTitle("Olho de Cristal • tela de bloqueio")
+            .setMessage("Aplicar a primeira arte do olho na tela de bloqueio do Android? " +
+                "O sistema do POCO pode impedir ou substituir essa alteração.")
+            .setPositiveButton("Aplicar") { _, _ -> applyLockWallpaper() }
+            .setNegativeButton("Cancelar", null).show()
+    }
+
+    private fun applyLockWallpaper() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            Toast.makeText(this, "Seu Android não suporta esta opção diretamente", Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            val manager = WallpaperManager.getInstance(this)
+            if (!manager.isWallpaperSupported || !manager.isSetWallpaperAllowed) {
+                Toast.makeText(this, "Permissão de wallpaper indisponível neste aparelho", Toast.LENGTH_LONG).show()
+                return
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+            resources.openRawResource(R.drawable.purple_eye_crystal).use { stream ->
+                manager.setStream(stream, null, true, WallpaperManager.FLAG_LOCK)
+            }
+            Toast.makeText(this, "Imagem enviada para a tela de bloqueio", Toast.LENGTH_LONG).show()
+        } catch (_: Exception) {
+            Toast.makeText(this,
+                "O sistema não permitiu a alteração. Aplique a imagem nas configurações do POCO.",
+                Toast.LENGTH_LONG).show()
+        }
     }
 
     @Deprecated("Deprecated in Java")
@@ -597,6 +637,7 @@ class MainActivity : Activity() {
 
             prefs.edit()
                 .putString("wallpaper_uri", uri.toString())
+                .putString("pc_wallpaper_choice", "gallery")
                 .apply()
 
             Toast.makeText(
@@ -803,7 +844,7 @@ class MainActivity : Activity() {
         )
 
         panel.addView(
-            label("Original Theme Edition • 2.8", 12f).apply {
+            label("Crystal Eye Edition • 2.9", 12f).apply {
                 setTextColor(lilac)
                 setPadding(0, dp(3), 0, 0)
             }
@@ -1254,3 +1295,4 @@ class MainActivity : Activity() {
         }
     }
 }
+```
