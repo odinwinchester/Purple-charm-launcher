@@ -1,4 +1,3 @@
-
 package com.purplecharm.launcher
 
 import android.app.Activity
@@ -14,6 +13,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.WindowInsets
+import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -49,8 +50,19 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = Color.BLACK
-        window.navigationBarColor = Color.BLACK
+        // O papel de parede ocupa toda a tela, mas os controles
+        // respeitam as barras do Android.
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
         loadApps()
         showHome()
     }
@@ -179,6 +191,32 @@ class MainActivity : Activity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(9), dp(9), dp(9), dp(8))
+        }
+
+        // Mantém o título abaixo da barra de status e os botões
+        // acima da barra de navegação, independentemente do aparelho.
+        frame.setOnApplyWindowInsetsListener { _, insets ->
+            val topInset: Int
+            val bottomInset: Int
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val bars = insets.getInsets(
+                    WindowInsets.Type.statusBars() or
+                    WindowInsets.Type.navigationBars() or
+                    WindowInsets.Type.displayCutout()
+                )
+                topInset = bars.top
+                bottomInset = bars.bottom
+            } else {
+                @Suppress("DEPRECATION")
+                topInset = insets.systemWindowInsetTop
+                @Suppress("DEPRECATION")
+                bottomInset = insets.systemWindowInsetBottom
+            }
+            content.setPadding(
+                dp(9), topInset + dp(9),
+                dp(9), bottomInset + dp(8)
+            )
+            insets
         }
 
         frame.addView(
@@ -501,7 +539,7 @@ class MainActivity : Activity() {
         )
 
         panel.addView(
-            label("Crystal Glass Edition 2.2", 12f).apply {
+            label("Crystal Glass Polished 2.3", 12f).apply {
                 setTextColor(lilac)
                 setPadding(0, dp(3), 0, 0)
             }
