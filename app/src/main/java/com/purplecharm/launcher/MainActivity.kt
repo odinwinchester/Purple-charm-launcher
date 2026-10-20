@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
@@ -31,7 +32,6 @@ class MainActivity : Activity() {
     }
 
     private val apps = mutableListOf<ResolveInfo>()
-
     private lateinit var root: LinearLayout
     private lateinit var pages: ViewFlipper
     private lateinit var dots: TextView
@@ -40,8 +40,6 @@ class MainActivity : Activity() {
     private var drawerOpen = false
     private var downX = 0f
     private var downY = 0f
-
-    private val white = Color.WHITE
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,11 +51,14 @@ class MainActivity : Activity() {
         showHome()
     }
 
-    @Suppress("DEPRECATION")
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
+
     private fun loadApps() {
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
 
+        @Suppress("DEPRECATION")
         val found = packageManager.queryIntentActivities(
             intent,
             PackageManager.MATCH_ALL
@@ -68,44 +69,31 @@ class MainActivity : Activity() {
             found.filter {
                 it.activityInfo.packageName != packageName
             }.sortedBy {
-                it.loadLabel(packageManager)
-                    .toString()
-                    .lowercase(Locale.getDefault())
+                it.loadLabel(packageManager).toString()
+                    .lowercase(Locale.ROOT)
             }
         )
     }
 
-    private fun appKey(app: ResolveInfo): String {
-        return app.activityInfo.packageName +
-            "/" + app.activityInfo.name
-    }
+    private fun appKey(app: ResolveInfo): String =
+        app.activityInfo.packageName + "/" +
+            app.activityInfo.name
 
-    private fun selected(): Set<String> {
-        return prefs.getStringSet("apps", emptySet())
-            ?: emptySet()
-    }
+    private fun selected(): Set<String> =
+        prefs.getStringSet("apps", emptySet()) ?: emptySet()
 
-    private fun favorites(): List<ResolveInfo> {
-        return apps.filter {
-            selected().contains(appKey(it))
-        }
-    }
-
-    private fun dp(value: Int): Int {
-        return (
-            value * resources.displayMetrics.density
-        ).toInt()
-    }
+    private fun favorites(): List<ResolveInfo> =
+        apps.filter { selected().contains(appKey(it)) }
 
     private fun label(
-        text: String,
+        value: String,
         size: Float,
         bold: Boolean = false
     ): TextView {
         return TextView(this).apply {
-            this.text = text
+            text = value
             textSize = size
-            setTextColor(white)
+            setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
 
             if (bold) {
@@ -132,16 +120,159 @@ class MainActivity : Activity() {
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = background()
-
-            setPadding(
-                dp(5),
-                dp(7),
-                dp(5),
-                dp(4)
-            )
+            setPadding(dp(5), dp(7), dp(5), dp(4))
         }
 
         setContentView(root)
+    }
+
+    private fun normalize(value: String): String {
+        val text = Normalizer.normalize(
+            value.lowercase(Locale.ROOT),
+            Normalizer.Form.NFD
+        )
+
+        return text.replace(
+            Regex("\\p{InCombiningDiacriticalMarks}+"),
+            ""
+        )
+    }
+
+    private fun customIcon(app: ResolveInfo): Drawable {
+        val pkg = app.activityInfo.packageName
+            .lowercase(Locale.ROOT)
+
+        val name = normalize(
+            app.loadLabel(packageManager).toString()
+        )
+
+        val iconName = when {
+            "whatsapp" in pkg || "whatsapp" in name ->
+                "whatsapp"
+
+            "instagram" in pkg || "instagram" in name ->
+                "instagram"
+
+            "facebook" in pkg || "facebook" in name ->
+                "facebook"
+
+            "youtube" in pkg || "youtube" in name ->
+                "icon_youtube"
+
+            "gmail" in pkg || "gmail" in name ->
+                "gmail"
+
+            "maps" in pkg || "mapas" in name ->
+                "maps"
+
+            "docs" in pkg && "google" in pkg ->
+                "googledrive"
+
+            "drive" in name ->
+                "googledrive"
+
+            "chrome" in name ||
+            "brave" in name ||
+            "browser" in name ||
+            "navegador" in name ->
+                "browser"
+
+            "calculadora" in name ||
+            "calculator" in name ->
+                "calculator"
+
+            "agenda" in name ||
+            "calendario" in name ->
+                "calendar"
+
+            "camera" in name ->
+                "camera"
+
+            "relogio" in name ||
+            "clock" in name ->
+                "clock"
+
+            "contatos" in name ||
+            "contacts" in name ->
+                "contacts"
+
+            "downloads" in name ->
+                "downloads"
+
+            "telefone" in name ||
+            "phone" in name ->
+                "phone"
+
+            "configuracoes" in name ||
+            "settings" in name ->
+                "settings"
+
+            "mensagens" in name ||
+            "messages" in name ->
+                "messaging"
+
+            "musica" in name ||
+            "music" in name ->
+                "music"
+
+            "fotos" in name ||
+            "galeria" in name ||
+            "gallery" in name ->
+                "gallery"
+
+            "email" in name ->
+                "email"
+
+            "pinterest" in name ->
+                "pinterest"
+
+            "skype" in name ->
+                "skype"
+
+            "twitter" in name ->
+                "twitter"
+
+            "foursquare" in name ->
+                "foursquare"
+
+            "flipboard" in name ->
+                "flipboard"
+
+            "mplayer" in name ->
+                "mplayer"
+
+            "soundhound" in name ->
+                "soundhound"
+
+            "gravador" in name ->
+                "soundrecorder"
+
+            "market" in name ||
+            "play store" in name ->
+                "market"
+
+            else -> ""
+        }
+
+        if (iconName.isNotEmpty()) {
+            val id = resources.getIdentifier(
+                iconName,
+                "drawable",
+                packageName
+            )
+
+            if (id != 0) {
+                try {
+                    @Suppress("DEPRECATION")
+                    val icon = resources.getDrawable(id)
+                    return icon
+                } catch (_: Exception) {
+                    // Usa o icone normal como alternativa.
+                }
+            }
+        }
+
+        return app.loadIcon(packageManager)
     }
 
     private fun showHome() {
@@ -178,8 +309,8 @@ class MainActivity : Activity() {
 
         dots = label("", 19f)
         root.addView(dots)
-
         updateDots()
+
         root.addView(dock())
     }
 
@@ -190,13 +321,7 @@ class MainActivity : Activity() {
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-
-            setPadding(
-                dp(4),
-                dp(12),
-                dp(4),
-                dp(8)
-            )
+            setPadding(dp(4), dp(12), dp(4), dp(8))
         }
 
         when (index) {
@@ -207,12 +332,7 @@ class MainActivity : Activity() {
 
                 content.addView(
                     label("Deslize para navegar", 12f).apply {
-                        setPadding(
-                            0,
-                            dp(5),
-                            0,
-                            dp(12)
-                        )
+                        setPadding(0, dp(5), 0, dp(12))
                     }
                 )
 
@@ -235,10 +355,7 @@ class MainActivity : Activity() {
                             13f
                         ).apply {
                             setPadding(
-                                dp(8),
-                                dp(18),
-                                dp(8),
-                                0
+                                dp(8), dp(18), dp(8), 0
                             )
                         }
                     )
@@ -255,60 +372,13 @@ class MainActivity : Activity() {
                 )
 
                 content.addView(
-                    appGrid(
-                        apps.drop(20).take(30),
-                        false
-                    )
+                    appGrid(apps.drop(20).take(30), false)
                 )
             }
         }
 
         scroll.addView(content)
-
-        scroll.setOnTouchListener { _, event ->
-            handleSwipe(event)
-        }
-
         return scroll
-    }
-
-    private fun handleSwipe(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                downX = event.x
-                downY = event.y
-            }
-
-            MotionEvent.ACTION_UP -> {
-                val dx = event.x - downX
-                val dy = event.y - downY
-
-                if (
-                    abs(dx) > dp(65) &&
-                    abs(dx) > abs(dy) * 1.3f
-                ) {
-                    pageIndex = (
-                        pageIndex +
-                            if (dx < 0) 1 else -1
-                    ).coerceIn(0, 2)
-
-                    pages.displayedChild = pageIndex
-                    updateDots()
-
-                    return true
-                }
-
-                if (
-                    dy < -dp(95) &&
-                    abs(dy) > abs(dx) * 1.5f
-                ) {
-                    showDrawer()
-                    return true
-                }
-            }
-        }
-
-        return false
     }
 
     private fun updateDots() {
@@ -321,14 +391,7 @@ class MainActivity : Activity() {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-
-            setPadding(
-                dp(2),
-                dp(7),
-                dp(2),
-                dp(7)
-            )
-
+            setPadding(dp(2), dp(7), dp(2), dp(7))
             setBackgroundColor(
                 Color.argb(145, 25, 9, 41)
             )
@@ -337,33 +400,34 @@ class MainActivity : Activity() {
         val pinned = favorites().take(4)
 
         for (slot in 0..4) {
-            val child: View = if (slot == 2) {
-                label("▦\nApps", 14f).apply {
-                    setOnClickListener {
-                        showDrawer()
+            val child: View = when {
+                slot == 2 -> {
+                    label("▦\nApps", 14f).apply {
+                        setOnClickListener {
+                            showDrawer()
+                        }
                     }
                 }
-            } else {
-                val favIndex = if (slot < 2) {
-                    slot
-                } else {
-                    slot - 1
-                }
 
-                if (favIndex < pinned.size) {
-                    appTile(
-                        pinned[favIndex],
-                        false,
-                        true
-                    )
-                } else {
-                    label("✧", 25f).apply {
-                        setOnClickListener {
-                            Toast.makeText(
-                                this@MainActivity,
-                                "Segure um app na gaveta para adicioná-lo aos favoritos",
-                                Toast.LENGTH_SHORT
-                            ).show()
+                else -> {
+                    val favIndex =
+                        if (slot < 2) slot else slot - 1
+
+                    if (favIndex < pinned.size) {
+                        appTile(
+                            pinned[favIndex],
+                            false,
+                            true
+                        )
+                    } else {
+                        label("✧", 25f).apply {
+                            setOnClickListener {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "Segure um app na gaveta para adicionar aos favoritos",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         }
                     }
                 }
@@ -387,21 +451,16 @@ class MainActivity : Activity() {
         loadApps()
         buildRoot()
 
-        root.addView(
-            label("✦ Aplicativos ✦", 24f)
-        )
+        val header = label("✦ Aplicativos ✦", 24f)
+        header.setOnClickListener { showHome() }
+        root.addView(header)
 
         root.addView(
             label(
                 "Toque para abrir • segure para favoritar",
                 12f
             ).apply {
-                setPadding(
-                    0,
-                    dp(5),
-                    0,
-                    dp(12)
-                )
+                setPadding(0, dp(5), 0, dp(12))
             }
         )
 
@@ -421,17 +480,8 @@ class MainActivity : Activity() {
         )
 
         root.addView(
-            label(
-                "⌂ Voltar à tela inicial",
-                16f
-            ).apply {
-                setPadding(
-                    0,
-                    dp(10),
-                    0,
-                    dp(10)
-                )
-
+            label("⌂ Voltar à tela inicial", 16f).apply {
+                setPadding(0, dp(10), 0, dp(10))
                 setOnClickListener {
                     showHome()
                 }
@@ -443,28 +493,18 @@ class MainActivity : Activity() {
         items: List<ResolveInfo>,
         allowFavorite: Boolean
     ): GridLayout {
-
         val grid = GridLayout(this).apply {
             columnCount = 5
-
             setPadding(
-                dp(1),
-                dp(10),
-                dp(1),
-                dp(12)
+                dp(1), dp(10), dp(1), dp(12)
             )
         }
 
         items.forEach { app ->
             grid.addView(
-                appTile(
-                    app,
-                    allowFavorite,
-                    false
-                ),
+                appTile(app, allowFavorite, false),
                 GridLayout.LayoutParams().apply {
                     width = 0
-
                     height =
                         ViewGroup.LayoutParams.WRAP_CONTENT
 
@@ -479,162 +519,30 @@ class MainActivity : Activity() {
         return grid
     }
 
-    private fun customIcon(app: ResolveInfo): Int {
-        val pkg = app.activityInfo.packageName
-            .lowercase(Locale.ROOT)
-
-        val rawName = app.loadLabel(packageManager)
-            .toString()
-            .lowercase(Locale.ROOT)
-
-        val name = Normalizer.normalize(
-            rawName,
-            Normalizer.Form.NFD
-        ).replace(
-            Regex("\\p{M}+"),
-            ""
-        )
-
-        val iconName = when {
-            "whatsapp" in pkg ||
-                "whatsapp" in name -> "whatsapp"
-
-            "instagram" in pkg ||
-                "instagram" in name -> "instagram"
-
-            "facebook" in pkg ||
-                name == "facebook" -> "facebook"
-
-            "youtube" in pkg ||
-                "youtube" in name -> "icon_youtube"
-
-            "gmail" in pkg ||
-                name == "gmail" -> "gmail"
-
-            ("drive" in pkg && "google" in pkg) ||
-                name == "drive" -> "googledrive"
-
-            "maps" in pkg ||
-                name == "maps" -> "maps"
-
-            "chrome" in pkg ||
-                "brave" in pkg ||
-                "browser" in name ||
-                "navegador" in name -> "browser"
-
-            "calculator" in pkg ||
-                "calculadora" in name -> "calculator"
-
-            "calendar" in pkg ||
-                "agenda" in name ||
-                "calendario" in name -> "calendar"
-
-            "camera" in pkg ||
-                "camera" in name -> "camera"
-
-            "contacts" in pkg ||
-                "contatos" in name -> "contacts"
-
-            "downloads" in name -> "downloads"
-
-            "settings" in pkg ||
-                "configuracoes" in name -> "settings"
-
-            "clock" in pkg ||
-                "relogio" in name -> "clock"
-
-            "gallery" in pkg ||
-                "galeria" in name -> "gallery"
-
-            "photos" in pkg ||
-                "fotos" in name -> "gallery"
-
-            "email" in name ||
-                "e-mail" in name -> "email"
-
-            "messag" in pkg ||
-                "mensagens" in name -> "messaging"
-
-            "dialer" in pkg ||
-                "telefone" in name -> "phone"
-
-            "music" in name ||
-                "musica" in name -> "music"
-
-            "pinterest" in pkg ||
-                "pinterest" in name -> "pinterest"
-
-            "skype" in pkg ||
-                "skype" in name -> "skype"
-
-            "twitter" in pkg ||
-                name == "x" -> "twitter"
-
-            "foursquare" in pkg -> "foursquare"
-
-            "soundhound" in pkg -> "soundhound"
-
-            "gravador" in name ||
-                "recorder" in name -> "soundrecorder"
-
-            name == "google" -> "googlesearch"
-
-            "play store" in name ||
-                "playstore" in pkg -> "market"
-
-            else -> ""
-        }
-
-        return if (iconName.isEmpty()) {
-            0
-        } else {
-            resources.getIdentifier(
-                iconName,
-                "drawable",
-                packageName
-            )
-        }
-    }
-
     private fun appTile(
         app: ResolveInfo,
         allowFavorite: Boolean,
         compact: Boolean
     ): View {
-
         val tile = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-
             setPadding(
-                dp(2),
-                dp(6),
-                dp(2),
-                dp(8)
+                dp(2), dp(6), dp(2), dp(8)
             )
         }
 
         tile.addView(
             ImageView(this).apply {
-                val id = customIcon(app)
-
-                if (id != 0) {
-                    setImageResource(id)
-                } else {
-                    setImageDrawable(
-                        app.loadIcon(packageManager)
-                    )
-                }
+                setImageDrawable(customIcon(app))
 
                 scaleType =
                     ImageView.ScaleType.FIT_CENTER
 
-                val iconSize = if (compact) 33 else 42
-
                 layoutParams =
                     LinearLayout.LayoutParams(
-                        dp(iconSize),
-                        dp(iconSize)
+                        dp(if (compact) 33 else 42),
+                        dp(if (compact) 33 else 42)
                     )
             }
         )
@@ -648,13 +556,6 @@ class MainActivity : Activity() {
                 ).apply {
                     maxLines = 2
                     minLines = 2
-
-                    setPadding(
-                        0,
-                        dp(5),
-                        0,
-                        0
-                    )
                 }
             )
         }
@@ -687,9 +588,7 @@ class MainActivity : Activity() {
                 val key = appKey(app)
                 val updated = selected().toMutableSet()
 
-                val added = if (
-                    updated.contains(key)
-                ) {
+                val added = if (updated.contains(key)) {
                     updated.remove(key)
                     false
                 } else {
@@ -703,11 +602,10 @@ class MainActivity : Activity() {
 
                 Toast.makeText(
                     this,
-                    if (added) {
+                    if (added)
                         "Adicionado aos favoritos"
-                    } else {
-                        "Removido dos favoritos"
-                    },
+                    else
+                        "Removido dos favoritos",
                     Toast.LENGTH_SHORT
                 ).show()
 
@@ -716,6 +614,47 @@ class MainActivity : Activity() {
         }
 
         return tile
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (!drawerOpen) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    downY = event.y
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    val dx = event.x - downX
+                    val dy = event.y - downY
+
+                    if (
+                        abs(dx) > dp(65) &&
+                        abs(dx) > abs(dy) * 1.3f
+                    ) {
+                        pageIndex = (
+                            pageIndex +
+                                if (dx < 0) 1 else -1
+                        ).coerceIn(0, 2)
+
+                        pages.displayedChild = pageIndex
+                        updateDots()
+
+                        return true
+                    }
+
+                    if (
+                        dy < -dp(95) &&
+                        abs(dy) > abs(dx) * 1.5f
+                    ) {
+                        showDrawer()
+                        return true
+                    }
+                }
+            }
+        }
+
+        return super.dispatchTouchEvent(event)
     }
 
     @Deprecated("Deprecated in Java")
