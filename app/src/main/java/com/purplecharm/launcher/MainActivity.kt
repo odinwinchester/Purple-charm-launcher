@@ -1295,4 +1295,3 @@ class MainActivity : Activity() {
         }
     }
 }
-```
