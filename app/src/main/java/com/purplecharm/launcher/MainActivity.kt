@@ -1,3 +1,4 @@
+```
 package com.purplecharm.launcher
 
 import android.app.Activity
@@ -39,6 +40,11 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.EditText
+import android.text.TextWatcher
+import android.text.Editable
+import android.view.inputmethod.InputMethodManager
+import android.content.Context
 import android.widget.Toast
 import android.widget.ViewFlipper
 import java.text.Normalizer
@@ -60,6 +66,9 @@ class MainActivity : Activity() {
     private var drawerOpen = false
     private var downX = 0f
     private var downY = 0f
+    private var lastTapAt = 0L
+    private var lastTapX = 0f
+    private var lastTapY = 0f
 
     private var dragging = false
     private var switchingPage = false
@@ -266,6 +275,9 @@ class MainActivity : Activity() {
         option("✦ Deslizar para baixo: " + gestureName(setting("swipe_down", "none"))) {
             gestureSetting("Deslizar para baixo", "swipe_down", "none")
         }
+        option("✦ Toque duplo: " + gestureName(setting("double_tap", "none"))) {
+            gestureSetting("Toque duplo", "double_tap", "none")
+        }
         option("✦ Colunas da gaveta: " + setting("columns", "5")) {
             chooseSetting("Colunas da gaveta", "columns",
                 arrayOf("4 colunas", "5 colunas", "6 colunas"),
@@ -282,7 +294,7 @@ class MainActivity : Activity() {
             AlertDialog.Builder(this).setTitle("Restaurar configurações?")
                 .setMessage("Isso não altera seus wallpapers nem a organização.")
                 .setPositiveButton("Restaurar") { _, _ ->
-                    prefs.edit().remove("pc_swipe_up").remove("pc_swipe_down")
+                    prefs.edit().remove("pc_swipe_up").remove("pc_swipe_down").remove("pc_double_tap")
                         .remove("pc_columns").apply()
                     showHome()
                 }.setNegativeButton("Cancelar", null).show()
@@ -317,6 +329,7 @@ class MainActivity : Activity() {
 
     private fun gestureName(value: String): String = when (value) {
         "drawer" -> "Abrir aplicativos"
+        "search" -> "Pesquisa Crystal Glass"
         "settings" -> "Configurações"
         "wallpaper" -> "Papel de parede"
         "home" -> "Página inicial"
@@ -324,13 +337,14 @@ class MainActivity : Activity() {
     }
 
     private fun gestureSetting(title: String, key: String, default: String) {
-        val values = arrayOf("drawer", "settings", "wallpaper", "home", "none")
+        val values = arrayOf("drawer", "search", "settings", "wallpaper", "home", "none")
         chooseSetting(title, key, values.map { gestureName(it) }.toTypedArray(), values, default)
     }
 
     private fun runGesture(action: String): Boolean {
         when (action) {
             "drawer" -> showDrawer()
+            "search" -> showCrystalSearch()
             "settings" -> settingsMenu()
             "wallpaper" -> wallpaperMenu()
             "home" -> { pageIndex = 0; showHome() }
@@ -844,7 +858,7 @@ class MainActivity : Activity() {
         )
 
         panel.addView(
-            label("Crystal Eye Edition • 2.9", 12f).apply {
+            label("Crystal Gestures • 2.10", 12f).apply {
                 setTextColor(lilac)
                 setPadding(0, dp(3), 0, 0)
             }
@@ -1004,6 +1018,12 @@ class MainActivity : Activity() {
                 columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
             })
         }
+        if (index == 0) {
+            content.addView(crystalSearchBar(),
+                LinearLayout.LayoutParams(-1, -2).apply {
+                    setMargins(dp(3), dp(4), dp(3), dp(8))
+                })
+        }
         content.addView(grid)
         val add = glassButton("＋ Solte aqui para adicionar à página ${index + 1}", 13f)
         acceptDrop(add) { key -> placeOnPage(key, index) }
@@ -1065,6 +1085,103 @@ class MainActivity : Activity() {
         return outer
     }
 
+    // Pesquisa Crystal Glass: busca local por aplicativos instalados.
+    private fun showCrystalSearch() {
+        loadApps()
+        val dialog = Dialog(this)
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(18), dp(14), dp(14))
+            background = glass(22, true)
+        }
+        val input = EditText(this).apply {
+            hint = "🔍 Pesquisar aplicativos..."
+            setSingleLine(true)
+            setTextColor(Color.WHITE)
+            setHintTextColor(lilac)
+            background = glass(18)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+        }
+        val scroll = ScrollView(this)
+        val results = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        fun refresh(query: String) {
+            results.removeAllViews()
+            val filtered = apps.filter {
+                normalize(it.loadLabel(packageManager).toString())
+                    .contains(normalize(query.trim()))
+            }
+            filtered.forEach { app ->
+                val item = glassButton(app.loadLabel(packageManager).toString(), 15f)
+                item.setOnClickListener {
+                    dialog.dismiss()
+                    try {
+                        startActivity(Intent().apply {
+                            setClassName(app.activityInfo.packageName, app.activityInfo.name)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        })
+                    } catch (_: Exception) {
+                        Toast.makeText(this, "Não foi possível abrir o aplicativo", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                results.addView(item, LinearLayout.LayoutParams(-1, -2).apply {
+                    setMargins(0, dp(3), 0, dp(3))
+                })
+            }
+            if (filtered.isEmpty()) results.addView(label("Nenhum aplicativo encontrado", 14f))
+        }
+        input.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                refresh(s?.toString() ?: "")
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+        column.addView(input)
+        scroll.addView(results)
+        column.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        column.addView(glassButton("✕ Fechar", 14f).apply {
+            setOnClickListener { dialog.dismiss() }
+        })
+        dialog.setContentView(column)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(-1, (resources.displayMetrics.heightPixels * 0.72f).toInt())
+        refresh("")
+    }
+
+    private fun crystalSearchBar(): View =
+        glassButton("⌕  Pesquisar aplicativos...", 15f).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+            setOnClickListener { showCrystalSearch() }
+        }
+
+    // Substitui os alvos permanentes da gaveta por um menu no toque longo.
+    private fun appPlacementMenu(app: ResolveInfo) {
+        val options = arrayOf(
+            "Adicionar à página 1", "Adicionar à página 2",
+            "Adicionar à página 3", "Adicionar ao dock",
+            "Arrastar ícone"
+        )
+        AlertDialog.Builder(this)
+            .setTitle(app.loadLabel(packageManager).toString())
+            .setItems(options) { _, index ->
+                val key = appKey(app)
+                when (index) {
+                    0, 1, 2 -> placeOnPage(key, index)
+                    3 -> {
+                        val free = dockSlots().indexOfFirst { it.isEmpty() }
+                        placeInDock(key, if (free >= 0) free else 3)
+                    }
+                    else -> Toast.makeText(this,
+                        "Para organizar, use Adicionar à página ou ao dock",
+                        Toast.LENGTH_SHORT).show()
+                }
+            }.show()
+    }
+
     private fun showDrawer() {
         drawerOpen = true
         loadApps()
@@ -1089,27 +1206,7 @@ class MainActivity : Activity() {
             setPadding(dp(3), dp(10), dp(3), dp(10))
         }
 
-        // Destinos ficam acima da grade para não exigir rolar por todos os apps.
-        for (page in 0..2) {
-            val target = glassButton("＋ Solte aqui para adicionar à página ${page + 1}", 13f)
-            acceptDrop(target) { key -> placeOnPage(key, page) }
-            container.addView(target)
-        }
-        val dockTarget = glassButton("✧ Solte aqui para adicionar ao dock", 13f)
-        acceptDrop(dockTarget) { key ->
-            val free = dockSlots().indexOfFirst { it.isEmpty() }
-            placeInDock(key, if (free >= 0) free else 3)
-        }
-        container.addView(dockTarget)
-        val dockRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        for (slot in 0..3) {
-            val target = glassButton("Dock ${slot + 1}", 12f)
-            acceptDrop(target) { key -> placeInDock(key, slot) }
-            dockRow.addView(target, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
-                setMargins(dp(2), dp(4), dp(2), dp(4))
-            })
-        }
-        container.addView(dockRow)
+        // Gaveta limpa: organização disponível no toque longo dos aplicativos.
         container.addView(appGrid(apps, true))
         scroll.addView(container)
 
@@ -1238,7 +1335,14 @@ class MainActivity : Activity() {
             }
         }
 
-        tile.setOnLongClickListener { startAppDrag(tile, app) }
+        tile.setOnLongClickListener {
+            if (drawerOpen) {
+                appPlacementMenu(app)
+                true
+            } else {
+                startAppDrag(tile, app)
+            }
+        }
 
         return tile
     }
@@ -1256,6 +1360,20 @@ class MainActivity : Activity() {
                 MotionEvent.ACTION_UP -> {
                     val dx = event.x - downX
                     val dy = event.y - downY
+                    if (abs(dx) < dp(22) && abs(dy) < dp(22)) {
+                        val now = android.os.SystemClock.uptimeMillis()
+                        val doubleAction = setting("double_tap", "none")
+                        if (doubleAction != "none" &&
+                            now - lastTapAt in 50..350 &&
+                            abs(event.x - lastTapX) < dp(48) &&
+                            abs(event.y - lastTapY) < dp(48)) {
+                            lastTapAt = 0L
+                            if (runGesture(doubleAction)) return true
+                        }
+                        lastTapAt = now
+                        lastTapX = event.x
+                        lastTapY = event.y
+                    }
 
                     if (
                         abs(dx) > dp(65) &&
@@ -1295,3 +1413,4 @@ class MainActivity : Activity() {
         }
     }
 }
+```
