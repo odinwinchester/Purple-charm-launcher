@@ -1,14 +1,14 @@
-
 package com.purplecharm.launcher
 
 import android.app.Activity
-import android.os.Bundle
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.os.Bundle
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -23,492 +23,267 @@ import android.widget.ViewFlipper
 import kotlin.math.abs
 
 class MainActivity : Activity() {
-
+    private val prefs by lazy { getSharedPreferences("purple_charm_favorites", MODE_PRIVATE) }
+    private val apps = mutableListOf<ResolveInfo>()
     private lateinit var root: LinearLayout
     private lateinit var pages: ViewFlipper
     private lateinit var dots: TextView
-
-    private var currentPage = 1
+    private var pageIndex = 0
     private var drawerOpen = false
     private var downX = 0f
     private var downY = 0f
-
-    private val favorites by lazy {
-        getSharedPreferences(
-            "purple_charm_favorites",
-            MODE_PRIVATE
-        )
-    }
-
-    private lateinit var apps: List<ResolveInfo>
+    private val white = Color.WHITE
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.statusBarColor = Color.rgb(43, 13, 60)
+        window.navigationBarColor = Color.rgb(31, 11, 46)
         loadApps()
         showHome()
     }
 
     private fun loadApps() {
-        val query = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_LAUNCHER)
-        }
-
-        val pm = packageManager
-
-        apps = pm.queryIntentActivities(
-            query,
-            PackageManager.MATCH_ALL
-        ).filter {
-            it.activityInfo.packageName != packageName
-        }.sortedBy {
-            it.loadLabel(pm).toString().lowercase()
-        }
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        @Suppress("DEPRECATION")
+        val found = packageManager.queryIntentActivities(intent, PackageManager.MATCH_ALL)
+        apps.clear()
+        apps.addAll(found.filter { it.activityInfo.packageName != packageName }
+            .sortedBy { it.loadLabel(packageManager).toString().lowercase() })
     }
 
-    private fun selected(): Set<String> {
-        return favorites.getStringSet(
-            "apps",
-            emptySet()
-        ) ?: emptySet()
-    }
+    private fun selected(): Set<String> = prefs.getStringSet("apps", emptySet()) ?: emptySet()
+    private fun appKey(app: ResolveInfo): String =
+        app.activityInfo.packageName + "/" + app.activityInfo.name
+    private fun favorites(): List<ResolveInfo> = apps.filter { selected().contains(appKey(it)) }
 
-    private fun keyFor(app: ResolveInfo): String {
-        return app.activityInfo.packageName +
-            "/" + app.activityInfo.name
-    }
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-    private fun favoritesList(): List<ResolveInfo> {
-        val saved = selected()
-        return apps.filter {
-            saved.contains(keyFor(it))
-        }
-    }
-
-    private fun purpleBackground(): GradientDrawable {
-        return GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(
-                Color.rgb(36, 12, 55),
-                Color.rgb(104, 39, 125),
-                Color.rgb(25, 8, 43)
-            )
-        )
-    }
-
-    private fun title(
-        value: String,
-        size: Int
-    ): TextView {
-        return TextView(this).apply {
-            text = value
-            textSize = size.toFloat()
-            setTextColor(Color.WHITE)
+    private fun label(text: String, size: Float, bold: Boolean = false): TextView =
+        TextView(this).apply {
+            this.text = text
+            textSize = size
+            setTextColor(white)
             gravity = Gravity.CENTER
-            setPadding(8, 12, 8, 12)
+            if (bold) typeface = Typeface.create("serif", Typeface.BOLD)
         }
-    }
 
-    private fun makeRoot() {
+    private fun background(): GradientDrawable = GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        intArrayOf(Color.rgb(45, 14, 65), Color.rgb(109, 42, 126), Color.rgb(40, 12, 58))
+    )
+
+    private fun buildRoot() {
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = purpleBackground()
+            background = background()
+            setPadding(dp(5), dp(7), dp(5), dp(4))
         }
         setContentView(root)
     }
 
     private fun showHome() {
         drawerOpen = false
-        makeRoot()
-
-        root.addView(
-            title("Purple Charm", 32).apply {
-                typeface = Typeface.create(
-                    "serif",
-                    Typeface.BOLD
-                )
-            }
-        )
-
-        root.addView(
-            title("Meu universo roxo ✦", 14)
-        )
+        buildRoot()
+        root.addView(label("Purple Charm", 28f, true))
+        root.addView(label("Meu universo roxo ✦", 13f).apply {
+            setPadding(0, 0, 0, dp(12))
+        })
 
         pages = ViewFlipper(this)
-
-        pages.addView(homePage(0))
-        pages.addView(homePage(1))
-        pages.addView(homePage(2))
-
-        root.addView(
-            pages,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-        currentPage = currentPage.coerceIn(0, 2)
-        pages.displayedChild = currentPage
-
-        dots = title("", 18)
+        for (index in 0..2) pages.addView(homePage(index))
+        root.addView(pages, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+        pageIndex = pageIndex.coerceIn(0, 2)
+        pages.displayedChild = pageIndex
+        dots = label("", 19f)
         root.addView(dots)
         updateDots()
-
-        val dock = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(4, 8, 4, 8)
-            setBackgroundColor(
-                Color.rgb(30, 15, 47)
-            )
-        }
-
-        favoritesList().take(3).forEach { app ->
-            dock.addView(
-                appItem(app, false),
-                LinearLayout.LayoutParams(
-                    0,
-                    88,
-                    1f
-                )
-            )
-        }
-
-        val drawerButton = title("☷ Apps", 17).apply {
-            setOnClickListener {
-                showDrawer()
-            }
-        }
-
-        dock.addView(
-            drawerButton,
-            LinearLayout.LayoutParams(
-                0,
-                88,
-                1f
-            )
-        )
-
-        root.addView(dock)
+        root.addView(dock())
     }
 
     private fun homePage(index: Int): View {
-        val page = LinearLayout(this).apply {
+        val scroll = ScrollView(this).apply { fillViewport = true }
+        val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.TOP
-            setPadding(12, 16, 12, 4)
+            setPadding(dp(4), dp(12), dp(4), dp(8))
         }
-
         when (index) {
             0 -> {
-                page.addView(
-                    title("✦ Minha página", 23)
-                )
-                page.addView(
-                    title(
-                        "Deslize para os lados para navegar",
-                        14
-                    )
-                )
-                page.addView(
-                    appGrid(apps.take(12), false)
-                )
+                content.addView(label("✦ Minha página", 23f))
+                content.addView(label("Deslize para navegar", 12f).apply {
+                    setPadding(0, dp(5), 0, dp(12))
+                })
+                content.addView(appGrid(apps.take(20), false))
             }
-
             1 -> {
-                page.addView(
-                    title("✦ Favoritos", 23)
-                )
-
-                val pinned = favoritesList()
-
+                content.addView(label("✦ Favoritos", 23f))
+                val pinned = favorites()
                 if (pinned.isEmpty()) {
-                    page.addView(
-                        title(
-                            "Abra a gaveta e segure um aplicativo para favoritar",
-                            16
-                        )
-                    )
-                } else {
-                    page.addView(
-                        appGrid(pinned, false)
-                    )
+                    content.addView(label("Abra Apps e segure um ícone para favoritar", 13f).apply {
+                        setPadding(dp(8), dp(18), dp(8), 0)
+                    })
+                } else content.addView(appGrid(pinned, false))
+            }
+            else -> {
+                content.addView(label("✦ Mais aplicativos", 23f))
+                content.addView(appGrid(apps.drop(20).take(30), false))
+            }
+        }
+        scroll.addView(content)
+        scroll.setOnTouchListener { _, event -> handleSwipe(event) }
+        return scroll
+    }
+
+    private fun handleSwipe(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = event.x
+                downY = event.y
+            }
+            MotionEvent.ACTION_UP -> {
+                val dx = event.x - downX
+                val dy = event.y - downY
+                if (abs(dx) > dp(65) && abs(dx) > abs(dy) * 1.3f) {
+                    pageIndex = (pageIndex + if (dx < 0) 1 else -1).coerceIn(0, 2)
+                    pages.displayedChild = pageIndex
+                    updateDots()
+                    return true
+                }
+                if (dy < -dp(95) && abs(dy) > abs(dx) * 1.5f) {
+                    showDrawer()
+                    return true
                 }
             }
-
-            else -> {
-                page.addView(
-                    title("✦ Mais aplicativos", 23)
-                )
-                page.addView(
-                    appGrid(
-                        apps.drop(12).take(12),
-                        false
-                    )
-                )
-            }
         }
-
-        return ScrollView(this).apply {
-            isFillViewport = true
-            addView(page)
-        }
+        return false
     }
 
     private fun updateDots() {
-        dots.text = (0..2).joinToString("  ") {
-            if (it == currentPage) "●" else "○"
-        }
+        dots.text = (0..2).joinToString("   ") { if (it == pageIndex) "●" else "○" }
     }
 
-    private fun changePage(next: Int) {
-        val target = next.coerceIn(0, 2)
-
-        if (target == currentPage) return
-
-        if (target > currentPage) {
-            pages.setInAnimation(
-                this,
-                android.R.anim.slide_in_left
-            )
-            pages.setOutAnimation(
-                this,
-                android.R.anim.fade_out
-            )
-        } else {
-            pages.setInAnimation(
-                this,
-                android.R.anim.fade_in
-            )
-            pages.setOutAnimation(
-                this,
-                android.R.anim.slide_out_right
-            )
+    private fun dock(): View {
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(2), dp(7), dp(2), dp(7))
+            setBackgroundColor(Color.argb(145, 25, 9, 41))
         }
-
-        currentPage = target
-        pages.displayedChild = currentPage
-        updateDots()
+        val pinned = favorites().take(4)
+        for (slot in 0..4) {
+            val child: View = when {
+                slot == 2 -> label("▦\nApps", 14f).apply {
+                    setOnClickListener { showDrawer() }
+                }
+                else -> {
+                    val favIndex = if (slot < 2) slot else slot - 1
+                    if (favIndex < pinned.size) appTile(pinned[favIndex], false, compact = true)
+                    else label("✧", 25f).apply {
+                        setOnClickListener {
+                            Toast.makeText(this@MainActivity,
+                                "Segure um app na gaveta para adicioná-lo aos favoritos",
+                                Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+            bar.addView(child, LinearLayout.LayoutParams(0, dp(62), 1f))
+        }
+        return bar
     }
 
     private fun showDrawer() {
         drawerOpen = true
-        makeRoot()
-
-        val header = title(
-            "☷ Aplicativos ✦",
-            23
-        )
-
-        header.setOnClickListener {
-            showHome()
-        }
-
+        loadApps()
+        buildRoot()
+        val header = label("✦ Aplicativos ✦", 24f)
+        header.setOnClickListener { showHome() }
         root.addView(header)
-
-        root.addView(
-            title(
-                "Toque para abrir • segure para favoritar",
-                13
-            )
-        )
-
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true
-        }
-
-        scroll.addView(
-            appGrid(apps, true)
-        )
-
-        root.addView(
-            scroll,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        )
-
-        val back = title(
-            "⌂ Voltar à tela inicial",
-            17
-        )
-
-        back.setOnClickListener {
-            showHome()
-        }
-
-        root.addView(back)
+        root.addView(label("Toque para abrir • segure para favoritar", 12f).apply {
+            setPadding(0, dp(5), 0, dp(12))
+        })
+        val scroll = ScrollView(this)
+        scroll.addView(appGrid(apps, true))
+        root.addView(scroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+        root.addView(label("⌂ Voltar à tela inicial", 16f).apply {
+            setPadding(0, dp(10), 0, dp(10))
+            setOnClickListener { showHome() }
+        })
     }
 
-    private fun appGrid(
-        items: List<ResolveInfo>,
-        allowFavorite: Boolean
-    ): GridLayout {
+    private fun appGrid(items: List<ResolveInfo>, allowFavorite: Boolean): GridLayout {
         val grid = GridLayout(this).apply {
-            columnCount = 4
-            setPadding(4, 8, 4, 12)
+            columnCount = 5
+            setPadding(dp(1), dp(10), dp(1), dp(12))
         }
-
         items.forEach { app ->
-            grid.addView(
-                appItem(app, allowFavorite),
+            grid.addView(appTile(app, allowFavorite, compact = false),
                 GridLayout.LayoutParams().apply {
                     width = 0
-                    height =
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    columnSpec = GridLayout.spec(
-                        GridLayout.UNDEFINED,
-                        1f
-                    )
-                }
-            )
+                    height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                })
         }
-
         return grid
     }
 
-    private fun appItem(
-        app: ResolveInfo,
-        allowFavorite: Boolean
-    ): View {
-        val pm = packageManager
-
-        val item = LinearLayout(this).apply {
+    private fun appTile(app: ResolveInfo, allowFavorite: Boolean, compact: Boolean): View {
+        val tile = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(3, 10, 3, 12)
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(2), dp(6), dp(2), dp(8))
         }
-
-        val icon = ImageView(this).apply {
-            setImageDrawable(app.loadIcon(pm))
-            scaleType =
-                ImageView.ScaleType.FIT_CENTER
-            layoutParams =
-                LinearLayout.LayoutParams(56, 56)
+        tile.addView(ImageView(this).apply {
+            setImageDrawable(app.loadIcon(packageManager))
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = LinearLayout.LayoutParams(dp(if (compact) 33 else 42), dp(if (compact) 33 else 42))
+        })
+        if (!compact) {
+            tile.addView(label(app.loadLabel(packageManager).toString(), 10f).apply {
+                maxLines = 2
+                minLines = 2
+            })
         }
-
-        item.addView(icon)
-
-        val label = title(
-            app.loadLabel(pm).toString(),
-            10
-        ).apply {
-            maxLines = 2
-            setPadding(1, 3, 1, 0)
-        }
-
-        item.addView(label)
-
-        item.setOnClickListener {
+        tile.setOnClickListener {
             try {
-                val intent = Intent().apply {
-                    setClassName(
-                        app.activityInfo.packageName,
-                        app.activityInfo.name
-                    )
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK
-                    )
+                val launch = Intent().apply {
+                    setClassName(app.activityInfo.packageName, app.activityInfo.name)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-
-                startActivity(intent)
-            } catch (e: Exception) {
-                Toast.makeText(
-                    this,
-                    "Não foi possível abrir o aplicativo",
-                    Toast.LENGTH_SHORT
-                ).show()
+                startActivity(launch)
+            } catch (_: Exception) {
+                Toast.makeText(this, "Não foi possível abrir o aplicativo", Toast.LENGTH_SHORT).show()
             }
         }
-
         if (allowFavorite) {
-            item.setOnLongClickListener {
-                val updated =
-                    selected().toMutableSet()
-
-                val key = keyFor(app)
-
-                val added = if (
-                    updated.contains(key)
-                ) {
+            tile.setOnLongClickListener {
+                val key = appKey(app)
+                val updated = selected().toMutableSet()
+                val added = if (updated.contains(key)) {
                     updated.remove(key)
                     false
                 } else {
                     updated.add(key)
                     true
                 }
-
-                favorites.edit()
-                    .putStringSet("apps", updated)
-                    .apply()
-
-                Toast.makeText(
-                    this,
-                    if (added) {
-                        "Adicionado aos favoritos"
-                    } else {
-                        "Removido dos favoritos"
-                    },
-                    Toast.LENGTH_SHORT
-                ).show()
-
+                prefs.edit().putStringSet("apps", updated).apply()
+                Toast.makeText(this,
+                    if (added) "Adicionado aos favoritos" else "Removido dos favoritos",
+                    Toast.LENGTH_SHORT).show()
                 true
             }
         }
-
-        return item
-    }
-
-    override fun dispatchTouchEvent(
-        event: MotionEvent
-    ): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                downX = event.x
-                downY = event.y
-            }
-
-            MotionEvent.ACTION_UP -> {
-                val dx = event.x - downX
-                val dy = event.y - downY
-
-                if (!drawerOpen) {
-                    if (
-                        abs(dx) > 100 &&
-                        abs(dx) > abs(dy) * 1.3f
-                    ) {
-                        changePage(
-                            currentPage +
-                                if (dx < 0) 1 else -1
-                        )
-                        return true
-                    }
-
-                    if (
-                        dy < -130 &&
-                        abs(dy) > abs(dx) * 1.3f
-                    ) {
-                        showDrawer()
-                        return true
-                    }
-                }
-            }
-        }
-
-        return super.dispatchTouchEvent(event)
+        return tile
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (drawerOpen) {
+        if (drawerOpen || pageIndex != 0) {
+            pageIndex = 0
             showHome()
-        } else if (currentPage != 1) {
-            changePage(1)
-        } else {
-            super.onBackPressed()
-        }
+        } else super.onBackPressed()
     }
 }
