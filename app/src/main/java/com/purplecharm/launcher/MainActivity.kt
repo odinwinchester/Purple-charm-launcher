@@ -2,6 +2,8 @@ package com.purplecharm.launcher
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipDescription
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
@@ -11,6 +13,7 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.view.DragEvent
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowInsets
@@ -45,6 +48,103 @@ class MainActivity : Activity() {
     private var downX = 0f
     private var downY = 0f
 
+    private var dragging = false
+    private val homeCapacity = 40
+
+    private fun savedPage(index: Int): MutableList<String> {
+        val raw = prefs.getString("layout_page_$index", null)
+        if (raw != null) return raw.split("|").filter { it.isNotBlank() }.toMutableList()
+        val initial = when (index) {
+            0 -> apps.take(20)
+            1 -> favorites()
+            else -> apps.drop(20).take(30)
+        }.map { appKey(it) }
+        return initial.toMutableList()
+    }
+
+    private fun savePage(index: Int, keys: List<String>) {
+        prefs.edit().putString("layout_page_$index", keys.distinct().joinToString("|")).apply()
+    }
+
+    private fun savedDock(): MutableList<String> {
+        val raw = prefs.getString("layout_dock", null)
+        return if (raw == null) favorites().take(4).map { appKey(it) }.toMutableList()
+        else raw.split("|").filter { it.isNotBlank() }.toMutableList()
+    }
+
+    private fun saveDock(keys: List<String>) {
+        prefs.edit().putString("layout_dock", keys.take(4).joinToString("|")).apply()
+    }
+
+    private fun resolveKey(key: String): ResolveInfo? = apps.firstOrNull { appKey(it) == key }
+
+    private fun startAppDrag(view: View, app: ResolveInfo): Boolean {
+        val data = ClipData.newPlainText("purplecharm", appKey(app))
+        dragging = view.startDragAndDrop(data, View.DragShadowBuilder(view), null, 0)
+        return dragging
+    }
+
+    private fun draggedKey(event: DragEvent): String? {
+        val clip = event.clipData ?: return null
+        if (clip.itemCount == 0) return null
+        val key = clip.getItemAt(0).text?.toString() ?: return null
+        return key.takeIf { resolveKey(it) != null }
+    }
+
+    private fun acceptDrop(view: View, action: (String) -> Unit) {
+        view.setOnDragListener { target, event ->
+            when (event.action) {
+                DragEvent.ACTION_DRAG_STARTED -> {
+                    val ok = event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+                    if (ok) target.alpha = 0.8f
+                    ok
+                }
+                DragEvent.ACTION_DRAG_ENTERED -> { target.alpha = 0.55f; true }
+                DragEvent.ACTION_DRAG_EXITED -> { target.alpha = 0.8f; true }
+                DragEvent.ACTION_DROP -> {
+                    val key = draggedKey(event)
+                    if (key != null) { action(key); true } else false
+                }
+                DragEvent.ACTION_DRAG_ENDED -> { target.alpha = 1f; dragging = false; true }
+                else -> true
+            }
+        }
+    }
+
+    private fun placeOnPage(key: String, index: Int, position: Int? = null) {
+        val list = savedPage(index)
+        list.remove(key)
+        val at = (position ?: list.size).coerceIn(0, list.size)
+        if (list.size >= homeCapacity && key !in list) {
+            Toast.makeText(this, "Página cheia", Toast.LENGTH_SHORT).show()
+            return
+        }
+        list.add(at, key)
+        for (other in 0..2) if (other != index) {
+            val others = savedPage(other)
+            if (others.remove(key)) savePage(other, others)
+        }
+        val dock = savedDock()
+        if (dock.remove(key)) saveDock(dock)
+        savePage(index, list)
+        pageIndex = index
+        showHome()
+    }
+
+    private fun placeInDock(key: String, position: Int) {
+        val dock = savedDock()
+        dock.remove(key)
+        val at = position.coerceIn(0, dock.size)
+        if (dock.size >= 4) dock.removeAt(if (at >= 4) 3 else at)
+        dock.add(at.coerceAtMost(dock.size), key)
+        saveDock(dock)
+        for (page in 0..2) {
+            val list = savedPage(page)
+            if (list.remove(key)) savePage(page, list)
+        }
+        showHome()
+    }
+
     private val lilac = Color.rgb(236, 201, 255)
     private val wallpaperRequest = 2202
     private fun setting(key: String, default: String): String =
@@ -76,7 +176,8 @@ class MainActivity : Activity() {
             "✦ Deslizar para baixo: " + gestureName(setting("swipe_down", "none")),
             "✦ Colunas da gaveta: " + setting("columns", "5"),
             "✦ Papel de parede",
-            "✦ Restaurar configurações de gestos e grade"
+            "✦ Restaurar configurações de gestos e grade",
+            "✦ Restaurar organização dos ícones"
         )
         AlertDialog.Builder(this)
             .setTitle("✦ Purple Charm • Configurações")
@@ -90,6 +191,15 @@ class MainActivity : Activity() {
                         arrayOf("4", "5", "6"), "5"
                     )
                     3 -> wallpaperMenu()
+                    5 -> AlertDialog.Builder(this)
+                        .setTitle("Restaurar organização?")
+                        .setMessage("As posições personalizadas das páginas e do dock serão apagadas.")
+                        .setPositiveButton("Restaurar") { _, _ ->
+                            prefs.edit().remove("layout_page_0").remove("layout_page_1")
+                                .remove("layout_page_2").remove("layout_dock").apply()
+                            showHome()
+                        }
+                        .setNegativeButton("Cancelar", null).show()
                     4 -> AlertDialog.Builder(this)
                         .setTitle("Restaurar configurações?")
                         .setMessage("Isso não altera os favoritos nem o wallpaper.")
@@ -620,7 +730,7 @@ class MainActivity : Activity() {
         )
 
         panel.addView(
-            label("Crystal Glass • Configurações 2.4", 12f).apply {
+            label("Crystal Glass • Organização 2.5", 12f).apply {
                 setTextColor(lilac)
                 setPadding(0, dp(3), 0, 0)
             }
@@ -674,69 +784,31 @@ class MainActivity : Activity() {
             clipToPadding = false
             setPadding(0, dp(10), 0, dp(6))
         }
-
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val titles = arrayOf("✦ Minha página", "✦ Favoritos", "✦ Mais aplicativos")
+        content.addView(sectionHeader(titles[index], "Segure e arraste para organizar"))
+        val list = savedPage(index)
+        val grid = GridLayout(this).apply {
+            columnCount = setting("columns", "5").toIntOrNull()?.coerceIn(4, 6) ?: 5
+            setPadding(dp(1), dp(12), dp(1), dp(12))
         }
-
-        when (index) {
-            0 -> {
-                content.addView(
-                    sectionHeader(
-                        "✦ Minha página",
-                        "Deslize para navegar"
-                    )
-                )
-                content.addView(
-                    appGrid(apps.take(20), false)
-                )
-            }
-
-            1 -> {
-                content.addView(
-                    sectionHeader(
-                        "✦ Favoritos",
-                        "Seus aplicativos especiais"
-                    )
-                )
-
-                val pinned = favorites()
-
-                if (pinned.isEmpty()) {
-                    content.addView(
-                        glassButton(
-                            "Abra Apps e segure um ícone para favoritar",
-                            13f
-                        ).apply {
-                            setPadding(
-                                dp(10), dp(20),
-                                dp(10), dp(20)
-                            )
-                        }
-                    )
-                } else {
-                    content.addView(
-                        appGrid(pinned, false)
-                    )
-                }
-            }
-
-            else -> {
-                content.addView(
-                    sectionHeader(
-                        "✦ Mais aplicativos",
-                        "Seu universo de aplicativos"
-                    )
-                )
-                content.addView(
-                    appGrid(
-                        apps.drop(20).take(30),
-                        false
-                    )
-                )
-            }
+        list.forEachIndexed { position, key ->
+            val app = resolveKey(key) ?: return@forEachIndexed
+            val tile = appTile(app, false, false)
+            acceptDrop(tile) { dropped -> placeOnPage(dropped, index, position) }
+            grid.addView(tile, GridLayout.LayoutParams().apply {
+                width = 0
+                height = ViewGroup.LayoutParams.WRAP_CONTENT
+                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+            })
         }
-
+        content.addView(grid)
+        val add = glassButton("＋ Solte aqui para adicionar à página ${index + 1}", 13f)
+        acceptDrop(add) { key -> placeOnPage(key, index) }
+        content.addView(add)
+        content.addView(glassButton("✦ Abrir gaveta de aplicativos", 13f).apply {
+            setOnClickListener { showDrawer() }
+        })
         scroll.addView(content)
         return scroll
     }
@@ -754,47 +826,22 @@ class MainActivity : Activity() {
             background = glass(26, true)
             setPadding(dp(4), dp(7), dp(4), dp(7))
         }
-
-        val pinned = favorites().take(4)
-
+        val keys = savedDock()
         for (slot in 0..4) {
             val child: View = if (slot == 2) {
-                glassButton("▦\nApps", 13f).apply {
-                    setOnClickListener {
-                        showDrawer()
-                    }
-                }
+                glassButton("▦\nApps", 13f).apply { setOnClickListener { showDrawer() } }
             } else {
-                val favIndex =
-                    if (slot < 2) slot else slot - 1
-
-                if (favIndex < pinned.size) {
-                    appTile(
-                        pinned[favIndex], false, true
-                    )
-                } else {
-                    glassButton("✧", 23f).apply {
-                        setOnClickListener {
-                            Toast.makeText(
-                                this@MainActivity,
-                                "Segure um aplicativo na gaveta para favoritar",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                }
+                val dockIndex = if (slot < 2) slot else slot - 1
+                val app = keys.getOrNull(dockIndex)?.let { resolveKey(it) }
+                val view = if (app != null) appTile(app, false, true)
+                           else glassButton("✧", 23f)
+                acceptDrop(view) { key -> placeInDock(key, dockIndex) }
+                view
             }
-
-            outer.addView(
-                child,
-                LinearLayout.LayoutParams(
-                    0, dp(61), 1f
-                ).apply {
-                    setMargins(dp(2), 0, dp(2), 0)
-                }
-            )
+            outer.addView(child, LinearLayout.LayoutParams(0, dp(61), 1f).apply {
+                setMargins(dp(2), 0, dp(2), 0)
+            })
         }
-
         return outer
     }
 
@@ -807,7 +854,7 @@ class MainActivity : Activity() {
         root.addView(
             sectionHeader(
                 "✦ Aplicativos ✦",
-                "Toque para abrir • segure para favoritar"
+                "Segure um ícone e solte em uma página abaixo"
             )
         )
 
@@ -826,6 +873,14 @@ class MainActivity : Activity() {
         }
 
         container.addView(appGrid(apps, true))
+        for (page in 0..2) {
+            val target = glassButton("＋ Solte aqui para adicionar à página ${page + 1}", 13f)
+            acceptDrop(target) { key -> placeOnPage(key, page) }
+            container.addView(target)
+        }
+        val dockTarget = glassButton("✧ Solte aqui para adicionar ao dock", 13f)
+        acceptDrop(dockTarget) { key -> placeInDock(key, savedDock().size) }
+        container.addView(dockTarget)
         scroll.addView(container)
 
         root.addView(
@@ -953,35 +1008,7 @@ class MainActivity : Activity() {
             }
         }
 
-        if (allowFavorite) {
-            tile.setOnLongClickListener {
-                val key = appKey(app)
-                val updated = selected().toMutableSet()
-
-                val added = if (updated.contains(key)) {
-                    updated.remove(key)
-                    false
-                } else {
-                    updated.add(key)
-                    true
-                }
-
-                prefs.edit()
-                    .putStringSet("apps", updated)
-                    .apply()
-
-                Toast.makeText(
-                    this,
-                    if (added)
-                        "Adicionado aos favoritos"
-                    else
-                        "Removido dos favoritos",
-                    Toast.LENGTH_SHORT
-                ).show()
-
-                true
-            }
-        }
+        tile.setOnLongClickListener { startAppDrag(tile, app) }
 
         return tile
     }
@@ -989,7 +1016,7 @@ class MainActivity : Activity() {
     override fun dispatchTouchEvent(
         event: MotionEvent
     ): Boolean {
-        if (!drawerOpen) {
+        if (!drawerOpen && !dragging) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.x
