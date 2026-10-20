@@ -47,6 +47,87 @@ class MainActivity : Activity() {
 
     private val lilac = Color.rgb(236, 201, 255)
     private val wallpaperRequest = 2202
+    private fun setting(key: String, default: String): String =
+        prefs.getString("pc_" + key, default) ?: default
+
+    private fun saveSetting(key: String, value: String) {
+        prefs.edit().putString("pc_" + key, value).apply()
+    }
+
+    private fun chooseSetting(
+        title: String, key: String,
+        labels: Array<String>, values: Array<String>, default: String
+    ) {
+        val selectedIndex = values.indexOf(setting(key, default)).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setSingleChoiceItems(labels, selectedIndex) { dialog, index ->
+                saveSetting(key, values[index])
+                dialog.dismiss()
+                showHome()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun settingsMenu() {
+        val options = arrayOf(
+            "✦ Deslizar para cima: " + gestureName(setting("swipe_up", "drawer")),
+            "✦ Deslizar para baixo: " + gestureName(setting("swipe_down", "none")),
+            "✦ Colunas da gaveta: " + setting("columns", "5"),
+            "✦ Papel de parede",
+            "✦ Restaurar configurações de gestos e grade"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("✦ Purple Charm • Configurações")
+            .setItems(options) { _, index ->
+                when (index) {
+                    0 -> gestureSetting("Deslizar para cima", "swipe_up", "drawer")
+                    1 -> gestureSetting("Deslizar para baixo", "swipe_down", "none")
+                    2 -> chooseSetting(
+                        "Colunas da gaveta", "columns",
+                        arrayOf("4 colunas", "5 colunas", "6 colunas"),
+                        arrayOf("4", "5", "6"), "5"
+                    )
+                    3 -> wallpaperMenu()
+                    4 -> AlertDialog.Builder(this)
+                        .setTitle("Restaurar configurações?")
+                        .setMessage("Isso não altera os favoritos nem o wallpaper.")
+                        .setPositiveButton("Restaurar") { _, _ ->
+                            prefs.edit().remove("pc_swipe_up")
+                                .remove("pc_swipe_down").remove("pc_columns").apply()
+                            showHome()
+                        }
+                        .setNegativeButton("Cancelar", null).show()
+                }
+            }
+            .setNegativeButton("Fechar", null)
+            .show()
+    }
+
+    private fun gestureName(value: String): String = when (value) {
+        "drawer" -> "Abrir aplicativos"
+        "settings" -> "Configurações"
+        "wallpaper" -> "Papel de parede"
+        "home" -> "Página inicial"
+        else -> "Nenhuma ação"
+    }
+
+    private fun gestureSetting(title: String, key: String, default: String) {
+        val values = arrayOf("drawer", "settings", "wallpaper", "home", "none")
+        chooseSetting(title, key, values.map { gestureName(it) }.toTypedArray(), values, default)
+    }
+
+    private fun runGesture(action: String): Boolean {
+        when (action) {
+            "drawer" -> showDrawer()
+            "settings" -> settingsMenu()
+            "wallpaper" -> wallpaperMenu()
+            "home" -> { pageIndex = 0; showHome() }
+            else -> return false
+        }
+        return true
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -539,7 +620,7 @@ class MainActivity : Activity() {
         )
 
         panel.addView(
-            label("Crystal Glass Polished 2.3", 12f).apply {
+            label("Crystal Glass • Configurações 2.4", 12f).apply {
                 setTextColor(lilac)
                 setPadding(0, dp(3), 0, 0)
             }
@@ -579,8 +660,8 @@ class MainActivity : Activity() {
         updateDots()
 
         root.addView(
-            glassButton("⚙ Fundo", 13f).apply {
-                setOnClickListener { wallpaperMenu() }
+            glassButton("⚙ Configurações", 13f).apply {
+                setOnClickListener { settingsMenu() }
             }
         )
 
@@ -753,8 +834,8 @@ class MainActivity : Activity() {
         )
 
         root.addView(
-            glassButton("⚙ Fundo", 13f).apply {
-                setOnClickListener { wallpaperMenu() }
+            glassButton("⚙ Configurações", 13f).apply {
+                setOnClickListener { settingsMenu() }
             }
         )
 
@@ -775,7 +856,7 @@ class MainActivity : Activity() {
         allowFavorite: Boolean
     ): GridLayout {
         val grid = GridLayout(this).apply {
-            columnCount = 5
+            columnCount = setting("columns", "5").toIntOrNull()?.coerceIn(4, 6) ?: 5
             background = null
             setPadding(dp(1), dp(12), dp(1), dp(12))
         }
@@ -937,8 +1018,14 @@ class MainActivity : Activity() {
                         dy < -dp(95) &&
                         abs(dy) > abs(dx) * 1.5f
                     ) {
-                        showDrawer()
-                        return true
+                        if (runGesture(setting("swipe_up", "drawer"))) return true
+                    }
+
+                    if (
+                        dy > dp(95) &&
+                        abs(dy) > abs(dx) * 1.5f
+                    ) {
+                        if (runGesture(setting("swipe_down", "none"))) return true
                     }
                 }
             }
