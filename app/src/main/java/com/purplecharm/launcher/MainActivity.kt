@@ -1129,7 +1129,7 @@ class MainActivity : Activity() {
                     setPadding(dp(10), dp(10), dp(10), dp(10))
                     scaleType = ImageView.ScaleType.FIT_CENTER
                     setOnClickListener { showDrawer() }
-                    setOnLongClickListener { settingsMenu(); true }
+                    setOnLongClickListener { showClassicCustomizationMenu(); true }
                 }
             } else {
                 val dockIndex = if (slot < 2) slot else slot - 1
@@ -1277,11 +1277,25 @@ class MainActivity : Activity() {
         })
         dialog.setContentView(column)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setSoftInputMode(
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
+        )
         dialog.show()
-        dialog.window?.setLayout(-1, (resources.displayMetrics.heightPixels * 0.72f).toInt())
+        dialog.window?.apply {
+            setGravity(Gravity.BOTTOM)
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setSoftInputMode(
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                    android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
+            )
+        }
         refresh("")
         input.requestFocus()
-        dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        input.post {
+            val keyboard = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            keyboard.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+        }
     }
 
     private fun crystalSearchBar(): View =
@@ -1518,7 +1532,7 @@ class MainActivity : Activity() {
                         // Deslizar para cima começando na área inferior abre o menu Purple Charm.
                         // Em outras áreas, preserva o gesto configurável (gaveta por padrão).
                         val screenHeight = resources.displayMetrics.heightPixels
-                        if (downY >= screenHeight - dp(145)) {
+                        if (downY >= screenHeight - dp(260)) {
                             showClassicCustomizationMenu()
                             return true
                         }
