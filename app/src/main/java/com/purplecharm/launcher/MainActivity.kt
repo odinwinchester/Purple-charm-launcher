@@ -1139,6 +1139,42 @@ class MainActivity : Activity() {
         return outer
     }
 
+    // Menu clássico do GO Launcher EX, redesenhado para o Purple Charm.
+    private fun showClassicCustomizationMenu() {
+        val actions = arrayOf(
+            "Adicionar",
+            "Papel de parede",
+            "Tema",
+            "GO configurações",
+            "Configurações do sistema",
+            "Ajuda & Feedback"
+        )
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("✦ Purple Charm • Personalizar")
+            .setItems(actions) { _, which ->
+                when (which) {
+                    0 -> managePages()
+                    1 -> wallpaperMenu()
+                    2 -> settingsMenu()
+                    3 -> settingsMenu()
+                    4 -> {
+                        try {
+                            startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
+                        } catch (_: Exception) {
+                            Toast.makeText(this, "Configurações indisponíveis", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    5 -> AlertDialog.Builder(this)
+                        .setTitle("Purple Charm • Ajuda")
+                        .setMessage("Deslize para cima a partir do dock para personalizar. Toque no ícone central para abrir seus aplicativos. Pressione um atalho para reorganizá-lo.")
+                        .setPositiveButton("Entendi", null)
+                        .show()
+                }
+            }
+            .setNegativeButton("Fechar", null)
+            .show()
+    }
+
     // Pesquisa Crystal Glass: busca local por aplicativos instalados.
     private fun showCrystalSearch() {
         loadApps()
@@ -1448,7 +1484,7 @@ class MainActivity : Activity() {
                         // Em outras áreas, preserva o gesto configurável (gaveta por padrão).
                         val screenHeight = resources.displayMetrics.heightPixels
                         if (downY >= screenHeight - dp(145)) {
-                            settingsMenu()
+                            showClassicCustomizationMenu()
                             return true
                         }
                         if (runGesture(setting("swipe_up", "drawer"))) return true
