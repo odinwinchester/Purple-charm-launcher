@@ -78,7 +78,8 @@ class MainActivity : Activity() {
         setting("columns", defaultHorizontalIcons.toString())
             .toIntOrNull()?.coerceIn(4, 6) ?: defaultHorizontalIcons
 
-    private val homeCapacity = 40
+    // Grade padrão 5 x 6; o usuário pode mudar as colunas.
+    private fun homeCapacity(): Int = horizontalIconColumns() * 6
     private val maxPages = 8
 
     private fun pageCount(): Int = prefs.getInt("layout_page_count", 3).coerceIn(3, maxPages)
@@ -122,9 +123,9 @@ class MainActivity : Activity() {
         val raw = prefs.getString("layout_page_$index", null)
         if (raw != null) return raw.split("|").filter { it.isNotBlank() }.toMutableList()
         val initial = when (index) {
-            0 -> apps.take(20)
+            0 -> apps.take(homeCapacity())
             1 -> favorites()
-            2 -> apps.drop(20).take(30)
+            2 -> apps.drop(homeCapacity()).take(homeCapacity())
             else -> emptyList()
         }.map { appKey(it) }
         return initial.toMutableList()
@@ -181,7 +182,7 @@ class MainActivity : Activity() {
 
     private fun placeOnPage(key: String, index: Int, position: Int? = null) {
         val list = savedPage(index)
-        if (list.size >= homeCapacity && key !in list) {
+        if (list.size >= homeCapacity() && key !in list) {
             Toast.makeText(this, "Página cheia", Toast.LENGTH_SHORT).show()
             return
         }
