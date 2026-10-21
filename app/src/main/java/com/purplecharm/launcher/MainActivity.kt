@@ -71,6 +71,13 @@ class MainActivity : Activity() {
 
     private var dragging = false
     private var switchingPage = false
+    // Cinco posições visuais no dock (quatro atalhos + gaveta central).
+    // A grade da área editável e da gaveta começa com as mesmas cinco colunas.
+    private val defaultHorizontalIcons = 5
+    private fun horizontalIconColumns(): Int =
+        setting("columns", defaultHorizontalIcons.toString())
+            .toIntOrNull()?.coerceIn(4, 6) ?: defaultHorizontalIcons
+
     private val homeCapacity = 40
     private val maxPages = 8
 
@@ -316,8 +323,8 @@ class MainActivity : Activity() {
         option("✦ Toque duplo: " + gestureName(setting("double_tap", "none"))) {
             gestureSetting("Toque duplo", "double_tap", "none")
         }
-        option("✦ Colunas da gaveta: " + setting("columns", "5")) {
-            chooseSetting("Colunas da gaveta", "columns",
+        option("✦ Ícones por linha (início e gaveta): " + horizontalIconColumns()) {
+            chooseSetting("Ícones por linha (início e gaveta)", "columns",
                 arrayOf("4 colunas", "5 colunas", "6 colunas"),
                 arrayOf("4", "5", "6"), "5")
         }
@@ -1055,7 +1062,7 @@ class MainActivity : Activity() {
         }
         val list = savedPage(index)
         val grid = GridLayout(this).apply {
-            columnCount = setting("columns", "5").toIntOrNull()?.coerceIn(4, 6) ?: 5
+            columnCount = horizontalIconColumns()
             setPadding(dp(1), dp(12), dp(1), dp(12))
         }
         list.forEachIndexed { position, key ->
@@ -1359,7 +1366,7 @@ class MainActivity : Activity() {
         allowFavorite: Boolean
     ): GridLayout {
         val grid = GridLayout(this).apply {
-            columnCount = setting("columns", "5").toIntOrNull()?.coerceIn(4, 6) ?: 5
+            columnCount = horizontalIconColumns()
             background = null
             setPadding(dp(1), dp(12), dp(1), dp(12))
         }
