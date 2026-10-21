@@ -73,13 +73,13 @@ class MainActivity : Activity() {
     private var switchingPage = false
     // Cinco posições visuais no dock (quatro atalhos + gaveta central).
     // A grade da área editável e da gaveta começa com as mesmas cinco colunas.
-    private val defaultHorizontalIcons = 5
+    private val defaultHorizontalIcons = 4
     private fun horizontalIconColumns(): Int =
         setting("columns", defaultHorizontalIcons.toString())
             .toIntOrNull()?.coerceIn(4, 6) ?: defaultHorizontalIcons
 
-    // Grade padrão 5 x 6; o usuário pode mudar as colunas.
-    private fun homeCapacity(): Int = horizontalIconColumns() * 6
+    // Grade inicial padrão 4 x 5; mantém preferências e atalhos já salvos.
+    private fun homeCapacity(): Int = horizontalIconColumns() * 5
     private val maxPages = 8
 
     private fun pageCount(): Int = prefs.getInt("layout_page_count", 3).coerceIn(3, maxPages)
