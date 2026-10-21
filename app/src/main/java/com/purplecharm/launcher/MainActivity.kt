@@ -1110,7 +1110,8 @@ class MainActivity : Activity() {
         val outer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            background = resources.getDrawable(R.drawable.purple_original_dock, theme)
+            // Crystal Glass: dock 100% transparente; ícones continuam usando customIcon(app).
+            background = null
             setPadding(dp(4), dp(5), dp(4), dp(5))
         }
         val keys = dockSlots()
@@ -1443,6 +1444,13 @@ class MainActivity : Activity() {
                         dy < -dp(95) &&
                         abs(dy) > abs(dx) * 1.5f
                     ) {
+                        // Deslizar para cima começando na área inferior abre o menu Purple Charm.
+                        // Em outras áreas, preserva o gesto configurável (gaveta por padrão).
+                        val screenHeight = resources.displayMetrics.heightPixels
+                        if (downY >= screenHeight - dp(145)) {
+                            settingsMenu()
+                            return true
+                        }
                         if (runGesture(setting("swipe_up", "drawer"))) return true
                     }
 
