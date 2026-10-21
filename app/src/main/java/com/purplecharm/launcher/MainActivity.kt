@@ -1140,39 +1140,67 @@ class MainActivity : Activity() {
     }
 
     // Menu clássico do GO Launcher EX, redesenhado para o Purple Charm.
+    // Menu de personalização compacto: faixa horizontal acima do dock.
+    // Mantém o papel de parede visível e evita o painel grande de seis botões.
     private fun showClassicCustomizationMenu() {
-        val actions = arrayOf(
-            "Adicionar",
-            "Papel de parede",
-            "Tema",
-            "GO configurações",
-            "Configurações do sistema",
-            "Ajuda & Feedback"
-        )
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("✦ Purple Charm • Personalizar")
-            .setItems(actions) { _, which ->
-                when (which) {
-                    0 -> managePages()
-                    1 -> wallpaperMenu()
-                    2 -> settingsMenu()
-                    3 -> settingsMenu()
-                    4 -> {
-                        try {
-                            startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
-                        } catch (_: Exception) {
-                            Toast.makeText(this, "Configurações indisponíveis", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    5 -> AlertDialog.Builder(this)
-                        .setTitle("Purple Charm • Ajuda")
-                        .setMessage("Deslize para cima a partir do dock para personalizar. Toque no ícone central para abrir seus aplicativos. Pressione um atalho para reorganizá-lo.")
-                        .setPositiveButton("Entendi", null)
-                        .show()
+        val dialog = Dialog(this)
+        val icons = arrayOf("＋", "▧", "✦", "⚙", "⌘", "?")
+        val names = arrayOf("Adicionar", "Papel de parede", "Tema",
+            "GO config.", "Sistema", "Ajuda")
+        val actions: Array<() -> Unit> = arrayOf(
+            { managePages() },
+            { wallpaperMenu() },
+            { settingsMenu() },
+            { settingsMenu() },
+            {
+                try {
+                    startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
+                } catch (_: Exception) {
+                    Toast.makeText(this, "Configurações indisponíveis", Toast.LENGTH_SHORT).show()
                 }
+            },
+            {
+                AlertDialog.Builder(this)
+                    .setTitle("Purple Charm • Ajuda")
+                    .setMessage("Deslize para cima a partir do dock para personalizar. Toque no ícone central para abrir os aplicativos.")
+                    .setPositiveButton("Entendi", null).show()
             }
-            .setNegativeButton("Fechar", null)
-            .show()
+        )
+        val strip = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(5), dp(12), dp(5), dp(12))
+            background = glass(20, true)
+        }
+        for (i in icons.indices) {
+            val tile = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+            }
+            val symbol = label(icons[i], 25f, true).apply {
+                background = glassTile()
+                setTextColor(Color.WHITE)
+            }
+            tile.addView(symbol, LinearLayout.LayoutParams(dp(43), dp(45)))
+            tile.addView(label(names[i], 9f), LinearLayout.LayoutParams(-1, dp(32)))
+            tile.setOnClickListener { dialog.dismiss(); actions[i]() }
+            strip.addView(tile, LinearLayout.LayoutParams(0, dp(82), 1f))
+        }
+        dialog.setContentView(strip)
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.BOTTOM)
+            attributes = attributes.apply { y = dp(90) }
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setDimAmount(0.18f)
+        }
+        dialog.show()
+        dialog.window?.apply {
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.BOTTOM)
+            attributes = attributes.apply { y = dp(90) }
+        }
     }
 
     // Pesquisa Crystal Glass: busca local por aplicativos instalados.
