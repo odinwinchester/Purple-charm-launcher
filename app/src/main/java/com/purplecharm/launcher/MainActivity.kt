@@ -1092,12 +1092,6 @@ class MainActivity : Activity() {
                 columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
             })
         }
-        if (index == 0) {
-            content.addView(crystalSearchBar(),
-                LinearLayout.LayoutParams(-1, -2).apply {
-                    setMargins(dp(3), dp(4), dp(3), dp(8))
-                })
-        }
         content.addView(grid)
         val add = glassButton("＋ Solte aqui para adicionar à página ${index + 1}", 13f)
         acceptDrop(add) { key -> placeOnPage(key, index) }
@@ -1349,9 +1343,17 @@ class MainActivity : Activity() {
         // Gaveta usa fundo próprio; voltar à tela inicial restaura a escolha do usuário.
         backgroundImage.setImageResource(R.drawable.wallpaper_neon)
 
-        root.addView(label("Aplicativos", 19f, true).apply {
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(label("Aplicativos", 19f, true).apply {
             setPadding(0, dp(6), 0, dp(6))
-        })
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(glassButton("⚙", 19f).apply {
+            setOnClickListener { settingsMenu() }
+        }, LinearLayout.LayoutParams(dp(54), dp(52)))
+        root.addView(header)
 
         val scroll = ScrollView(this).apply {
             clipToPadding = false
@@ -1376,22 +1378,13 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(-1, 0, 1f)
         )
 
-        root.addView(
-            glassButton("⚙ Configurações", 13f).apply {
-                setOnClickListener { settingsMenu() }
-            }
-        )
-
-        root.addView(
-            glassButton(
-                "⌂ Voltar à tela inicial", 15f
-            ).apply {
-                setOnClickListener {
-                    pageIndex = 0
-                    showHome()
-                }
-            }
-        )
+        // Pesquisa fixa no rodapé da gaveta; teclado aparece sobre ela na busca.
+        root.addView(crystalSearchBar(), LinearLayout.LayoutParams(-1, -2).apply {
+            setMargins(dp(3), dp(5), dp(3), dp(8))
+        })
+        root.addView(glassButton("⌂ Início", 13f).apply {
+            setOnClickListener { pageIndex = 0; showHome() }
+        })
     }
 
     private fun appGrid(
