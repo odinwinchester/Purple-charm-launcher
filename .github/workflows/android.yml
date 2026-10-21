@@ -3,7 +3,7 @@ name: Compilar Purple Charm Launcher
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/retro-04-integrado]
   workflow_dispatch:
 
 jobs:
