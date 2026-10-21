@@ -2,9 +2,6 @@ name: Publicar compatibilidade no Discord
 
 on:
   workflow_dispatch:
-  push:
-    branches: [feature/permissive-launcher-evaluation]
-    paths: [.github/workflows/publicar-compatibilidade-discord.yml]
 
 permissions:
   contents: read
@@ -17,14 +14,4 @@ jobs:
       - name: Publicar lista homologada
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          python3 - <<'PY'
-          import json, os, urllib.request
-          url = os.environ.get('DISCORD_WEBHOOK_URL', '').strip()
-          if not url:
-              raise SystemExit('Secret DISCORD_WEBHOOK_URL não configurado neste repositório.')
-          msg = '💜 **Purple Charm Launcher — Teste de integração**\nWebhook conectado com sucesso! Esta é apenas uma mensagem de teste; a lista de compatibilidade ainda não foi homologada.'
-          req = urllib.request.Request(url, data=json.dumps({'content': msg, 'allowed_mentions': {'parse': []}}).encode(), headers={'Content-Type':'application/json','User-Agent':'PurpleCharmTest/1.0'}, method='POST')
-          with urllib.request.urlopen(req, timeout=20) as response:
-              print('Discord HTTP', response.status)
-          PY
+        run: python3 scripts/publicar_compatibilidade_discord.py
