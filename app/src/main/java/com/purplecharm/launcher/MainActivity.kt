@@ -328,6 +328,13 @@ class MainActivity : Activity() {
                 arrayOf("4 colunas", "5 colunas", "6 colunas"),
                 arrayOf("4", "5", "6"), "5")
         }
+        option("✦ Espaço superior para widgets: " +
+            setting("widget_space_dp", "180") + " dp") {
+            chooseSetting("Espaço superior para widgets", "widget_space_dp",
+                arrayOf("Sem espaço", "120 dp • compacto", "180 dp • padrão",
+                    "240 dp • amplo", "300 dp • extra"),
+                arrayOf("0", "120", "180", "240", "300"), "180")
+        }
         option("✦ Gerenciar páginas (${pageCount()})") { managePages() }
         option("✦ Importar tema Purple Charm Retro 0.4") {
             startActivity(Intent(this, RetroImporterActivity::class.java))
@@ -1059,6 +1066,15 @@ class MainActivity : Activity() {
             pageTargets.addView(target, LinearLayout.LayoutParams(dp(106), dp(48)).apply {
                 setMargins(dp(2), dp(4), dp(2), dp(4))
             })
+        }
+        // Reserva visual para widgets futuros. Não interfere na gaveta de apps.
+        // Altura personalizável por página; 180dp na tela principal por padrão.
+        val widgetSpace = setting("widget_space_dp", "180")
+            .toIntOrNull()?.coerceIn(0, 360) ?: 180
+        if (index == 0 && widgetSpace > 0) {
+            content.addView(View(this), LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(widgetSpace)
+            ))
         }
         val list = savedPage(index)
         val grid = GridLayout(this).apply {
