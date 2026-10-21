@@ -45,11 +45,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Purple-Charm-Launcher-v0.4.0-${{ github.ref_name }}-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Purple-Charm-Launcher-v0.4.0-${{ github.ref_name == 'main' && 'main' || 'integration' }}-debug.apk
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Purple-Charm-Launcher-v0.4.0-${{ github.ref_name }}
+          name: Purple-Charm-Launcher-v0.4.0-${{ github.ref_name == 'main' && 'main' || 'integration' }}
           path: dist/*.apk
           if-no-files-found: error
