@@ -322,6 +322,9 @@ class MainActivity : Activity() {
                 arrayOf("4", "5", "6"), "5")
         }
         option("✦ Gerenciar páginas (${pageCount()})") { managePages() }
+        option("✦ Importar tema Purple Charm Retro 0.4") {
+            startActivity(Intent(this, RetroImporterActivity::class.java))
+        }
         option("✦ Papéis de parede Purple Charm") { wallpaperMenu() }
         option("✦ Aplicar Olho de Cristal na tela de bloqueio") { confirmLockWallpaper() }
         option("✦ Efeito de transição: " + transitionName(setting("transition", "cube"))) {
