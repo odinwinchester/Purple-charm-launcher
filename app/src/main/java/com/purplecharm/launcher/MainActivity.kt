@@ -1345,6 +1345,8 @@ class MainActivity : Activity() {
         loadApps()
 
         val root = buildRoot()
+        // Gaveta usa fundo próprio; voltar à tela inicial restaura a escolha do usuário.
+        backgroundImage.setImageResource(R.drawable.wallpaper_neon)
 
         root.addView(label("Aplicativos", 19f, true).apply {
             setPadding(0, dp(6), 0, dp(6))
