@@ -1,18 +1,15 @@
-
 name: Compilar Purple Charm Launcher
 
 on:
   push:
-    branches: [main, feature/retro-04-integrado]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-24.04
-
     permissions:
       contents: read
-
     steps:
       - name: Baixar projeto
         uses: actions/checkout@v4
@@ -23,12 +20,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Verificar Android SDK
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ls "$ANDROID_HOME/platforms"
-
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -37,10 +28,28 @@ jobs:
       - name: Compilar APK
         run: gradle :app:assembleDebug --stacktrace
 
+      - name: Validar APK e assinatura
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -t "$APK" | tail -n 2
+          SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$SDK_BUILD_TOOLS/zipalign" -c -v 4 "$APK"
+          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|application-label:)"
+          sha256sum "$APK"
+
+      - name: Nomear APK para instalacao
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Purple-Charm-Launcher-v0.4.0-debug.apk
+
       - name: Disponibilizar APK
-        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Purple-Charm-Launcher-APK
-          path: app/build/outputs/apk/debug/*.apk
+          name: Purple-Charm-Launcher-v0.4.0
+          path: dist/*.apk
           if-no-files-found: error
