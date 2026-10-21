@@ -1244,12 +1244,7 @@ class MainActivity : Activity() {
         }
         fun refresh(query: String) {
             results.removeAllViews()
-            if (query.isBlank()) {
-                results.addView(label("Digite o nome de um aplicativo", 14f).apply {
-                    setPadding(0, dp(18), 0, dp(18))
-                })
-                return
-            }
+            if (query.isBlank()) return
             val filtered = apps.filter {
                 normalize(it.loadLabel(packageManager).toString())
                     .contains(normalize(query.trim()))
@@ -1280,11 +1275,13 @@ class MainActivity : Activity() {
             }
             override fun afterTextChanged(s: Editable?) {}
         })
-        column.addView(input)
+        column.addView(glassButton("✕ Fechar pesquisa", 14f).apply {
+            setOnClickListener { dialog.dismiss() }
+        })
         scroll.addView(results)
         column.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        column.addView(glassButton("✕ Fechar", 14f).apply {
-            setOnClickListener { dialog.dismiss() }
+        column.addView(input, LinearLayout.LayoutParams(-1, -2).apply {
+            setMargins(0, dp(8), 0, 0)
         })
         dialog.setContentView(column)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
@@ -1295,7 +1292,7 @@ class MainActivity : Activity() {
         dialog.show()
         dialog.window?.apply {
             setGravity(Gravity.BOTTOM)
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             setSoftInputMode(
                 android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
                     android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
