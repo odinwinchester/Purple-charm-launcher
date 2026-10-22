@@ -1224,24 +1224,43 @@ class MainActivity : Activity() {
     // Pesquisa Crystal Glass: busca local por aplicativos instalados.
     private fun showCrystalSearch() {
         loadApps()
-        val dialog = Dialog(this)
-        val column = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(18), dp(14), dp(14))
-            background = glass(22, true)
+        val root = buildRoot()
+        backgroundImage.setImageResource(R.drawable.wallpaper_neon)
+        val results = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = ScrollView(this).apply {
+            clipToPadding = false
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            addView(results)
+        }
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        val searchRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = glass(18)
+            setPadding(dp(10), dp(2), dp(4), dp(2))
         }
         val input = EditText(this).apply {
-            hint = "🔍 Pesquisar aplicativos..."
+            hint = "⌕  Pesquisar aplicativos"
             setSingleLine(true)
             setTextColor(Color.WHITE)
             setHintTextColor(lilac)
-            background = glass(18)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = null
         }
-        val scroll = ScrollView(this)
-        val results = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
+        searchRow.addView(input, LinearLayout.LayoutParams(0, dp(52), 1f))
+        searchRow.addView(TextView(this).apply {
+            text = "✕"
+            textSize = 23f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setOnClickListener {
+                (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+                    .hideSoftInputFromWindow(input.windowToken, 0)
+                showDrawer()
+            }
+        }, LinearLayout.LayoutParams(dp(48), dp(52)))
+        root.addView(searchRow, LinearLayout.LayoutParams(-1, -2).apply {
+            setMargins(dp(12), dp(6), dp(12), dp(10))
+        })
         fun refresh(query: String) {
             results.removeAllViews()
             if (query.isBlank()) return
@@ -1250,9 +1269,19 @@ class MainActivity : Activity() {
                     .contains(normalize(query.trim()))
             }
             filtered.forEach { app ->
-                val item = glassButton(app.loadLabel(packageManager).toString(), 15f)
+                val item = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = glass(16)
+                    setPadding(dp(12), dp(8), dp(12), dp(8))
+                }
+                item.addView(ImageView(this).apply {
+                    setImageDrawable(customIcon(app))
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                }, LinearLayout.LayoutParams(dp(44), dp(44)))
+                item.addView(label(app.loadLabel(packageManager).toString(), 15f),
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(12) })
                 item.setOnClickListener {
-                    dialog.dismiss()
                     try {
                         startActivity(Intent().apply {
                             setClassName(app.activityInfo.packageName, app.activityInfo.name)
@@ -1275,34 +1304,10 @@ class MainActivity : Activity() {
             }
             override fun afterTextChanged(s: Editable?) {}
         })
-        column.addView(glassButton("✕ Fechar pesquisa", 14f).apply {
-            setOnClickListener { dialog.dismiss() }
-        })
-        scroll.addView(results)
-        column.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        column.addView(input, LinearLayout.LayoutParams(-1, -2).apply {
-            setMargins(0, dp(8), 0, 0)
-        })
-        dialog.setContentView(column)
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        dialog.window?.setSoftInputMode(
-            android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
-                android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
-        )
-        dialog.show()
-        dialog.window?.apply {
-            setGravity(Gravity.BOTTOM)
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            setSoftInputMode(
-                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
-                    android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
-            )
-        }
-        refresh("")
         input.requestFocus()
         input.post {
-            val keyboard = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-            keyboard.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+            (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+                .showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
         }
     }
 
