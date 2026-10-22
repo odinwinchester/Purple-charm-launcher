@@ -891,17 +891,11 @@ class MainActivity : Activity() {
         val original = app.loadIcon(packageManager)
         if (setting("fallback_skin", "original") != "ghost") return original
 
-        // Camada vetorial de fallback inspirada na paleta Ghost Fire.
-        // Não substitui a máscara bitmap original extraída do APK.
-        val backing = GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(Color.rgb(18, 8, 43), Color.rgb(83, 26, 139), Color.rgb(13, 29, 84))
-        ).apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(17).toFloat()
-            setStroke(dp(2), Color.rgb(166, 107, 245))
-        }
-        return LayerDrawable(arrayOf(backing, InsetDrawable(original, dp(9)))).apply {
+        // Usa o fundo autêntico recuperado do Purple Charm original.
+        // Os ícones personalizados existentes permanecem intocados.
+        @Suppress("DEPRECATION")
+        val originalBorder = resources.getDrawable(R.drawable.purple_original_iconback).mutate()
+        return LayerDrawable(arrayOf(originalBorder, InsetDrawable(original, dp(9)))).apply {
             setLayerInset(1, dp(4), dp(4), dp(4), dp(4))
         }
     }
