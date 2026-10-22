@@ -1286,7 +1286,7 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
-            setPadding(0, dp(10), 0, dp(6))
+            setPadding(0, dp(3), 0, dp(3))
         }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         // Reserva visual para widgets futuros. Não interfere na gaveta de apps.
@@ -1301,7 +1301,7 @@ class MainActivity : Activity() {
         val list = savedPage(index)
         val grid = GridLayout(this).apply {
             columnCount = horizontalIconColumns()
-            setPadding(dp(1), dp(12), dp(1), dp(12))
+            setPadding(dp(1), dp(3), dp(1), dp(5))
         }
         list.forEachIndexed { position, key ->
             val app = resolveKey(key) ?: return@forEachIndexed
@@ -1326,7 +1326,7 @@ class MainActivity : Activity() {
             setPadding(dp(14), dp(14), dp(14), dp(16))
             background = glass(20, true)
         }
-        panel.addView(label("✦ Editar área de trabalho • Página ${page + 1}", 17f, true))
+        panel.addView(label("✦ Organizar Área de Trabalho • Página ${page + 1}", 17f, true))
         for (destination in 0 until pageCount()) {
             if (destination == page) continue
             val target = glassButton("⇢ Arraste um ícone para a página ${destination + 1}", 12f)
@@ -1396,7 +1396,7 @@ class MainActivity : Activity() {
     private fun showClassicCustomizationMenu() {
         val dialog = Dialog(this)
         val icons = arrayOf("＋", "▧", "✦", "⚙", "⌘", "?")
-        val names = arrayOf("Editar", "Papel de parede", "Tema",
+        val names = arrayOf("Organizar", "Papel de parede", "Tema",
             "GO config.", "Sistema", "Ajuda")
         val actions: Array<() -> Unit> = arrayOf(
             { editWorkspaceMenu() },
