@@ -1372,7 +1372,12 @@ class MainActivity : Activity() {
                     setImageResource(R.drawable.purple_original_apps)
                     setPadding(dp(10), dp(10), dp(10), dp(10))
                     scaleType = ImageView.ScaleType.FIT_CENTER
-                    setOnClickListener { if (drawerOpen) showHome() else showDrawer() }
+                    setOnClickListener {
+                        if (pageIndex != 0 || drawerOpen) {
+                            pageIndex = 0
+                            showHome()
+                        }
+                    }
                     // Toque longo reservado: personalização permanece no gesto de deslizar para cima.
                 }
             } else {
