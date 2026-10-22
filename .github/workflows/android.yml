@@ -2,7 +2,7 @@ name: Compilar Purple Charm Launcher
 
 on:
   push:
-    branches: [main, feature/permissive-launcher-evaluation]
+    branches: [main, feature/permissive-launcher-evaluation, fix/workspace-drag-stability]
   workflow_dispatch:
 
 jobs:
