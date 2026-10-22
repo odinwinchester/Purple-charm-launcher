@@ -1308,7 +1308,7 @@ class MainActivity : Activity() {
         panel.setOnLongClickListener { moonWidgetOptions(); true }
         return panel.apply {
             layoutParams = LinearLayout.LayoutParams(-1, dp(heights[size])).apply {
-                setMargins(dp(7), dp(8), dp(7), dp(8))
+                setMargins(dp(7), dp(8), dp(7), 0)
             }
         }
     }
@@ -1346,7 +1346,7 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
-            setPadding(0, dp(3), 0, dp(3))
+            setPadding(0, 0, 0, dp(3))
         }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         // Reserva visual para widgets futuros. Não interfere na gaveta de apps.
@@ -1361,7 +1361,7 @@ class MainActivity : Activity() {
         val list = savedPage(index)
         val grid = GridLayout(this).apply {
             columnCount = horizontalIconColumns()
-            setPadding(dp(1), dp(3), dp(1), dp(5))
+            setPadding(dp(1), 0, dp(1), dp(5))
         }
         list.forEachIndexed { position, key ->
             val app = resolveKey(key) ?: return@forEachIndexed
