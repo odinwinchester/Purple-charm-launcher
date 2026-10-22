@@ -291,6 +291,23 @@ class MainActivity : Activity() {
 
     // Janela de configurações com o fundo neon independente da tela inicial.
     private fun settingsMenu() {
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("✦ Purple Charm • Configurações")
+            .setItems(arrayOf("⚙ Configurações do sistema", "✦ Configurações do tema",
+                "▦ Configurações do launcher")) { _, choice ->
+                when (choice) {
+                    0 -> try {
+                        startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
+                    } catch (_: Exception) {
+                        android.widget.Toast.makeText(this, "Não foi possível abrir o sistema", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    1 -> settingsCategory("Tema")
+                    2 -> settingsCategory("Launcher")
+                }
+            }.show()
+    }
+
+    private fun settingsCategory(category: String) {
         val dialog = Dialog(this)
         val frame = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         val backdrop = ImageView(this).apply {
@@ -305,7 +322,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(28), dp(16), dp(32))
         }
-        menu.addView(label("✦ Purple Charm • Configurações", 22f, true).apply {
+        menu.addView(label("✦ " + category, 22f, true).apply {
             setPadding(dp(4), dp(10), dp(4), dp(24))
         })
         fun option(name: String, action: () -> Unit) {
@@ -317,6 +334,19 @@ class MainActivity : Activity() {
                 setMargins(0, dp(5), 0, dp(5))
             })
         }
+        if (category == "Tema") {
+        option("✦ Importar tema Purple Charm Retro 0.4") {
+            startActivity(Intent(this, RetroImporterActivity::class.java))
+        }
+        option("✦ Máscara para ícones sem tema: " +
+            if (setting("fallback_skin", "original") == "ghost") "Cristal Ghost Fire" else "Original") {
+            chooseSetting("Ícones sem arte original", "fallback_skin",
+                arrayOf("Ícone original do aplicativo", "Cristal violeta • inspirado em Ghost Fire"),
+                arrayOf("original", "ghost"), "original")
+        }
+        option("✦ Papéis de parede Purple Charm") { wallpaperMenu() }
+        option("✦ Aplicar Olho de Cristal na tela de bloqueio") { confirmLockWallpaper() }
+        } else {
         option("✦ Deslizar para cima: " + gestureName(setting("swipe_up", "drawer"))) {
             gestureSetting("Deslizar para cima", "swipe_up", "drawer")
         }
@@ -339,17 +369,6 @@ class MainActivity : Activity() {
                 arrayOf("0", "120", "180", "240", "300"), "180")
         }
         option("✦ Gerenciar páginas (${pageCount()})") { managePages() }
-        option("✦ Importar tema Purple Charm Retro 0.4") {
-            startActivity(Intent(this, RetroImporterActivity::class.java))
-        }
-        option("✦ Máscara para ícones sem tema: " +
-            if (setting("fallback_skin", "original") == "ghost") "Cristal Ghost Fire" else "Original") {
-            chooseSetting("Ícones sem arte original", "fallback_skin",
-                arrayOf("Ícone original do aplicativo", "Cristal violeta • inspirado em Ghost Fire"),
-                arrayOf("original", "ghost"), "original")
-        }
-        option("✦ Papéis de parede Purple Charm") { wallpaperMenu() }
-        option("✦ Aplicar Olho de Cristal na tela de bloqueio") { confirmLockWallpaper() }
         option("✦ Efeito de transição: " + transitionName(setting("transition", "cube"))) {
             chooseSetting("Transição entre páginas", "transition",
                 arrayOf("Cubo 3D", "Giro 3D", "Zoom Crystal", "Deslizar", "Sem animação"),
@@ -374,6 +393,7 @@ class MainActivity : Activity() {
                         .remove("layout_dock_slots").apply()
                     showHome()
                 }.setNegativeButton("Cancelar", null).show()
+        }
         }
         option("✕ Fechar") { }
         scroll.addView(menu)
