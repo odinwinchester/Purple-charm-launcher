@@ -167,7 +167,8 @@ class MainActivity : Activity(), SensorEventListener {
                     } else {
                         val newPage = pageCount()
                         prefs.edit().putInt("layout_page_count", newPage + 1)
-                            .putString("layout_page_$newPage", "").apply()
+                            .putString("layout_page_$newPage", "")
+                            .remove("layout_page_cells_$newPage").apply()
                         pageIndex = newPage
                         showHome()
                     }
@@ -181,7 +182,11 @@ class MainActivity : Activity(), SensorEventListener {
                         val edit = prefs.edit()
                         for (i in pageIndex until count - 1) {
                             edit.putString("layout_page_$i", savedPage(i + 1).joinToString("|"))
+                            val moved = prefs.getString("layout_page_cells_${i + 1}", null)
+                            if (moved == null) edit.remove("layout_page_cells_$i")
+                            else edit.putString("layout_page_cells_$i", moved)
                         }
+                        edit.remove("layout_page_cells_${count - 1}")
                         edit.remove("layout_page_${count - 1}")
                             .putInt("layout_page_count", count - 1).apply()
                         pageIndex = pageIndex.coerceAtMost(count - 2)
@@ -203,8 +208,33 @@ class MainActivity : Activity(), SensorEventListener {
         return initial.toMutableList()
     }
 
+    private fun pageCells(index: Int): MutableList<String> {
+        val keys = savedPage(index).distinct()
+        val cells = MutableList(homeCapacity()) { "" }
+        prefs.getString("layout_page_cells_$index", null)?.split("|")
+            ?.take(cells.size)?.forEachIndexed { slot, key ->
+                if (key.isNotEmpty() && key in keys && key !in cells) cells[slot] = key
+            }
+        keys.forEach { key ->
+            if (key !in cells) {
+                val free = cells.indexOfFirst { it.isEmpty() }
+                if (free >= 0) cells[free] = key
+            }
+        }
+        return cells
+    }
+
     private fun savePage(index: Int, keys: List<String>) {
-        prefs.edit().putString("layout_page_$index", keys.distinct().joinToString("|")).apply()
+        val unique = keys.distinct()
+        val cells = pageCells(index).map { if (it in unique) it else "" }.toMutableList()
+        unique.forEach { key ->
+            if (key !in cells) {
+                val free = cells.indexOfFirst { it.isEmpty() }
+                if (free >= 0) cells[free] = key
+            }
+        }
+        prefs.edit().putString("layout_page_$index", unique.joinToString("|"))
+            .putString("layout_page_cells_$index", cells.joinToString("|")).apply()
     }
 
     private fun savedDock(): MutableList<String> {
@@ -296,30 +326,49 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun placeOnPage(key: String, index: Int, position: Int? = null) {
         if (dragging && dragDropCommitted) return
-        val list = savedPage(index)
-        if (dragging && dragOrigin == null) dragOrigin = index to list.toList()
-        if (list.size >= homeCapacity() && key !in list) {
+        val cells = pageCells(index)
+        val source = cells.indexOf(key)
+        if (source < 0 && cells.none { it.isEmpty() }) {
             Toast.makeText(this, "Página cheia", Toast.LENGTH_SHORT).show()
             return
         }
-        list.remove(key)
-        val at = (position ?: list.size).coerceIn(0, list.size)
-        list.add(at, key)
+        val target = position?.coerceIn(0, cells.lastIndex)
+            ?: cells.indexOfLast { it.isEmpty() }.takeIf { it >= 0 }
+            ?: source.coerceAtLeast(0)
+        if (source == target) return
+        val displaced = cells[target]
+        if (source >= 0) cells[source] = displaced
+        else if (displaced.isNotEmpty()) {
+            val free = cells.indexOfFirst { it.isEmpty() }
+            if (free < 0) return
+            cells[free] = displaced
+        }
+        cells[target] = key
+        val before = WorkspaceLayoutSafety(prefs).capture()
+        val edit = prefs.edit()
         for (other in 0 until pageCount()) if (other != index) {
-            val others = savedPage(other)
-            if (others.remove(key)) savePage(other, others)
+            val others = pageCells(other)
+            val at = others.indexOf(key)
+            if (at >= 0) {
+                others[at] = ""
+                edit.putString("layout_page_$other", others.filter { it.isNotEmpty() }.joinToString("|"))
+                edit.putString("layout_page_cells_$other", others.joinToString("|"))
+            }
         }
-        val slots = dockSlots()
-        val dockAt = slots.indexOf(key)
+        val dock = dockSlots()
+        val dockAt = dock.indexOf(key)
         if (dockAt >= 0) {
-            slots[dockAt] = ""
-            saveDockSlots(slots)
+            dock[dockAt] = ""
+            edit.putString("layout_dock_slots", dock.joinToString("|"))
         }
-        if (dragging) {
-            undoPage = dragOrigin ?: (index to savedPage(index).toList())
-            dragDropCommitted = true
+        edit.putString("layout_page_$index", cells.filter { it.isNotEmpty() }.joinToString("|"))
+            .putString("layout_page_cells_$index", cells.joinToString("|"))
+        if (!edit.commit()) {
+            Toast.makeText(this, "Falha ao salvar posição", Toast.LENGTH_SHORT).show()
+            return
         }
-        savePage(index, list)
+        undoWorkspaceSnapshot = before
+        if (dragging) dragDropCommitted = true
         pageIndex = index
         refreshWorkspaceSafely()
     }
@@ -351,7 +400,7 @@ class MainActivity : Activity(), SensorEventListener {
 
         val sourceSlot = slots.indexOf(key)
         val sourcePage = (0 until pageCount()).firstOrNull { key in savedPage(it) }
-        val sourcePosition = sourcePage?.let { savedPage(it).indexOf(key) } ?: -1
+        val sourcePosition = sourcePage?.let { pageCells(it).indexOf(key) } ?: -1
 
         // Sem posição de origem para receber o atalho substituído:
         // não modificar o dock nem remover atalhos existentes.
@@ -360,14 +409,13 @@ class MainActivity : Activity(), SensorEventListener {
             return
         }
 
-        val updatedPages = (0 until pageCount()).map { savedPage(it) }
+        val updatedPages = (0 until pageCount()).map { pageCells(it) }
         if (sourceSlot >= 0) {
             slots[sourceSlot] = displaced
         } else if (sourcePage != null) {
             val page = updatedPages[sourcePage]
             if (sourcePosition in page.indices) {
-                if (displaced.isEmpty()) page.removeAt(sourcePosition)
-                else page[sourcePosition] = displaced
+                page[sourcePosition] = displaced
             }
         }
         slots[destination] = key
@@ -375,7 +423,8 @@ class MainActivity : Activity(), SensorEventListener {
         // Atualização conjunta: páginas e dock são persistidos no mesmo commit.
         val edit = prefs.edit()
         updatedPages.forEachIndexed { index, page ->
-            edit.putString("layout_page_$index", page.distinct().joinToString("|"))
+            edit.putString("layout_page_$index", page.filter { it.isNotEmpty() }.distinct().joinToString("|"))
+            edit.putString("layout_page_cells_$index", page.joinToString("|"))
         }
         edit.putString("layout_dock_slots", slots.joinToString("|"))
         if (!edit.commit()) {
@@ -536,7 +585,10 @@ class MainActivity : Activity(), SensorEventListener {
                 .setMessage("As posições das páginas e do dock serão apagadas.")
                 .setPositiveButton("Restaurar") { _, _ ->
                     val edit = prefs.edit()
-                    for (i in 0 until maxPages) edit.remove("layout_page_$i")
+                    for (i in 0 until maxPages) {
+                        edit.remove("layout_page_$i")
+                        edit.remove("layout_page_cells_$i")
+                    }
                     edit.remove("layout_page_count").remove("layout_dock")
                         .remove("layout_dock_slots").apply()
                     showHome()
@@ -1612,19 +1664,19 @@ class MainActivity : Activity(), SensorEventListener {
         } else if (index == 0 && widgetSpace > 0) {
             content.addView(View(this), LinearLayout.LayoutParams(-1, dp(widgetSpace)))
         }
-        val list = savedPage(index)
         val grid = GridLayout(this).apply {
             columnCount = horizontalIconColumns()
             setPadding(dp(1), 0, dp(1), dp(5))
         }
-        list.forEachIndexed { position, key ->
-            val app = resolveKey(key) ?: return@forEachIndexed
-            val tile = appTile(app, false, false)
-            acceptDrop(tile) { dropped -> placeOnPage(dropped, index, position) }
+        pageCells(index).forEachIndexed { position, key ->
+            val app = resolveKey(key)
+            val tile = if (app == null) View(this) else appTile(app, false, false)
+            if (app != null) acceptDrop(tile) { dropped -> placeOnPage(dropped, index, position) }
             grid.addView(tile, GridLayout.LayoutParams().apply {
                 width = 0
-                height = ViewGroup.LayoutParams.WRAP_CONTENT
-                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                height = dp(86)
+                rowSpec = GridLayout.spec(position / horizontalIconColumns())
+                columnSpec = GridLayout.spec(position % horizontalIconColumns(), 1f)
             })
         }
         content.addView(grid)
@@ -1654,7 +1706,7 @@ class MainActivity : Activity(), SensorEventListener {
                         val y = (event.y + scroll.scrollY - grid.top).coerceAtLeast(0f)
                         val column = (x.toInt() / cellWidth).coerceIn(0, columns - 1)
                         val row = (y.toInt() / cellHeight).coerceAtLeast(0)
-                        val position = (row * columns + column).coerceIn(0, savedPage(index).size)
+                        val position = (row * columns + column).coerceIn(0, homeCapacity() - 1)
                         placeOnPage(key, index, position)
                         true
                     } else false
