@@ -1024,7 +1024,7 @@ class MainActivity : Activity() {
     }
 
     private fun changePage(destination: Int) {
-        if (drawerOpen || dragging || switchingPage || !::pages.isInitialized) return
+        if (drawerOpen || dragging || !::pages.isInitialized) return
         val target = destination.coerceIn(0, pageCount() - 1)
         if (target == pageIndex) return
         val style = setting("transition", "cube")
@@ -1039,10 +1039,8 @@ class MainActivity : Activity() {
         pageIndex = target
         pages.displayedChild = target
         updateDots()
-        if (style != "none") {
-            switchingPage = true
-            pages.postDelayed({ switchingPage = false }, 410L)
-        }
+        // Não bloquear novos gestos por um temporizador após a animação.
+        switchingPage = false
     }
 
     private fun showHome() {
@@ -1372,7 +1370,30 @@ class MainActivity : Activity() {
         content.addView(grid)
         scroll.addView(content)
         // Permite soltar um atalho também em espaços vazios da página.
-        acceptDrop(scroll) { key -> placeOnPage(key, index) }
+        // A posição do dedo determina a célula de destino, inclusive no espaço vazio.
+        scroll.setOnDragListener { _, event ->
+            when (event.action) {
+                DragEvent.ACTION_DRAG_STARTED ->
+                    event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+                DragEvent.ACTION_DROP -> {
+                    val key = draggedKey(event)
+                    if (key != null) {
+                        val columns = horizontalIconColumns()
+                        val cellWidth = (grid.width / columns).coerceAtLeast(1)
+                        val cellHeight = (grid.getChildAt(0)?.height ?: dp(86)).coerceAtLeast(1)
+                        val x = event.x.coerceAtLeast(0f)
+                        val y = (event.y + scroll.scrollY - grid.top).coerceAtLeast(0f)
+                        val column = (x.toInt() / cellWidth).coerceIn(0, columns - 1)
+                        val row = (y.toInt() / cellHeight).coerceAtLeast(0)
+                        val position = (row * columns + column).coerceIn(0, savedPage(index).size)
+                        placeOnPage(key, index, position)
+                        true
+                    } else false
+                }
+                DragEvent.ACTION_DRAG_ENDED -> { dragging = false; true }
+                else -> true
+            }
+        }
         return scroll
     }
 
