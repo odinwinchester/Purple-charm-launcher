@@ -1043,6 +1043,86 @@ class MainActivity : Activity() {
         root.addView(dock())
     }
 
+    // Widget integrado ao launcher: quatro fases góticas, tamanhos e estilo persistidos.
+    private fun gothicMoonWidget(): View {
+        val phases = arrayOf("☾", "●", "☽", "◯")
+        val names = arrayOf("Crescente", "Cheia", "Minguante", "Nova")
+        val phase = prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)
+        val size = prefs.getInt("gothic_moon_size", 1).coerceIn(0, 2)
+        val animated = prefs.getBoolean("gothic_moon_ornate", true)
+        val heights = intArrayOf(130, 178, 242)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.argb(95, 34, 8, 55), Color.argb(35, 13, 6, 32))
+            ).apply {
+                cornerRadius = dp(20).toFloat()
+                setStroke(dp(1), Color.rgb(170, 107, 239))
+            }
+        }
+        val line = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val moon = TextView(this).apply {
+            text = phases[phase]
+            textSize = if (size == 0) 53f else 77f
+            setTextColor(Color.rgb(219, 166, 255))
+            gravity = Gravity.CENTER
+            setShadowLayer(17f, 0f, 0f, Color.MAGENTA)
+        }
+        line.addView(moon, LinearLayout.LayoutParams(0, -2, 1f))
+        val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        info.addView(label(if (animated) "✦ LUA ${names[phase].uppercase(Locale.ROOT)} ✦" else "Lua ${names[phase]}", 12f, true))
+        val clock = java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(java.util.Date())
+        info.addView(label(clock, 29f, true))
+        info.addView(label(java.text.SimpleDateFormat("EEE, dd MMM", Locale.getDefault()).format(java.util.Date()), 12f))
+        line.addView(info, LinearLayout.LayoutParams(0, -2, 1.25f))
+        panel.addView(line)
+        if (size > 0) panel.addView(label("✧ ────── ❖ ────── ✧", 14f).apply {
+            gravity = Gravity.CENTER
+            setTextColor(lilac)
+        })
+        if (size == 2) panel.addView(label("☽  Purple Charm Crystal Glass  ☾", 13f).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(12), 0, 0)
+        })
+        panel.setOnClickListener { moonWidgetOptions() }
+        panel.setOnLongClickListener { moonWidgetOptions(); true }
+        return panel.apply {
+            layoutParams = LinearLayout.LayoutParams(-1, dp(heights[size])).apply {
+                setMargins(dp(7), dp(8), dp(7), dp(8))
+            }
+        }
+    }
+
+    private fun moonWidgetOptions() {
+        val choices = arrayOf(
+            "☾ Lua crescente", "● Lua cheia", "☽ Lua minguante", "◯ Lua nova",
+            "▣ Compacto 2 × 2", "▤ Padrão 4 × 2", "▥ Ampliado 4 × 3",
+            "✦ Alternar gótico / minimalista", "✕ Ocultar widget"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("☾ Widget Lunar • Purple Charm")
+            .setItems(choices) { _, option ->
+                val editor = prefs.edit()
+                when (option) {
+                    in 0..3 -> editor.putInt("gothic_moon_phase", option)
+                    in 4..6 -> editor.putInt("gothic_moon_size", option - 4)
+                    7 -> editor.putBoolean("gothic_moon_ornate",
+                        !prefs.getBoolean("gothic_moon_ornate", true))
+                    8 -> editor.putBoolean("gothic_moon_visible", false)
+                }
+                editor.apply()
+                showHome()
+            }
+            .setPositiveButton("Fechar", null)
+            .show()
+    }
+
     private fun homePage(index: Int): View {
         val scroll = ScrollView(this).apply {
             isFillViewport = true
@@ -1072,10 +1152,10 @@ class MainActivity : Activity() {
         // Altura personalizável por página; 180dp na tela principal por padrão.
         val widgetSpace = setting("widget_space_dp", "180")
             .toIntOrNull()?.coerceIn(0, 360) ?: 180
-        if (index == 0 && widgetSpace > 0) {
-            content.addView(View(this), LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(widgetSpace)
-            ))
+        if (index == 0 && prefs.getBoolean("gothic_moon_visible", true)) {
+            content.addView(gothicMoonWidget())
+        } else if (index == 0 && widgetSpace > 0) {
+            content.addView(View(this), LinearLayout.LayoutParams(-1, dp(widgetSpace)))
         }
         val list = savedPage(index)
         val grid = GridLayout(this).apply {
