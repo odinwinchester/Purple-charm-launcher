@@ -2220,13 +2220,11 @@ class MainActivity : Activity(), SensorEventListener {
             if (drawerOpen) {
                 drawerAppActions(app)
                 true
-            } else if (editMode) {
-                startAppDrag(tile, app)
             } else {
-                // Primeiro toque longo: entra na edição; o próximo inicia o arraste.
-                // Evita abrir o diálogo cinza e preserva a organização existente.
-                enterEditMode()
-                true
+                // O primeiro toque longo inicia o arraste com o mesmo dedo.
+                // Não reconstruir a tela com enterEditMode() enquanto o dedo
+                // está pressionado: isso cancelaria o gesto em andamento.
+                startAppDrag(tile, app)
             }
         }
 
