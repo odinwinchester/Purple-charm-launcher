@@ -222,6 +222,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun startAppDrag(view: View, app: ResolveInfo): Boolean {
         val data = ClipData.newPlainText("purplecharm", appKey(app))
         dragDropCommitted = false
+        dragFinishScheduled = false
         dragOrigin = pageIndex to savedPage(pageIndex).toList()
         dragging = view.startDragAndDrop(data, View.DragShadowBuilder(view), null, 0)
         if (!dragging) dragOrigin = null
@@ -255,7 +256,21 @@ class MainActivity : Activity(), SensorEventListener {
         }
     }
 
+    private var dragFinishScheduled = false
+
     private fun finishWorkspaceDrag() {
+        // ACTION_DRAG_ENDED chega a vários alvos. Finalize uma única vez,
+        // depois que todos os listeners terminarem de processar o evento.
+        if (!dragging || dragFinishScheduled) return
+        dragFinishScheduled = true
+        pages.post {
+            dragFinishScheduled = false
+            if (!dragging) return@post
+            completeWorkspaceDrag()
+        }
+    }
+
+    private fun completeWorkspaceDrag() {
         dragging = false
         dragOrigin = null
         if (pendingWorkspaceRefresh && !workspaceRefreshScheduled) {
