@@ -23,6 +23,8 @@ import android.content.pm.ResolveInfo
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.LayerDrawable
+import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
@@ -339,6 +341,12 @@ class MainActivity : Activity() {
         option("✦ Gerenciar páginas (${pageCount()})") { managePages() }
         option("✦ Importar tema Purple Charm Retro 0.4") {
             startActivity(Intent(this, RetroImporterActivity::class.java))
+        }
+        option("✦ Máscara para ícones sem tema: " +
+            if (setting("fallback_skin", "original") == "ghost") "Cristal Ghost Fire" else "Original") {
+            chooseSetting("Ícones sem arte original", "fallback_skin",
+                arrayOf("Ícone original do aplicativo", "Cristal violeta • inspirado em Ghost Fire"),
+                arrayOf("original", "ghost"), "original")
         }
         option("✦ Papéis de parede Purple Charm") { wallpaperMenu() }
         option("✦ Aplicar Olho de Cristal na tela de bloqueio") { confirmLockWallpaper() }
@@ -880,7 +888,22 @@ class MainActivity : Activity() {
             }
         }
 
-        return app.loadIcon(packageManager)
+        val original = app.loadIcon(packageManager)
+        if (setting("fallback_skin", "original") != "ghost") return original
+
+        // Camada vetorial de fallback inspirada na paleta Ghost Fire.
+        // Não substitui a máscara bitmap original extraída do APK.
+        val backing = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(Color.rgb(18, 8, 43), Color.rgb(83, 26, 139), Color.rgb(13, 29, 84))
+        ).apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(17).toFloat()
+            setStroke(dp(2), Color.rgb(166, 107, 245))
+        }
+        return LayerDrawable(arrayOf(backing, InsetDrawable(original, dp(9)))).apply {
+            setLayerInset(1, dp(4), dp(4), dp(4), dp(4))
+        }
     }
 
     private fun sectionHeader(
