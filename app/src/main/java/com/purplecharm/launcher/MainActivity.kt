@@ -1372,8 +1372,8 @@ class MainActivity : Activity() {
                     setImageResource(R.drawable.purple_original_apps)
                     setPadding(dp(10), dp(10), dp(10), dp(10))
                     scaleType = ImageView.ScaleType.FIT_CENTER
-                    setOnClickListener { showDrawer() }
-                    setOnLongClickListener { showClassicCustomizationMenu(); true }
+                    setOnClickListener { if (drawerOpen) showHome() else showDrawer() }
+                    // Toque longo reservado: personalização permanece no gesto de deslizar para cima.
                 }
             } else {
                 val dockIndex = if (slot < 2) slot else slot - 1
