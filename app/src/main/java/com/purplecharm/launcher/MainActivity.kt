@@ -461,7 +461,13 @@ class MainActivity : Activity() {
     private fun dp(n: Int): Int =
         (n * resources.displayMetrics.density).toInt()
 
+    private var appsLoadedAt = 0L
+
     private fun loadApps() {
+        // Evita consultar e ordenar todos os aplicativos a cada retorno à Home.
+        val now = android.os.SystemClock.uptimeMillis()
+        if (apps.isNotEmpty() && now - appsLoadedAt < 10_000L) return
+        appsLoadedAt = now
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
 
@@ -993,7 +999,7 @@ class MainActivity : Activity() {
     }
 
     private fun pageAnimation(style: String, incoming: Boolean, forward: Boolean): Animation {
-        val duration = 380L
+        val duration = 260L
         val animation: Animation = when (style) {
             "cube", "flip" -> {
                 val angle = if (style == "cube") 88f else 72f
