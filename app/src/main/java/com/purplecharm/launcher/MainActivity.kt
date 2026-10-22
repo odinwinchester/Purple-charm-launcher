@@ -1465,12 +1465,6 @@ class MainActivity : Activity() {
         val root = buildRoot()
         backgroundImage.setImageResource(R.drawable.wallpaper_neon)
         val results = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val scroll = ScrollView(this).apply {
-            clipToPadding = false
-            setPadding(dp(10), dp(8), dp(10), dp(8))
-            addView(results)
-        }
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         val searchRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1499,6 +1493,12 @@ class MainActivity : Activity() {
         root.addView(searchRow, LinearLayout.LayoutParams(-1, -2).apply {
             setMargins(dp(12), dp(6), dp(12), dp(10))
         })
+        val scroll = ScrollView(this).apply {
+            clipToPadding = false
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            addView(results)
+        }
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         fun refresh(query: String) {
             results.removeAllViews()
             if (query.isBlank()) return
@@ -1542,6 +1542,7 @@ class MainActivity : Activity() {
             }
             override fun afterTextChanged(s: Editable?) {}
         })
+        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         input.requestFocus()
         input.post {
             (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
