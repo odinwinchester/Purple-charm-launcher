@@ -1648,6 +1648,65 @@ class MainActivity : Activity() {
         }
 
     // Substitui os alvos permanentes da gaveta por um menu no toque longo.
+    private fun homeAppActions(app: ResolveInfo) {
+        val name = app.loadLabel(packageManager).toString()
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle(name)
+            .setItems(arrayOf("Mover para outra página", "Remover atalho da tela inicial")) { _, choice ->
+                if (choice == 0) {
+                    appPlacementMenu(app)
+                } else {
+                    AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        .setTitle("Remover atalho?")
+                        .setMessage("Remover $name da tela inicial? O aplicativo continuará instalado.")
+                        .setNegativeButton("Cancelar", null)
+                        .setPositiveButton("Remover") { _, _ -> removeShortcut(appKey(app)) }
+                        .show()
+                }
+            }.show()
+    }
+
+    private fun drawerAppActions(app: ResolveInfo) {
+        val name = app.loadLabel(packageManager).toString()
+        val pkg = app.activityInfo.packageName
+        val systemApp = (app.activityInfo.applicationInfo.flags and
+            android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+        val options = if (systemApp) {
+            arrayOf("Adicionar à tela inicial", "Informações do aplicativo")
+        } else {
+            arrayOf("Adicionar à tela inicial", "Desinstalar aplicativo", "Informações do aplicativo")
+        }
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle(name)
+            .setItems(options) { _, choice ->
+                when {
+                    choice == 0 -> appPlacementMenu(app)
+                    !systemApp && choice == 1 -> {
+                        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                            .setTitle("Desinstalar $name?")
+                            .setMessage("O Android pedirá sua confirmação antes de desinstalar o aplicativo.")
+                            .setNegativeButton("Cancelar", null)
+                            .setPositiveButton("Continuar") { _, _ ->
+                                try {
+                                    startActivity(Intent(Intent.ACTION_DELETE,
+                                        Uri.parse("package:$pkg")))
+                                } catch (_: Exception) {
+                                    Toast.makeText(this, "Não foi possível abrir a desinstalação",
+                                        Toast.LENGTH_SHORT).show()
+                                }
+                            }.show()
+                    }
+                    else -> try {
+                        startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:$pkg")))
+                    } catch (_: Exception) {
+                        Toast.makeText(this, "Não foi possível abrir as informações",
+                            Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }.show()
+    }
+
     private fun appPlacementMenu(app: ResolveInfo) {
         val options = (1..pageCount()).map { "Adicionar à página $it" } +
             listOf("Adicionar ao dock", "Gerenciar páginas")
@@ -1896,11 +1955,11 @@ class MainActivity : Activity() {
 
         tile.setOnLongClickListener {
             if (drawerOpen) {
-                appPlacementMenu(app)
-                true
+                drawerAppActions(app)
             } else {
-                startAppDrag(tile, app)
+                homeAppActions(app)
             }
+            true
         }
 
         return tile
