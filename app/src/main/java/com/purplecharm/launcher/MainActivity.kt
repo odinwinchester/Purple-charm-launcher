@@ -1550,10 +1550,15 @@ class MainActivity : Activity(), SensorEventListener {
         }
         content.addView(grid)
         scroll.addView(content)
-        scroll.setOnLongClickListener {
-            enterEditMode()
+        // O espaço vazio pode pertencer ao conteúdo, à grade ou ao ScrollView.
+        // Encaminhe o toque longo desses contêineres ao modo de edição.
+        val editOnEmptySpace = View.OnLongClickListener {
+            if (!drawerOpen) enterEditMode()
             true
         }
+        scroll.setOnLongClickListener(editOnEmptySpace)
+        content.setOnLongClickListener(editOnEmptySpace)
+        grid.setOnLongClickListener(editOnEmptySpace)
         // Permite soltar um atalho também em espaços vazios da página.
         // A posição do dedo determina a célula de destino, inclusive no espaço vazio.
         scroll.setOnDragListener { _, event ->
@@ -2139,7 +2144,9 @@ class MainActivity : Activity(), SensorEventListener {
             } else if (editMode) {
                 startAppDrag(tile, app)
             } else {
-                homeAppActions(app)
+                // Primeiro toque longo: entra na edição; o próximo inicia o arraste.
+                // Evita abrir o diálogo cinza e preserva a organização existente.
+                enterEditMode()
                 true
             }
         }
