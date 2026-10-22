@@ -1044,6 +1044,81 @@ class MainActivity : Activity() {
     }
 
     // Widget integrado ao launcher: quatro fases góticas, tamanhos e estilo persistidos.
+    // Open-Meteo: consulta apenas coordenadas configuradas pelo usuario.
+    // Sem coordenadas, o widget continua astronomico e offline.
+    private fun refreshGothicWeather() {
+        val lat = prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull() ?: return
+        val lon = prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull() ?: return
+        if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return
+        val last = prefs.getLong("gothic_weather_updated", 0L)
+        if (System.currentTimeMillis() - last < 30 * 60 * 1000L) return
+        Thread {
+            try {
+                val url = java.net.URL(
+                    "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
+                    "&current=temperature_2m,relative_humidity_2m,weather_code,is_day,wind_speed_10m&timezone=auto"
+                )
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.connectTimeout = 8000
+                connection.readTimeout = 8000
+                try {
+                    val json = org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                        .getJSONObject("current")
+                    val editor = prefs.edit()
+                    editor.putInt("gothic_weather_code", json.getInt("weather_code"))
+                    editor.putString("gothic_weather_temp", json.getDouble("temperature_2m").toInt().toString())
+                    editor.putInt("gothic_weather_day", json.getInt("is_day"))
+                    editor.putInt("gothic_weather_humidity", json.getInt("relative_humidity_2m"))
+                    editor.putString("gothic_weather_wind", json.getDouble("wind_speed_10m").toInt().toString())
+                    editor.putLong("gothic_weather_updated", System.currentTimeMillis())
+                    editor.apply()
+                    runOnUiThread { if (!drawerOpen && ::pages.isInitialized) showHome() }
+                } finally {
+                    connection.disconnect()
+                }
+            } catch (_: Exception) {
+                // Sem rede: preserva o ultimo dado disponivel e nao bloqueia a tela.
+            }
+        }.start()
+    }
+
+    private fun gothicWeatherSettings() {
+        val input = EditText(this).apply {
+            setSingleLine(true)
+            hint = "Latitude, longitude (ex.: -20.4, -54.6)"
+            setText(
+                listOfNotNull(
+                    prefs.getString("gothic_weather_lat", null),
+                    prefs.getString("gothic_weather_lon", null)
+                ).joinToString(", ")
+            )
+            setPadding(dp(18), dp(14), dp(18), dp(14))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("✧ Local do Clima Gótico")
+            .setMessage("Informe coordenadas da cidade desejada. Não acessamos sua localização automaticamente.")
+            .setView(input)
+            .setPositiveButton("Salvar") { _, _ ->
+                val parts = input.text.toString().split(",").map { it.trim() }
+                val lat = parts.getOrNull(0)?.toDoubleOrNull()
+                val lon = parts.getOrNull(1)?.toDoubleOrNull()
+                if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0) {
+                    prefs.edit().putString("gothic_weather_lat", lat.toString())
+                        .putString("gothic_weather_lon", lon.toString())
+                        .putLong("gothic_weather_updated", 0L).apply()
+                    refreshGothicWeather()
+                    showHome()
+                } else Toast.makeText(this, "Use latitude, longitude válidas", Toast.LENGTH_LONG).show()
+            }
+            .setNeutralButton("Desativar clima") { _, _ ->
+                prefs.edit().remove("gothic_weather_lat").remove("gothic_weather_lon")
+                    .remove("gothic_weather_updated").apply()
+                showHome()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
     private fun gothicMoonWidget(): View {
         val phases = arrayOf("☾", "●", "☽", "◯")
         val names = arrayOf("Crescente", "Cheia", "Minguante", "Nova")
@@ -1070,6 +1145,19 @@ class MainActivity : Activity() {
         val sunStyle = prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
         val sunSymbols = arrayOf("☼", "✺", "⛅", "☀")
         val sunNames = arrayOf("Sol Gótico", "Sol de Cristal", "Sol com Nuvens", "Sol Nascente")
+        val weatherActive = prefs.contains("gothic_weather_lat")
+        val weatherLoaded = weatherActive && prefs.getLong("gothic_weather_updated", 0L) > 0L
+        val weatherCode = prefs.getInt("gothic_weather_code", 0)
+        val rainy = weatherLoaded && (weatherCode in 51..67 || weatherCode in 80..82 || weatherCode in 95..99)
+        val snowy = weatherLoaded && (weatherCode in 71..77 || weatherCode in 85..86)
+        val cold = weatherLoaded && (prefs.getString("gothic_weather_temp", "99")?.toIntOrNull() ?: 99) <= 12
+        val weatherScene = when {
+            snowy -> if (isSun) "❄ Inverno Gótico" else "❄ Noite Gelada"
+            rainy -> if (isSun) "☂ Chuva Gótica" else "☂ Noite Chuvosa"
+            cold -> if (isSun) "❅ Dia Frio" else "❅ Noite Fria"
+            weatherLoaded && weatherCode in 1..3 -> if (isSun) "☁ Céu Gótico" else "☁ Noite Nublada"
+            else -> null
+        }
         val size = prefs.getInt("gothic_moon_size", 1).coerceIn(0, 2)
         val animated = prefs.getBoolean("gothic_moon_ornate", true)
         val heights = intArrayOf(130, 178, 242)
@@ -1090,7 +1178,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         val moon = TextView(this).apply {
-            text = if (isSun) sunSymbols[if (mode == 0) {
+            text = if (snowy || cold) "❄" else if (rainy) "☂" else if (isSun) sunSymbols[if (mode == 0) {
                 when (hour) { in 6..9 -> 3; in 16..17 -> 0; else -> 1 }
             } else sunStyle] else phases[phase]
             textSize = if (size == 0) 53f else 77f
@@ -1103,9 +1191,10 @@ class MainActivity : Activity() {
         val celestialName = if (isSun) sunNames[if (mode == 0) {
             when (hour) { in 6..9 -> 3; in 16..17 -> 0; else -> 1 }
         } else sunStyle] else "Lua ${names[phase]}"
-        info.addView(label(if (animated) "✦ ${celestialName.uppercase(Locale.ROOT)} ✦" else celestialName, 12f, true))
+        val sceneName = weatherScene ?: celestialName
+        info.addView(label(if (animated) "✦ ${sceneName.uppercase(Locale.ROOT)} ✦" else sceneName, 12f, true))
         val clock = java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(java.util.Date())
-        info.addView(label(clock, 29f, true))
+        info.addView(label(if (weatherLoaded) "${prefs.getString("gothic_weather_temp", "--")}°C  •  $clock" else clock, 26f, true))
         info.addView(label(java.text.SimpleDateFormat("EEE, dd MMM", Locale.getDefault()).format(java.util.Date()), 12f))
         line.addView(info, LinearLayout.LayoutParams(0, -2, 1.25f))
         panel.addView(line)
@@ -1131,7 +1220,7 @@ class MainActivity : Activity() {
             "☀☾ Ciclo automático Sol / Lua",
             "▣ Compacto 2 × 2", "▤ Padrão 4 × 2", "▥ Ampliado 4 × 3",
             "✦ Alternar gótico / minimalista",
-            "✕ Ocultar widget"
+            "✕ Ocultar widget", "☁ Configurar cidade e clima"
         )
         AlertDialog.Builder(this)
             .setTitle("☀☾ Ciclo Gótico • Purple Charm")
@@ -1145,7 +1234,7 @@ class MainActivity : Activity() {
                     in 1..3 -> editor.putInt("gothic_moon_size", option - 1)
                     4 -> editor.putBoolean("gothic_moon_ornate",
                         !prefs.getBoolean("gothic_moon_ornate", true))
-                    5 -> editor.putBoolean("gothic_moon_visible", false)
+                    5 -> editor.putBoolean("gothic_moon_visible", false)\n                    6 -> { gothicWeatherSettings(); return@setItems }
                 }
                 editor.apply()
                 showHome()
