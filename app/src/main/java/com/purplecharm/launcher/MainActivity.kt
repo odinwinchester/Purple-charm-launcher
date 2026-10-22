@@ -1234,7 +1234,8 @@ class MainActivity : Activity() {
                     in 1..3 -> editor.putInt("gothic_moon_size", option - 1)
                     4 -> editor.putBoolean("gothic_moon_ornate",
                         !prefs.getBoolean("gothic_moon_ornate", true))
-                    5 -> editor.putBoolean("gothic_moon_visible", false)\n                    6 -> { gothicWeatherSettings(); return@setItems }
+                    5 -> editor.putBoolean("gothic_moon_visible", false)
+                    6 -> { gothicWeatherSettings(); return@setItems }
                 }
                 editor.apply()
                 showHome()
