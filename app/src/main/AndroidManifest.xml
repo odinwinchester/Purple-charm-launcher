@@ -13,7 +13,7 @@
 
     <application
         android:theme="@style/AppTheme"
-        android:label="Purple Charm Launcher"
+        android:label="@string/launcher_display_name"
         android:icon="@drawable/purple_eye_app_icon"
         android:allowBackup="false"
         android:supportsRtl="true">
