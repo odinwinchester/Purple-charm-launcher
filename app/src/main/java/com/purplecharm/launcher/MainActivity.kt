@@ -1337,64 +1337,126 @@ class MainActivity : Activity() {
             }.show()
     }
 
+    private fun drawerCategory(app: ResolveInfo): String {
+        val pkg = app.activityInfo.packageName.lowercase(Locale.ROOT)
+        val name = normalize(app.loadLabel(packageManager).toString())
+        return when {
+            listOf("whatsapp", "telegram", "discord", "messenger", "facebook", "instagram",
+                "signal", "sms", "contacts", "contatos", "telefone", "phone", "gmail",
+                "email", "outlook", "messages").any { it in pkg || it in name } -> "Comunicação"
+            listOf("youtube", "netflix", "spotify", "music", "musica", "game",
+                "jogo", "tiktok", "twitch", "video", "player", "disney",
+                "primevideo", "pinterest").any { it in pkg || it in name } -> "Entretenimento"
+            else -> "Outros"
+        }
+    }
+
     private fun showDrawer() {
         drawerOpen = true
         loadApps()
-
         val root = buildRoot()
-        // Gaveta usa fundo próprio; voltar à tela inicial restaura a escolha do usuário.
         backgroundImage.setImageResource(R.drawable.wallpaper_neon)
-
+        val categories = listOf("Tudo", "Comunicação", "Entretenimento", "Outros")
+        var selected = "Tudo"
+        val tabs = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val tabsScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(tabs)
+        }
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        header.addView(label("Aplicativos", 19f, true).apply {
-            setPadding(0, dp(6), 0, dp(6))
-        }, LinearLayout.LayoutParams(0, -2, 1f))
-        header.addView(glassButton("⚙", 19f).apply {
+        header.addView(tabsScroll, LinearLayout.LayoutParams(0, dp(55), 1f))
+        header.addView(TextView(this).apply {
+            text = "⚙"
+            textSize = 25f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
             setOnClickListener { settingsMenu() }
-        }, LinearLayout.LayoutParams(dp(54), dp(52)))
+        }, LinearLayout.LayoutParams(dp(48), dp(52)))
         root.addView(header)
 
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val scroll = ScrollView(this).apply {
             clipToPadding = false
-            setPadding(0, dp(9), 0, dp(9))
+            addView(content)
         }
-
-        // CRYSTAL GLASS:
-        // Sem painel roxo escuro atrás da grade.
-        // O wallpaper fica visível entre os ícones.
-        val container = LinearLayout(this).apply {
+        val alphabet = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = null
-            setPadding(dp(3), dp(10), dp(3), dp(10))
+            gravity = Gravity.CENTER
         }
+        val main = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        main.addView(scroll, LinearLayout.LayoutParams(0, -1, 1f))
+        main.addView(alphabet, LinearLayout.LayoutParams(dp(22), -1))
+        root.addView(main, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        // Gaveta limpa: organização disponível no toque longo dos aplicativos.
-        container.addView(appGrid(apps, true))
-        scroll.addView(container)
-
-        root.addView(
-            scroll,
-            LinearLayout.LayoutParams(-1, 0, 1f)
-        )
-
-        // Pesquisa fixa no rodapé da gaveta; teclado aparece sobre ela na busca.
+        fun render() {
+            content.removeAllViews()
+            val visible = if (selected == "Tudo") apps else apps.filter {
+                drawerCategory(it) == selected
+            }
+            val sorted = visible.sortedBy { normalize(it.loadLabel(packageManager).toString()) }
+            val sections = sorted.groupBy {
+                normalize(it.loadLabel(packageManager).toString()).firstOrNull()
+                    ?.uppercaseChar()?.toString() ?: "#"
+            }
+            sections.forEach { (letter, group) ->
+                val section = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                section.tag = "section_$letter"
+                section.addView(label(letter, 13f, true).apply {
+                    setTextColor(lilac)
+                    setPadding(dp(8), dp(8), 0, dp(2))
+                })
+                section.addView(appGrid(group, true, 5))
+                content.addView(section)
+            }
+            alphabet.removeAllViews()
+            sections.keys.forEach { letter ->
+                alphabet.addView(TextView(this).apply {
+                    text = letter
+                    textSize = 10f
+                    gravity = Gravity.CENTER
+                    setTextColor(lilac)
+                    setOnClickListener {
+                        val target = content.findViewWithTag<View>("section_$letter")
+                        if (target != null) scroll.smoothScrollTo(0, target.top)
+                    }
+                }, LinearLayout.LayoutParams(-1, 0, 1f))
+            }
+            tabs.removeAllViews()
+            categories.forEach { category ->
+                tabs.addView(TextView(this).apply {
+                    text = category
+                    textSize = 16f
+                    setTextColor(if (selected == category) lilac else Color.WHITE)
+                    setPadding(dp(11), dp(10), dp(11), dp(10))
+                    setOnClickListener {
+                        selected = category
+                        render()
+                        scroll.scrollTo(0, 0)
+                    }
+                })
+            }
+        }
+        render()
         root.addView(crystalSearchBar(), LinearLayout.LayoutParams(-1, -2).apply {
-            setMargins(dp(3), dp(5), dp(3), dp(8))
-        })
-        root.addView(glassButton("⌂ Início", 13f).apply {
-            setOnClickListener { pageIndex = 0; showHome() }
+            setMargins(dp(8), dp(8), dp(8), dp(12))
         })
     }
 
     private fun appGrid(
         items: List<ResolveInfo>,
-        allowFavorite: Boolean
+        allowFavorite: Boolean,
+        columns: Int = horizontalIconColumns()
     ): GridLayout {
         val grid = GridLayout(this).apply {
-            columnCount = horizontalIconColumns()
+            columnCount = columns
             background = null
             setPadding(dp(1), dp(12), dp(1), dp(12))
         }
