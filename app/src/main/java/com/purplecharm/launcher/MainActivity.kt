@@ -1128,29 +1128,24 @@ class MainActivity : Activity() {
 
     private fun moonWidgetOptions() {
         val choices = arrayOf(
-            "☾ Lua crescente", "● Lua cheia", "☽ Lua minguante", "◯ Lua nova",
+            "☀☾ Ciclo automático Sol / Lua",
             "▣ Compacto 2 × 2", "▤ Padrão 4 × 2", "▥ Ampliado 4 × 3",
-            "✦ Alternar gótico / minimalista", "☽ Fases automáticas",
-            "✋ Escolher fase manualmente", "✕ Ocultar widget",
-            "☀ Alternância automática Sol / Lua", "☼ Sol Gótico Clássico",
-            "✺ Sol de Cristal", "⛅ Sol com Nuvens", "☀ Sol Nascente",
-            "☾ Mostrar Lua manualmente"
+            "✦ Alternar gótico / minimalista",
+            "✕ Ocultar widget"
         )
         AlertDialog.Builder(this)
-            .setTitle("☾ Widget Lunar • Purple Charm")
+            .setTitle("☀☾ Ciclo Gótico • Purple Charm")
             .setItems(choices) { _, option ->
                 val editor = prefs.edit()
                 when (option) {
-                    in 0..3 -> { editor.putInt("gothic_moon_phase", option); editor.putBoolean("gothic_moon_auto", false) }
-                    in 4..6 -> editor.putInt("gothic_moon_size", option - 4)
-                    7 -> editor.putBoolean("gothic_moon_ornate",
+                    0 -> {
+                        editor.putInt("gothic_celestial_mode", 0)
+                        editor.putBoolean("gothic_moon_auto", true)
+                    }
+                    in 1..3 -> editor.putInt("gothic_moon_size", option - 1)
+                    4 -> editor.putBoolean("gothic_moon_ornate",
                         !prefs.getBoolean("gothic_moon_ornate", true))
-                    8 -> editor.putBoolean("gothic_moon_auto", true)
-                    9 -> editor.putBoolean("gothic_moon_auto", false)
-                    10 -> editor.putBoolean("gothic_moon_visible", false)
-                    11 -> editor.putInt("gothic_celestial_mode", 0)
-                    in 12..15 -> { editor.putInt("gothic_celestial_mode", 1); editor.putInt("gothic_sun_style", option - 12) }
-                    16 -> editor.putInt("gothic_celestial_mode", 2)
+                    5 -> editor.putBoolean("gothic_moon_visible", false)
                 }
                 editor.apply()
                 showHome()
