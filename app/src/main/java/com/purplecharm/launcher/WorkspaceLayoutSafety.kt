@@ -12,6 +12,7 @@ internal class WorkspaceLayoutSafety(private val preferences: SharedPreferences)
     data class Snapshot(
         val pageCount: Int,
         val pages: List<String?>,
+        val pageCells: List<String?>,
         val dock: String?,
         val dockSlots: String?
     )
@@ -21,17 +22,23 @@ internal class WorkspaceLayoutSafety(private val preferences: SharedPreferences)
         return Snapshot(
             pageCount = count,
             pages = (0 until count).map { preferences.getString("layout_page_$it", null) },
+            pageCells = (0 until count).map { preferences.getString("layout_page_cells_$it", null) },
             dock = preferences.getString("layout_dock", null),
             dockSlots = preferences.getString("layout_dock_slots", null)
         )
     }
 
     fun isValid(snapshot: Snapshot): Boolean {
-        if (snapshot.pageCount !in 3..8 || snapshot.pages.size != snapshot.pageCount) return false
+        if (snapshot.pageCount !in 3..8 || snapshot.pages.size != snapshot.pageCount ||
+            snapshot.pageCells.size != snapshot.pageCount) return false
         val pageItems = snapshot.pages.flatMap { raw ->
             raw?.split('|')?.filter { it.isNotBlank() } ?: emptyList()
         }
         if (pageItems.any { it.contains('|') } || pageItems.size != pageItems.distinct().size) return false
+        if (snapshot.pageCells.any { raw ->
+                raw != null && raw.split('|').filter { it.isNotEmpty() }.distinct().size !=
+                    raw.split('|').count { it.isNotEmpty() }
+            }) return false
         val dockItems = snapshot.dockSlots?.split('|')?.filter { it.isNotBlank() }
             ?: snapshot.dock?.split('|')?.filter { it.isNotBlank() }
             ?: emptyList()
@@ -50,6 +57,9 @@ internal class WorkspaceLayoutSafety(private val preferences: SharedPreferences)
             val value = snapshot.pages.getOrNull(i)
             if (value == null) edit.remove("layout_page_$i")
             else edit.putString("layout_page_$i", value)
+            val cells = snapshot.pageCells.getOrNull(i)
+            if (cells == null) edit.remove("layout_page_cells_$i")
+            else edit.putString("layout_page_cells_$i", cells)
         }
         if (snapshot.dock == null) edit.remove("layout_dock")
         else edit.putString("layout_dock", snapshot.dock)
