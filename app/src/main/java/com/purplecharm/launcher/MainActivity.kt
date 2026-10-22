@@ -1,5 +1,9 @@
 package com.purplecharm.launcher
 
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.app.Activity
 import android.app.Dialog
 import android.app.WallpaperManager
@@ -52,7 +56,70 @@ import java.text.Normalizer
 import java.util.Locale
 import kotlin.math.abs
 
-class MainActivity : Activity() {
+class MainActivity : Activity(), SensorEventListener {
+    private var editMode = false
+    private var lastShakeAt = 0L
+    private var undoPage: Pair<Int, List<String>>? = null
+    private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
+    private var accelerometer: Sensor? = null
+
+    private fun enterEditMode() {
+        if (editMode || drawerOpen) return
+        editMode = true
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        accelerometer?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
+        showHome()
+        if (accelerometer == null) Toast.makeText(this, "Sensor de movimento indisponível", Toast.LENGTH_LONG).show()
+    }
+
+    private fun leaveEditMode() {
+        editMode = false
+        sensorManager.unregisterListener(this)
+        showHome()
+    }
+
+    private fun alphabetizeCurrentPage() {
+        if (!editMode || drawerOpen) return
+        val index = pageIndex
+        val before = savedPage(index)
+        val after = before.sortedWith(compareBy<String> {
+            normalize(resolveKey(it)?.loadLabel(packageManager)?.toString() ?: it)
+        }.thenBy { it })
+        if (after == before) {
+            Toast.makeText(this, "Esta página já está em ordem alfabética", Toast.LENGTH_SHORT).show()
+            return
+        }
+        undoPage = index to before.toList()
+        savePage(index, after)
+        showHome()
+        Toast.makeText(this, "Página organizada de A a Z", Toast.LENGTH_SHORT).show()
+    }
+
+    override fun onSensorChanged(event: SensorEvent) {
+        if (!editMode || drawerOpen || event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
+        val x = event.values[0]
+        val y = event.values[1]
+        val z = event.values[2]
+        val magnitude = kotlin.math.sqrt(x*x + y*y + z*z)
+        val now = android.os.SystemClock.uptimeMillis()
+        if (magnitude > 22f && now - lastShakeAt > 1800L) {
+            lastShakeAt = now
+            alphabetizeCurrentPage()
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    override fun onPause() {
+        super.onPause()
+        sensorManager.unregisterListener(this)
+    }
+    override fun onResume() {
+        super.onResume()
+        if (editMode) accelerometer?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+
 
     private val prefs by lazy {
         getSharedPreferences("purple_charm_favorites", MODE_PRIVATE)
@@ -1139,6 +1206,34 @@ class MainActivity : Activity() {
         updateDots()
 
         root.addView(dock())
+        if (editMode) {
+            val controls = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(8), dp(5), dp(8), dp(5))
+            }
+            controls.addView(label("✦ Modo de edição • agite para organizar A–Z", 12f))
+            val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            val undo = glassButton("↶ Desfazer", 12f).apply {
+                setOnClickListener {
+                    val snapshot = undoPage
+                    if (snapshot != null) {
+                        savePage(snapshot.first, snapshot.second)
+                        pageIndex = snapshot.first
+                        undoPage = null
+                        showHome()
+                    }
+                }
+            }
+            actions.addView(undo, LinearLayout.LayoutParams(0, -2, 1f))
+            actions.addView(glassButton("A–Z Organizar", 12f).apply {
+                setOnClickListener { alphabetizeCurrentPage() }
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            actions.addView(glassButton("✓ Concluído", 12f).apply {
+                setOnClickListener { leaveEditMode() }
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            controls.addView(actions)
+            root.addView(controls)
+        }
     }
 
     // Widget integrado ao launcher: quatro fases góticas, tamanhos e estilo persistidos.
@@ -1375,6 +1470,10 @@ class MainActivity : Activity() {
         }
         content.addView(grid)
         scroll.addView(content)
+        scroll.setOnLongClickListener {
+            enterEditMode()
+            true
+        }
         // Permite soltar um atalho também em espaços vazios da página.
         // A posição do dedo determina a célula de destino, inclusive no espaço vazio.
         scroll.setOnDragListener { _, event ->
@@ -1956,10 +2055,12 @@ class MainActivity : Activity() {
         tile.setOnLongClickListener {
             if (drawerOpen) {
                 drawerAppActions(app)
+            } else if (editMode) {
+                startAppDrag(tile, app)
             } else {
                 homeAppActions(app)
+                true
             }
-            true
         }
 
         return tile
