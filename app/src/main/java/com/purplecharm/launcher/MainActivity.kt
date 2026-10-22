@@ -1644,28 +1644,40 @@ class MainActivity : Activity() {
                 normalize(it.loadLabel(packageManager).toString()).firstOrNull()
                     ?.uppercaseChar()?.toString() ?: "#"
             }
+            // Grade contínua: sem títulos A/B/C entre os aplicativos.
             sections.forEach { (letter, group) ->
-                val section = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-                section.tag = "section_$letter"
-                section.addView(label(letter, 13f, true).apply {
-                    setTextColor(lilac)
-                    setPadding(dp(8), dp(8), 0, dp(2))
-                })
+                val section = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    tag = "section_$letter"
+                }
                 section.addView(appGrid(group, true, 5))
                 content.addView(section)
             }
             alphabet.removeAllViews()
-            sections.keys.forEach { letter ->
+            val letters = sections.keys.toList()
+            letters.forEach { letter ->
                 alphabet.addView(TextView(this).apply {
                     text = letter
                     textSize = 10f
                     gravity = Gravity.CENTER
                     setTextColor(lilac)
-                    setOnClickListener {
-                        val target = content.findViewWithTag<View>("section_$letter")
-                        if (target != null) scroll.smoothScrollTo(0, target.top)
-                    }
                 }, LinearLayout.LayoutParams(-1, 0, 1f))
+            }
+            // Deslizar sobre o índice percorre a lista sem exigir toques individuais.
+            alphabet.setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                        if (letters.isNotEmpty() && view.height > 0) {
+                            val index = ((event.y.coerceIn(0f, view.height.toFloat() - 1f) /
+                                view.height) * letters.size).toInt().coerceIn(0, letters.lastIndex)
+                            val target = content.findViewWithTag<View>("section_${letters[index]}")
+                            if (target != null) scroll.scrollTo(0, target.top)
+                        }
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> true
+                    else -> false
+                }
             }
             tabs.removeAllViews()
             categories.forEach { category ->
