@@ -1623,7 +1623,11 @@ class MainActivity : Activity(), SensorEventListener {
             "☀☾ Ciclo automático Sol / Lua",
             "▣ Compacto 2 × 2", "▤ Padrão 4 × 2", "▥ Ampliado 4 × 3",
             "✦ Alternar gótico / minimalista",
-            "✕ Ocultar widget", "☁ Configurar cidade e clima"
+            "✕ Ocultar widget", "☁ Configurar cidade e clima",
+            "☀ Sol Gótico • Clássico", "✺ Sol de Cristal",
+            "⛅ Sol com Nuvens", "☀ Sol Nascente",
+            "☾ Lua Gótica • fase automática",
+            "☾ Lua Crescente", "● Lua Cheia", "☽ Lua Minguante", "◯ Lua Nova"
         )
         AlertDialog.Builder(this)
             .setTitle("☀☾ Ciclo Gótico • Purple Charm")
@@ -1639,6 +1643,19 @@ class MainActivity : Activity(), SensorEventListener {
                         !prefs.getBoolean("gothic_moon_ornate", true))
                     5 -> editor.putBoolean("gothic_moon_visible", false)
                     6 -> { gothicWeatherSettings(); return@setItems }
+                    in 7..10 -> {
+                        editor.putInt("gothic_celestial_mode", 1)
+                        editor.putInt("gothic_sun_style", option - 7)
+                    }
+                    11 -> {
+                        editor.putInt("gothic_celestial_mode", 2)
+                        editor.putBoolean("gothic_moon_auto", true)
+                    }
+                    in 12..15 -> {
+                        editor.putInt("gothic_celestial_mode", 2)
+                        editor.putBoolean("gothic_moon_auto", false)
+                        editor.putInt("gothic_moon_phase", option - 12)
+                    }
                 }
                 editor.apply()
                 showHome()
