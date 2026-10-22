@@ -1289,24 +1289,6 @@ class MainActivity : Activity() {
             setPadding(0, dp(10), 0, dp(6))
         }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val titles = arrayOf("✦ Minha página", "✦ Favoritos", "✦ Mais aplicativos")
-        // Sem o grande cabeçalho de vidro que não existe no tema original.
-        // Solte nos botões para enviar o ícone a outra página.
-        val pageTargets = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-        val pageTargetsScroll = android.widget.HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(pageTargets)
-        }
-        for (destination in 0 until pageCount()) {
-            if (destination == index) continue
-            val target = glassButton("⇢ Página ${destination + 1}", 12f)
-            acceptDrop(target) { key -> placeOnPage(key, destination) }
-            pageTargets.addView(target, LinearLayout.LayoutParams(dp(106), dp(48)).apply {
-                setMargins(dp(2), dp(4), dp(2), dp(4))
-            })
-        }
         // Reserva visual para widgets futuros. Não interfere na gaveta de apps.
         // Altura personalizável por página; 180dp na tela principal por padrão.
         val widgetSpace = setting("widget_space_dp", "180")
@@ -1332,29 +1314,41 @@ class MainActivity : Activity() {
             })
         }
         content.addView(grid)
-        val add = glassButton("＋ Solte aqui para adicionar à página ${index + 1}", 13f)
-        acceptDrop(add) { key -> placeOnPage(key, index) }
-        val remove = glassButton("× Solte aqui para remover o atalho", 12f)
-        acceptDrop(remove) { key -> removeShortcut(key) }
-        val tools = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        tools.addView(pageTargetsScroll)
-        tools.addView(add)
-        tools.addView(remove)
-        tools.addView(glassButton("✦ Gerenciar páginas", 13f).apply {
-            setOnClickListener { managePages() }
-        })
-        tools.visibility = View.GONE
-        val toggle = label("✦ Editar área de trabalho", 12f).apply {
-            setTextColor(lilac)
-            setPadding(dp(6), dp(7), dp(6), dp(7))
-            setOnClickListener {
-                tools.visibility = if (tools.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-            }
-        }
-        content.addView(toggle)
-        content.addView(tools)
         scroll.addView(content)
         return scroll
+    }
+
+    private fun editWorkspaceMenu() {
+        val page = pageIndex
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(16))
+            background = glass(20, true)
+        }
+        panel.addView(label("✦ Editar área de trabalho • Página ${page + 1}", 17f, true))
+        for (destination in 0 until pageCount()) {
+            if (destination == page) continue
+            val target = glassButton("⇢ Arraste um ícone para a página ${destination + 1}", 12f)
+            acceptDrop(target) { key -> dialog.dismiss(); placeOnPage(key, destination) }
+            panel.addView(target)
+        }
+        val add = glassButton("＋ Arraste um ícone para adicionar à página ${page + 1}", 12f)
+        acceptDrop(add) { key -> dialog.dismiss(); placeOnPage(key, page) }
+        panel.addView(add)
+        val remove = glassButton("× Arraste um ícone para remover o atalho", 12f)
+        acceptDrop(remove) { key -> dialog.dismiss(); removeShortcut(key) }
+        panel.addView(remove)
+        panel.addView(glassButton("✦ Gerenciar páginas", 13f).apply {
+            setOnClickListener { dialog.dismiss(); managePages() }
+        })
+        dialog.setContentView(panel)
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.BOTTOM)
+        }
     }
 
     private fun updateDots() {
@@ -1402,10 +1396,10 @@ class MainActivity : Activity() {
     private fun showClassicCustomizationMenu() {
         val dialog = Dialog(this)
         val icons = arrayOf("＋", "▧", "✦", "⚙", "⌘", "?")
-        val names = arrayOf("Adicionar", "Papel de parede", "Tema",
+        val names = arrayOf("Editar", "Papel de parede", "Tema",
             "GO config.", "Sistema", "Ajuda")
         val actions: Array<() -> Unit> = arrayOf(
-            { managePages() },
+            { editWorkspaceMenu() },
             { wallpaperMenu() },
             { settingsMenu() },
             { settingsMenu() },
