@@ -2055,6 +2055,7 @@ class MainActivity : Activity(), SensorEventListener {
         tile.setOnLongClickListener {
             if (drawerOpen) {
                 drawerAppActions(app)
+                true
             } else if (editMode) {
                 startAppDrag(tile, app)
             } else {
