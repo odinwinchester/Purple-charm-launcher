@@ -1061,8 +1061,64 @@ class MainActivity : Activity() {
             pages.addView(homePage(index))
         }
 
+        // Área de trabalho com bordas sensíveis ao arraste entre páginas.
+        val workspace = FrameLayout(this)
+        workspace.addView(pages, FrameLayout.LayoutParams(-1, -1))
+        for (direction in listOf(-1, 1)) {
+            val edge = View(this)
+            var pending: Runnable? = null
+            fun cancelPending() {
+                pending?.let { edge.removeCallbacks(it) }
+                pending = null
+            }
+            edge.setOnDragListener { _, event ->
+                when (event.action) {
+                    DragEvent.ACTION_DRAG_STARTED ->
+                        event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+                    DragEvent.ACTION_DRAG_ENTERED -> {
+                        cancelPending()
+                        val task = object : Runnable {
+                            override fun run() {
+                                if (!dragging || drawerOpen) return
+                                val target = pageIndex + direction
+                                if (target in 0 until pageCount()) {
+                                    // Sem animação: não recria views nem cancela o drag ativo.
+                                    pages.inAnimation = null
+                                    pages.outAnimation = null
+                                    pageIndex = target
+                                    pages.displayedChild = target
+                                    updateDots()
+                                    // Mantendo o dedo na borda, pode atravessar outras páginas.
+                                    edge.postDelayed(this, 650L)
+                                    pending = this
+                                }
+                            }
+                        }
+                        pending = task
+                        edge.postDelayed(task, 550L)
+                        true
+                    }
+                    DragEvent.ACTION_DRAG_EXITED -> { cancelPending(); true }
+                    DragEvent.ACTION_DROP -> {
+                        cancelPending()
+                        val key = draggedKey(event)
+                        if (key != null) { placeOnPage(key, pageIndex); true } else false
+                    }
+                    DragEvent.ACTION_DRAG_ENDED -> {
+                        cancelPending()
+                        dragging = false
+                        true
+                    }
+                    else -> true
+                }
+            }
+            workspace.addView(edge, FrameLayout.LayoutParams(
+                dp(32), -1,
+                if (direction < 0) Gravity.START else Gravity.END
+            ))
+        }
         root.addView(
-            pages,
+            workspace,
             LinearLayout.LayoutParams(-1, 0, 1f)
         )
 
@@ -1315,6 +1371,8 @@ class MainActivity : Activity() {
         }
         content.addView(grid)
         scroll.addView(content)
+        // Permite soltar um atalho também em espaços vazios da página.
+        acceptDrop(scroll) { key -> placeOnPage(key, index) }
         return scroll
     }
 
