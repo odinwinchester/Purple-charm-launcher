@@ -853,8 +853,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     private val wallpaperOptions = listOf(
         Triple("Floral original", "floral", R.drawable.purple_original_wallpaper),
-        Triple("Olho de Cristal", "eye_crystal", R.drawable.purple_eye_crystal),
-        Triple("Olho Royal", "eye_royal", R.drawable.purple_eye_royal),
+        Triple("Olho de Crystal", "eye_crystal", R.drawable.purple_eye_crystal),
         Triple("Ghost Fire", "ghost_fire", R.drawable.wallpaper_ghost_fire)
     )
 
