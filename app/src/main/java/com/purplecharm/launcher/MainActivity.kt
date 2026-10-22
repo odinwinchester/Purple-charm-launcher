@@ -728,17 +728,17 @@ class MainActivity : Activity(), SensorEventListener {
     private fun wallpaperGlass(): GradientDrawable =
         GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
-            intArrayOf(Color.argb(235, 36, 15, 57), Color.argb(226, 15, 9, 31))
+            intArrayOf(Color.argb(250, 17, 3, 29), Color.argb(248, 3, 1, 8))
         ).apply {
             cornerRadius = dp(26).toFloat()
-            setStroke(dp(1), Color.rgb(156, 84, 207))
+            setStroke(dp(2), Color.rgb(205, 73, 255))
         }
 
     private fun wallpaperMenu() {
         val dialog = Dialog(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(10, 6, 19))
+            setBackgroundColor(Color.BLACK)
             setPadding(dp(14), dp(20), dp(14), dp(12))
         }
         val header = glassButton("‹     ✦ Papéis de parede", 21f).apply {
@@ -800,7 +800,7 @@ class MainActivity : Activity(), SensorEventListener {
         val dialog = Dialog(this)
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(10, 6, 19))
+            setBackgroundColor(Color.BLACK)
             setPadding(dp(12), dp(12), dp(12), dp(12))
         }
         val image = ImageView(this).apply {
@@ -827,7 +827,7 @@ class MainActivity : Activity(), SensorEventListener {
             background = wallpaperGlass()
         }
         panel.addView(label("✧ Aplicar plano de fundo a", 19f))
-        listOf("♧ Tela de bloqueio", "⌂ Tela inicial", "✧ Ambos").forEachIndexed { index, title ->
+        listOf("♙ Tela de bloqueio", "⌂ Tela inicial", "⌂♙ Ambos").forEachIndexed { index, title ->
             panel.addView(glassButton(title, 17f).apply {
                 setOnClickListener {
                     dialog.dismiss()
