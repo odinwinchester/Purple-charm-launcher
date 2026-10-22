@@ -1812,7 +1812,12 @@ class MainActivity : Activity(), SensorEventListener {
         loadApps()
         val root = buildRoot()
         backgroundImage.setImageResource(R.drawable.wallpaper_neon)
-        val results = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        // Pesquisa em grade: reutiliza os ícones e as ações da gaveta,
+        // evitando duplicar a lógica de abertura e toque longo.
+        val results = GridLayout(this).apply {
+            columnCount = horizontalIconColumns()
+            setPadding(dp(2), dp(4), dp(2), dp(4))
+        }
         val searchRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1850,7 +1855,6 @@ class MainActivity : Activity(), SensorEventListener {
         fun refresh(query: String) {
             results.removeAllViews()
             if (query.isBlank()) return
-            // Busca pelo início do nome, evitando coincidências internas como "Brasil" em "br".
             val term = normalize(query.trim())
             val filtered = apps.filter {
                 normalize(it.loadLabel(packageManager).toString()).startsWith(term)
@@ -1860,33 +1864,19 @@ class MainActivity : Activity(), SensorEventListener {
                 normalize(it.loadLabel(packageManager).toString())
             })
             filtered.forEach { app ->
-                val item = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    background = glass(16)
-                    setPadding(dp(12), dp(8), dp(12), dp(8))
-                }
-                item.addView(ImageView(this).apply {
-                    setImageDrawable(customIcon(app))
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                }, LinearLayout.LayoutParams(dp(44), dp(44)))
-                item.addView(label(app.loadLabel(packageManager).toString(), 15f),
-                    LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(12) })
-                item.setOnClickListener {
-                    try {
-                        startActivity(Intent().apply {
-                            setClassName(app.activityInfo.packageName, app.activityInfo.name)
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        })
-                    } catch (_: Exception) {
-                        Toast.makeText(this, "Não foi possível abrir o aplicativo", Toast.LENGTH_SHORT).show()
-                    }
-                }
-                results.addView(item, LinearLayout.LayoutParams(-1, -2).apply {
-                    setMargins(0, dp(3), 0, dp(3))
-                })
+                // Toque curto abre; toque longo oferece adicionar à página/dock.
+                // O arraste direto entre telas será implementado separadamente:
+                // trocar a tela durante ACTION_DRAG pode cancelar o gesto.
+                results.addView(appTile(app, false, false),
+                    GridLayout.LayoutParams().apply {
+                        width = 0
+                        height = ViewGroup.LayoutParams.WRAP_CONTENT
+                        columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                    })
             }
-            if (filtered.isEmpty()) results.addView(label("Nenhum aplicativo encontrado", 14f))
+            if (filtered.isEmpty()) {
+                results.addView(label("Nenhum aplicativo encontrado", 14f))
+            }
         }
         input.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
