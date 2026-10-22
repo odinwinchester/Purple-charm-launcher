@@ -1060,6 +1060,16 @@ class MainActivity : Activity() {
         }
         val phase = if (prefs.getBoolean("gothic_moon_auto", true)) automaticPhase
             else prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val mode = prefs.getInt("gothic_celestial_mode", 0) // 0 auto, 1 sol, 2 lua
+        val isSun = when (mode) {
+            1 -> true
+            2 -> false
+            else -> hour in 6..17
+        }
+        val sunStyle = prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
+        val sunSymbols = arrayOf("☼", "✺", "⛅", "☀")
+        val sunNames = arrayOf("Sol Gótico", "Sol de Cristal", "Sol com Nuvens", "Sol Nascente")
         val size = prefs.getInt("gothic_moon_size", 1).coerceIn(0, 2)
         val animated = prefs.getBoolean("gothic_moon_ornate", true)
         val heights = intArrayOf(130, 178, 242)
@@ -1080,7 +1090,9 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         val moon = TextView(this).apply {
-            text = phases[phase]
+            text = if (isSun) sunSymbols[if (mode == 0) {
+                when (hour) { in 6..9 -> 3; in 16..17 -> 0; else -> 1 }
+            } else sunStyle] else phases[phase]
             textSize = if (size == 0) 53f else 77f
             setTextColor(Color.rgb(219, 166, 255))
             gravity = Gravity.CENTER
@@ -1088,7 +1100,10 @@ class MainActivity : Activity() {
         }
         line.addView(moon, LinearLayout.LayoutParams(0, -2, 1f))
         val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        info.addView(label(if (animated) "✦ LUA ${names[phase].uppercase(Locale.ROOT)} ✦" else "Lua ${names[phase]}", 12f, true))
+        val celestialName = if (isSun) sunNames[if (mode == 0) {
+            when (hour) { in 6..9 -> 3; in 16..17 -> 0; else -> 1 }
+        } else sunStyle] else "Lua ${names[phase]}"
+        info.addView(label(if (animated) "✦ ${celestialName.uppercase(Locale.ROOT)} ✦" else celestialName, 12f, true))
         val clock = java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(java.util.Date())
         info.addView(label(clock, 29f, true))
         info.addView(label(java.text.SimpleDateFormat("EEE, dd MMM", Locale.getDefault()).format(java.util.Date()), 12f))
@@ -1116,7 +1131,10 @@ class MainActivity : Activity() {
             "☾ Lua crescente", "● Lua cheia", "☽ Lua minguante", "◯ Lua nova",
             "▣ Compacto 2 × 2", "▤ Padrão 4 × 2", "▥ Ampliado 4 × 3",
             "✦ Alternar gótico / minimalista", "☽ Fases automáticas",
-            "✋ Escolher fase manualmente", "✕ Ocultar widget"
+            "✋ Escolher fase manualmente", "✕ Ocultar widget",
+            "☀ Alternância automática Sol / Lua", "☼ Sol Gótico Clássico",
+            "✺ Sol de Cristal", "⛅ Sol com Nuvens", "☀ Sol Nascente",
+            "☾ Mostrar Lua manualmente"
         )
         AlertDialog.Builder(this)
             .setTitle("☾ Widget Lunar • Purple Charm")
@@ -1130,6 +1148,9 @@ class MainActivity : Activity() {
                     8 -> editor.putBoolean("gothic_moon_auto", true)
                     9 -> editor.putBoolean("gothic_moon_auto", false)
                     10 -> editor.putBoolean("gothic_moon_visible", false)
+                    11 -> editor.putInt("gothic_celestial_mode", 0)
+                    in 12..15 -> { editor.putInt("gothic_celestial_mode", 1); editor.putInt("gothic_sun_style", option - 12) }
+                    16 -> editor.putInt("gothic_celestial_mode", 2)
                 }
                 editor.apply()
                 showHome()
