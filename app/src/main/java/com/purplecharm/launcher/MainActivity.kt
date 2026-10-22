@@ -60,16 +60,18 @@ class MainActivity : Activity(), SensorEventListener {
     private var editMode = false
     private var lastShakeAt = 0L
     private var undoPage: Pair<Int, List<String>>? = null
+    private var pendingWorkspaceRefresh = false
+    private var workspaceRefreshScheduled = false
+    private var dragDropCommitted = false
+    private var dragOrigin: Pair<Int, List<String>>? = null
     private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
     private var accelerometer: Sensor? = null
 
     private fun enterEditMode() {
         if (editMode || drawerOpen) return
         editMode = true
-        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        accelerometer?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
+        // Organização por agitação desativada: não alterar atalhos involuntariamente.
         showHome()
-        if (accelerometer == null) Toast.makeText(this, "Sensor de movimento indisponível", Toast.LENGTH_LONG).show()
     }
 
     private fun leaveEditMode() {
@@ -97,6 +99,8 @@ class MainActivity : Activity(), SensorEventListener {
 
     override fun onSensorChanged(event: SensorEvent) {
         if (!editMode || drawerOpen || event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
+        // Recurso desativado por padrão; exige aprovação explícita para reativar.
+        if (!prefs.getBoolean("shake_sort_enabled", false)) return
         val x = event.values[0]
         val y = event.values[1]
         val z = event.values[2]
@@ -115,9 +119,7 @@ class MainActivity : Activity(), SensorEventListener {
     }
     override fun onResume() {
         super.onResume()
-        if (editMode) accelerometer?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
-        }
+        // Sensor desativado para organização automática.
     }
 
 
@@ -218,7 +220,10 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun startAppDrag(view: View, app: ResolveInfo): Boolean {
         val data = ClipData.newPlainText("purplecharm", appKey(app))
+        dragDropCommitted = false
+        dragOrigin = pageIndex to savedPage(pageIndex).toList()
         dragging = view.startDragAndDrop(data, View.DragShadowBuilder(view), null, 0)
+        if (!dragging) dragOrigin = null
         return dragging
     }
 
@@ -243,14 +248,40 @@ class MainActivity : Activity(), SensorEventListener {
                     val key = draggedKey(event)
                     if (key != null) { action(key); true } else false
                 }
-                DragEvent.ACTION_DRAG_ENDED -> { target.alpha = 1f; dragging = false; true }
+                DragEvent.ACTION_DRAG_ENDED -> { target.alpha = 1f; finishWorkspaceDrag(); true }
                 else -> true
             }
         }
     }
 
+    private fun finishWorkspaceDrag() {
+        dragging = false
+        dragOrigin = null
+        if (pendingWorkspaceRefresh && !workspaceRefreshScheduled) {
+            workspaceRefreshScheduled = true
+            // Atualiza apenas após o ciclo atual de DragEvent terminar.
+            pages.post {
+                workspaceRefreshScheduled = false
+                if (!dragging && pendingWorkspaceRefresh) {
+                    pendingWorkspaceRefresh = false
+                    showHome()
+                }
+            }
+        }
+    }
+
+    private fun refreshWorkspaceSafely() {
+        if (dragging) {
+            pendingWorkspaceRefresh = true
+        } else {
+            showHome()
+        }
+    }
+
     private fun placeOnPage(key: String, index: Int, position: Int? = null) {
+        if (dragging && dragDropCommitted) return
         val list = savedPage(index)
+        if (dragging && dragOrigin == null) dragOrigin = index to list.toList()
         if (list.size >= homeCapacity() && key !in list) {
             Toast.makeText(this, "Página cheia", Toast.LENGTH_SHORT).show()
             return
@@ -268,9 +299,13 @@ class MainActivity : Activity(), SensorEventListener {
             slots[dockAt] = ""
             saveDockSlots(slots)
         }
+        if (dragging) {
+            undoPage = dragOrigin ?: (index to savedPage(index).toList())
+            dragDropCommitted = true
+        }
         savePage(index, list)
         pageIndex = index
-        showHome()
+        refreshWorkspaceSafely()
     }
 
     // O dock usa quatro posições fixas, sem deslocar os outros ícones.
@@ -306,7 +341,7 @@ class MainActivity : Activity(), SensorEventListener {
         if (previous.isNotEmpty() && previous != key && oldSlot < 0) {
             Toast.makeText(this, "Atalho anterior disponível na gaveta", Toast.LENGTH_SHORT).show()
         }
-        showHome()
+        refreshWorkspaceSafely()
     }
 
     private fun removeShortcut(key: String) {
@@ -1257,7 +1292,7 @@ class MainActivity : Activity(), SensorEventListener {
                     }
                     DragEvent.ACTION_DRAG_ENDED -> {
                         cancelPending()
-                        dragging = false
+                        finishWorkspaceDrag()
                         true
                     }
                     else -> true
@@ -1291,7 +1326,7 @@ class MainActivity : Activity(), SensorEventListener {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(8), dp(5), dp(8), dp(5))
             }
-            controls.addView(label("✦ Modo de edição • agite para organizar A–Z", 12f))
+            controls.addView(label("✦ Modo de edição • segure e arraste um ícone", 12f))
             val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             val undo = glassButton("↶ Desfazer", 12f).apply {
                 setOnClickListener {
@@ -1580,7 +1615,7 @@ class MainActivity : Activity(), SensorEventListener {
                         true
                     } else false
                 }
-                DragEvent.ACTION_DRAG_ENDED -> { dragging = false; true }
+                DragEvent.ACTION_DRAG_ENDED -> { finishWorkspaceDrag(); true }
                 else -> true
             }
         }
