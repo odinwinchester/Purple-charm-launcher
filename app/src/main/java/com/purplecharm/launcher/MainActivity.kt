@@ -412,7 +412,9 @@ class MainActivity : Activity(), SensorEventListener {
                 arrayOf("original", "ghost"), "original")
         }
         option("✦ Papéis de parede Purple Charm") { wallpaperMenu() }
-        option("✦ Aplicar Olho de Cristal na tela de bloqueio") { confirmLockWallpaper() }
+        option("✦ Aplicar Olho de Cristal na tela de bloqueio") {
+            wallpaperDestination("eye_crystal", R.drawable.purple_eye_crystal, null)
+        }
         } else {
         option("✦ Deslizar para cima: " + gestureName(setting("swipe_up", "drawer"))) {
             gestureSetting("Deslizar para cima", "swipe_up", "drawer")
