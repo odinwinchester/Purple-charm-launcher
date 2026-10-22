@@ -60,6 +60,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var editMode = false
     private var lastShakeAt = 0L
     private var undoPage: Pair<Int, List<String>>? = null
+    private var undoWorkspaceSnapshot: WorkspaceLayoutSafety.Snapshot? = null
     private var pendingWorkspaceRefresh = false
     private var workspaceRefreshScheduled = false
     private var dragDropCommitted = false
@@ -326,21 +327,49 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun placeInDock(key: String, position: Int) {
-        val slots = dockSlots()
+        // Uma única operação de escrita evita perder o atalho substituído.
+        val before = WorkspaceLayoutSafety(prefs).capture()
         val destination = position.coerceIn(0, 3)
-        val previous = slots[destination]
-        val oldSlot = slots.indexOf(key)
-        if (oldSlot >= 0) slots[oldSlot] = ""
+        val slots = dockSlots()
+        val displaced = slots[destination]
+        if (displaced == key) return
+
+        val sourceSlot = slots.indexOf(key)
+        val sourcePage = (0 until pageCount()).firstOrNull { key in savedPage(it) }
+        val sourcePosition = sourcePage?.let { savedPage(it).indexOf(key) } ?: -1
+
+        // Sem posição de origem para receber o atalho substituído:
+        // não modificar o dock nem remover atalhos existentes.
+        if (displaced.isNotEmpty() && sourceSlot < 0 && sourcePage == null) {
+            Toast.makeText(this, "Escolha uma posição de origem para trocar os atalhos", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val updatedPages = (0 until pageCount()).map { savedPage(it) }
+        if (sourceSlot >= 0) {
+            slots[sourceSlot] = displaced
+        } else if (sourcePage != null) {
+            val page = updatedPages[sourcePage]
+            if (sourcePosition in page.indices) {
+                if (displaced.isEmpty()) page.removeAt(sourcePosition)
+                else page[sourcePosition] = displaced
+            }
+        }
         slots[destination] = key
-        saveDockSlots(slots)
-        for (page in 0 until pageCount()) {
-            val list = savedPage(page)
-            if (list.remove(key)) savePage(page, list)
+
+        // Atualização conjunta: páginas e dock são persistidos no mesmo commit.
+        val edit = prefs.edit()
+        updatedPages.forEachIndexed { index, page ->
+            edit.putString("layout_page_$index", page.distinct().joinToString("|"))
         }
-        // O atalho substituído continua disponível na gaveta.
-        if (previous.isNotEmpty() && previous != key && oldSlot < 0) {
-            Toast.makeText(this, "Atalho anterior disponível na gaveta", Toast.LENGTH_SHORT).show()
+        edit.putString("layout_dock_slots", slots.joinToString("|"))
+        if (!edit.commit()) {
+            Toast.makeText(this, "Não foi possível salvar a troca", Toast.LENGTH_SHORT).show()
+            return
         }
+        // A recuperação permanece disponível para futuras integrações do Desfazer.
+        undoWorkspaceSnapshot = before
+        if (dragging) dragDropCommitted = true
         refreshWorkspaceSafely()
     }
 
