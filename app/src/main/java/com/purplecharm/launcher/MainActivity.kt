@@ -718,68 +718,168 @@ class MainActivity : Activity(), SensorEventListener {
         Toast.makeText(this, "Wallpaper aplicado à tela inicial", Toast.LENGTH_SHORT).show()
     }
 
-    private fun wallpaperMenu() {
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("✦ Papéis de parede Purple Charm")
-            .setItems(arrayOf(
-                "Floral original (padrão)",
-                "Olho de Cristal • primeira arte",
-                "Olho Royal • segunda arte",
-                "Ghost Fire • caveira roxa",
-                "Escolher imagem da galeria",
-                "Aplicar Olho de Cristal na tela de bloqueio"
-            )) { _, choice ->
-                when (choice) {
-                    0 -> chooseBuiltInWallpaper("floral")
-                    1 -> chooseBuiltInWallpaper("eye_crystal")
-                    2 -> chooseBuiltInWallpaper("eye_royal")
-                    3 -> chooseBuiltInWallpaper("ghost_fire")
-                    4 -> {
-                        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                            addCategory(Intent.CATEGORY_OPENABLE)
-                            type = "image/*"
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-                        }
-                        try { startActivityForResult(intent, wallpaperRequest) }
-                        catch (_: Exception) {
-                            Toast.makeText(this, "Não foi possível abrir a galeria", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    5 -> confirmLockWallpaper()
-                }
-            }.setNegativeButton("Cancelar", null).show()
-    }
+    private val wallpaperOptions = listOf(
+        Triple("Floral original", "floral", R.drawable.purple_original_wallpaper),
+        Triple("Olho de Cristal", "eye_crystal", R.drawable.purple_eye_crystal),
+        Triple("Olho Royal", "eye_royal", R.drawable.purple_eye_royal),
+        Triple("Ghost Fire", "ghost_fire", R.drawable.wallpaper_ghost_fire)
+    )
 
-    private fun confirmLockWallpaper() {
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Olho de Cristal • tela de bloqueio")
-            .setMessage("Aplicar a primeira arte do olho na tela de bloqueio do Android? " +
-                "O sistema do POCO pode impedir ou substituir essa alteração.")
-            .setPositiveButton("Aplicar") { _, _ -> applyLockWallpaper() }
-            .setNegativeButton("Cancelar", null).show()
-    }
-
-    private fun applyLockWallpaper() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            Toast.makeText(this, "Seu Android não suporta esta opção diretamente", Toast.LENGTH_LONG).show()
-            return
+    private fun wallpaperGlass(): GradientDrawable =
+        GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(Color.argb(235, 36, 15, 57), Color.argb(226, 15, 9, 31))
+        ).apply {
+            cornerRadius = dp(26).toFloat()
+            setStroke(dp(1), Color.rgb(156, 84, 207))
         }
-        try {
-            val manager = WallpaperManager.getInstance(this)
-            if (!manager.isWallpaperSupported || !manager.isSetWallpaperAllowed) {
-                Toast.makeText(this, "Permissão de wallpaper indisponível neste aparelho", Toast.LENGTH_LONG).show()
+
+    private fun wallpaperMenu() {
+        val dialog = Dialog(this)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.rgb(10, 6, 19))
+            setPadding(dp(14), dp(20), dp(14), dp(12))
+        }
+        val header = glassButton("‹     ✦ Papéis de parede", 21f).apply {
+            setOnClickListener { dialog.dismiss() }
+        }
+        root.addView(header)
+        root.addView(label("Toque para visualizar • segure para escolher onde aplicar", 12f))
+        val scroll = ScrollView(this)
+        val grid = GridLayout(this).apply { columnCount = 2 }
+        wallpaperOptions.forEach { (name, key, res) ->
+            val tile = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(5), dp(9), dp(5), dp(9))
+            }
+            val picture = ImageView(this).apply {
+                setImageResource(res)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                background = wallpaperGlass()
+                clipToOutline = true
+                setOnClickListener { wallpaperPreview(key, res, null) }
+                setOnLongClickListener { wallpaperDestination(key, res, null); true }
+            }
+            tile.addView(picture, LinearLayout.LayoutParams(-1, dp(238)))
+            tile.addView(label(name, 13f))
+            grid.addView(tile, GridLayout.LayoutParams().apply {
+                width = 0
+                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+            })
+        }
+        val gallery = glassButton("＋ Escolher imagem do celular", 16f).apply {
+            setOnClickListener {
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "image/*"
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                }
+                try {
+                    dialog.dismiss()
+                    startActivityForResult(intent, wallpaperRequest)
+                } catch (_: Exception) {
+                    Toast.makeText(this@MainActivity, "Não foi possível abrir a galeria", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+        grid.addView(gallery, GridLayout.LayoutParams().apply {
+            columnSpec = GridLayout.spec(0, 2)
+            width = -1
+        })
+        scroll.addView(grid)
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        dialog.setContentView(root)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.setLayout(-1, -1)
+    }
+
+    private fun wallpaperPreview(key: String, res: Int?, uri: Uri?) {
+        val dialog = Dialog(this)
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.rgb(10, 6, 19))
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+        val image = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            if (res != null) setImageResource(res) else setImageURI(uri)
+        }
+        layout.addView(image, LinearLayout.LayoutParams(-1, 0, 1f))
+        layout.addView(glassButton("✦ Aplicar papel de parede", 17f).apply {
+            setOnClickListener { dialog.dismiss(); wallpaperDestination(key, res, uri) }
+        })
+        layout.addView(glassButton("Voltar", 14f).apply {
+            setOnClickListener { dialog.dismiss() }
+        })
+        dialog.setContentView(layout)
+        dialog.show()
+        dialog.window?.setLayout(-1, -1)
+    }
+
+    private fun wallpaperDestination(key: String, res: Int?, uri: Uri?) {
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(22), dp(20), dp(20))
+            background = wallpaperGlass()
+        }
+        panel.addView(label("✧ Aplicar plano de fundo a", 19f))
+        listOf("♧ Tela de bloqueio", "⌂ Tela inicial", "✧ Ambos").forEachIndexed { index, title ->
+            panel.addView(glassButton(title, 17f).apply {
+                setOnClickListener {
+                    dialog.dismiss()
+                    applyWallpaperDestination(key, res, uri, index)
+                }
+            })
+        }
+        panel.addView(glassButton("Cancelar", 16f).apply {
+            setOnClickListener { dialog.dismiss() }
+        })
+        dialog.setContentView(panel)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout(-1, -2)
+            setGravity(Gravity.BOTTOM)
+            attributes = attributes.apply { dimAmount = 0.65f }
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
+    }
+
+    private fun applyWallpaperDestination(key: String, res: Int?, uri: Uri?, destination: Int) {
+        // Tela inicial usa o fundo do launcher; tela de bloqueio usa a API do Android.
+        if (destination == 0 || destination == 2) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                Toast.makeText(this, "Tela de bloqueio não suportada nesta versão", Toast.LENGTH_LONG).show()
                 return
             }
-            resources.openRawResource(R.drawable.purple_eye_crystal).use { stream ->
-                manager.setStream(stream, null, true, WallpaperManager.FLAG_LOCK)
+            try {
+                val manager = WallpaperManager.getInstance(this)
+                if (!manager.isWallpaperSupported || !manager.isSetWallpaperAllowed) {
+                    Toast.makeText(this, "O sistema não permite alterar o fundo", Toast.LENGTH_LONG).show()
+                    return
+                }
+                val stream = if (res != null) resources.openRawResource(res)
+                    else contentResolver.openInputStream(uri ?: return) ?: return
+                stream.use { manager.setStream(it, null, true, WallpaperManager.FLAG_LOCK) }
+            } catch (_: Exception) {
+                Toast.makeText(this,
+                    "O POCO não permitiu alterar a tela de bloqueio. Use as configurações do sistema.",
+                    Toast.LENGTH_LONG).show()
+                return
             }
-            Toast.makeText(this, "Imagem enviada para a tela de bloqueio", Toast.LENGTH_LONG).show()
-        } catch (_: Exception) {
-            Toast.makeText(this,
-                "O sistema não permitiu a alteração. Aplique a imagem nas configurações do POCO.",
-                Toast.LENGTH_LONG).show()
         }
+        if (destination == 1 || destination == 2) {
+            val editor = prefs.edit().putString("pc_wallpaper_choice", key)
+            if (uri != null) editor.putString("wallpaper_uri", uri.toString())
+            editor.apply()
+            applyWallpaper()
+        }
+        Toast.makeText(this, "Papel de parede aplicado", Toast.LENGTH_SHORT).show()
     }
 
     @Deprecated("Deprecated in Java")
@@ -801,33 +901,11 @@ class MainActivity : Activity(), SensorEventListener {
 
         try {
             contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
-
-            backgroundImage.setImageURI(uri)
-
-            if (backgroundImage.drawable == null) {
-                throw IllegalArgumentException("Imagem inválida")
-            }
-
-            prefs.edit()
-                .putString("wallpaper_uri", uri.toString())
-                .putString("pc_wallpaper_choice", "gallery")
-                .apply()
-
-            Toast.makeText(
-                this,
-                "Papel de parede atualizado",
-                Toast.LENGTH_SHORT
-            ).show()
+            wallpaperPreview("gallery", null, uri)
         } catch (_: Exception) {
-            applyWallpaper()
-            Toast.makeText(
-                this,
-                "Não foi possível aplicar a imagem",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this, "Não foi possível abrir a imagem", Toast.LENGTH_LONG).show()
         }
     }
 
