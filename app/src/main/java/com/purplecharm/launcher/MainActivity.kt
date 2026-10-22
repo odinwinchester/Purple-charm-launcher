@@ -1074,6 +1074,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(4), 0, dp(5))
         }
 
+        dots.setOnClickListener { changePage((pageIndex + 1) % pageCount()) }
         root.addView(dots)
         updateDots()
 
@@ -1826,7 +1827,22 @@ class MainActivity : Activity() {
                     downY = event.y
                 }
 
+                MotionEvent.ACTION_MOVE -> {
+                    // Intercepta o gesto horizontal antes que o ScrollView vertical o consuma.
+                    val dx = event.x - downX
+                    val dy = event.y - downY
+                    if (!downX.isNaN() && abs(dx) > dp(85) &&
+                        abs(dx) > abs(dy) * 1.6f) {
+                        downX = Float.NaN // apenas uma troca por gesto
+                        changePage(pageIndex + if (dx < 0) 1 else -1)
+                        return true
+                    }
+                }
                 MotionEvent.ACTION_UP -> {
+                    if (downX.isNaN()) {
+                        downX = event.x
+                        return true
+                    }
                     val dx = event.x - downX
                     val dy = event.y - downY
                     if (abs(dx) < dp(22) && abs(dy) < dp(22)) {
