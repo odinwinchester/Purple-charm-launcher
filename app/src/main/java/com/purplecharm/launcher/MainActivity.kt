@@ -1047,7 +1047,19 @@ class MainActivity : Activity() {
     private fun gothicMoonWidget(): View {
         val phases = arrayOf("☾", "●", "☽", "◯")
         val names = arrayOf("Crescente", "Cheia", "Minguante", "Nova")
-        val phase = prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)
+        // Ciclo sinódico médio de 29,530588853 dias; aproximação offline.
+        // Referência: Lua Nova de 06/01/2000 às 18:14 UTC.
+        val now = System.currentTimeMillis()
+        val lunarDays = ((now - 947182440000L) / 86400000.0) % 29.530588853
+        val age = if (lunarDays < 0) lunarDays + 29.530588853 else lunarDays
+        val automaticPhase = when {
+            age < 1.84566 || age >= 27.68493 -> 3 // Nova
+            age < 12.91963 -> 0 // Crescente (inclui quartos e gibosa)
+            age < 16.61096 -> 1 // Cheia
+            else -> 2 // Minguante
+        }
+        val phase = if (prefs.getBoolean("gothic_moon_auto", true)) automaticPhase
+            else prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)
         val size = prefs.getInt("gothic_moon_size", 1).coerceIn(0, 2)
         val animated = prefs.getBoolean("gothic_moon_ornate", true)
         val heights = intArrayOf(130, 178, 242)
@@ -1103,18 +1115,21 @@ class MainActivity : Activity() {
         val choices = arrayOf(
             "☾ Lua crescente", "● Lua cheia", "☽ Lua minguante", "◯ Lua nova",
             "▣ Compacto 2 × 2", "▤ Padrão 4 × 2", "▥ Ampliado 4 × 3",
-            "✦ Alternar gótico / minimalista", "✕ Ocultar widget"
+            "✦ Alternar gótico / minimalista", "☽ Fases automáticas",
+            "✋ Escolher fase manualmente", "✕ Ocultar widget"
         )
         AlertDialog.Builder(this)
             .setTitle("☾ Widget Lunar • Purple Charm")
             .setItems(choices) { _, option ->
                 val editor = prefs.edit()
                 when (option) {
-                    in 0..3 -> editor.putInt("gothic_moon_phase", option)
+                    in 0..3 -> { editor.putInt("gothic_moon_phase", option); editor.putBoolean("gothic_moon_auto", false) }
                     in 4..6 -> editor.putInt("gothic_moon_size", option - 4)
                     7 -> editor.putBoolean("gothic_moon_ornate",
                         !prefs.getBoolean("gothic_moon_ornate", true))
-                    8 -> editor.putBoolean("gothic_moon_visible", false)
+                    8 -> editor.putBoolean("gothic_moon_auto", true)
+                    9 -> editor.putBoolean("gothic_moon_auto", false)
+                    10 -> editor.putBoolean("gothic_moon_visible", false)
                 }
                 editor.apply()
                 showHome()
