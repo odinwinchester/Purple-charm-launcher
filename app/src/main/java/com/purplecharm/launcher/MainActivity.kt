@@ -1497,10 +1497,15 @@ class MainActivity : Activity() {
         fun refresh(query: String) {
             results.removeAllViews()
             if (query.isBlank()) return
+            // Busca pelo início do nome, evitando coincidências internas como "Brasil" em "br".
+            val term = normalize(query.trim())
             val filtered = apps.filter {
+                normalize(it.loadLabel(packageManager).toString()).startsWith(term)
+            }.sortedWith(compareBy<ResolveInfo> {
+                normalize(it.loadLabel(packageManager).toString()) != term
+            }.thenBy {
                 normalize(it.loadLabel(packageManager).toString())
-                    .contains(normalize(query.trim()))
-            }
+            })
             filtered.forEach { app ->
                 val item = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
