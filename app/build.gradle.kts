@@ -16,18 +16,7 @@ android {
         versionName = "0.7.0"
     }
 
-    // Apenas o APK debug desta branch recebe um pacote isolado.
-    // A versão release mantém o identificador original e os seus dados.
-    buildTypes {
-        getByName("debug") {
-            applicationIdSuffix = ".test"
-            versionNameSuffix = "-test"
-            resValue("string", "launcher_display_name", "Purple Charm TEST")
-        }
-        getByName("release") {
-            resValue("string", "launcher_display_name", "Purple Charm Launcher")
-        }
-    }
+    // Compilação única Purple Charm Crystal Class v0.7.0.
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
