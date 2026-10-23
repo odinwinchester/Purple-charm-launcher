@@ -1427,39 +1427,79 @@ class MainActivity : Activity(), SensorEventListener {
         val lat = prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull() ?: return
         val lon = prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull() ?: return
         if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return
+        val now = System.currentTimeMillis()
         val last = prefs.getLong("gothic_weather_updated", 0L)
-        if (System.currentTimeMillis() - last < 30 * 60 * 1000L) return
+        val expires = prefs.getLong("gothic_weather_expires", 0L)
+        if (last > 0 && now < expires) return
         Thread {
+            var connection: java.net.HttpURLConnection? = null
             try {
-                val url = java.net.URL(
-                    "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
-                    "&current=temperature_2m,relative_humidity_2m,weather_code,is_day,wind_speed_10m&timezone=auto"
-                )
-                val connection = url.openConnection() as java.net.HttpURLConnection
+                // MET Norway exige coordenadas com no máximo quatro casas decimais.
+                val latValue = java.lang.String.format(java.util.Locale.US, "%.4f", lat)
+                val lonValue = java.lang.String.format(java.util.Locale.US, "%.4f", lon)
+                val url = java.net.URL("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=$latValue&lon=$lonValue")
+                connection = url.openConnection() as java.net.HttpURLConnection
                 connection.connectTimeout = 8000
                 connection.readTimeout = 8000
-                try {
-                    val json = org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-                        .getJSONObject("current")
-                    val editor = prefs.edit()
-                    editor.putInt("gothic_weather_code", json.getInt("weather_code"))
-                    editor.putString("gothic_weather_temp", json.getDouble("temperature_2m").toInt().toString())
-                    editor.putInt("gothic_weather_day", json.getInt("is_day"))
-                    editor.putInt("gothic_weather_humidity", json.getInt("relative_humidity_2m"))
-                    editor.putString("gothic_weather_wind", json.getDouble("wind_speed_10m").toInt().toString())
-                    editor.putLong("gothic_weather_updated", System.currentTimeMillis())
-                    editor.apply()
-                    runOnUiThread { if (!drawerOpen && ::pages.isInitialized) showHome() }
-                } finally {
-                    connection.disconnect()
+                connection.setRequestProperty("User-Agent", "PurpleCharmLauncher/0.7.0 (https://github.com/odinwinchester/Purple-charm-launcher)")
+                connection.setRequestProperty("Accept", "application/json")
+                val previousModified = prefs.getString("gothic_weather_last_modified", null)
+                if (previousModified != null && last > 0) {
+                    connection.setRequestProperty("If-Modified-Since", previousModified)
                 }
+                val status = connection.responseCode
+                val cacheUntil = connection.getHeaderFieldDate("Expires", -1L)
+                val nextCheck = if (cacheUntil > System.currentTimeMillis())
+                    cacheUntil else System.currentTimeMillis() + 60 * 60 * 1000L
+                if (status == java.net.HttpURLConnection.HTTP_NOT_MODIFIED) {
+                    prefs.edit().putLong("gothic_weather_expires", nextCheck).apply()
+                    return@Thread
+                }
+                if (status != java.net.HttpURLConnection.HTTP_OK) return@Thread
+                val root = org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                val series = root.getJSONObject("properties").getJSONArray("timeseries")
+                if (series.length() == 0) return@Thread
+                val point = series.getJSONObject(0).getJSONObject("data")
+                val instant = point.getJSONObject("instant").getJSONObject("details")
+                val symbol = point.optJSONObject("next_1_hours")?.optJSONObject("summary")
+                    ?.optString("symbol_code", "") ?: ""
+                // Mapeia símbolos MET para as categorias WMO já usadas nas artes existentes.
+                val code = when {
+                    "thunder" in symbol -> 95
+                    "snow" in symbol || "sleet" in symbol -> 71
+                    "rain" in symbol -> 61
+                    "fog" in symbol -> 45
+                    "cloudy" in symbol && "partly" !in symbol -> 3
+                    "partlycloudy" in symbol -> 2
+                    "fair" in symbol -> 1
+                    else -> 0
+                }
+                val temperature = instant.getDouble("air_temperature")
+                val humidity = instant.optDouble("relative_humidity", Double.NaN)
+                val wind = instant.optDouble("wind_speed", Double.NaN)
+                val editor = prefs.edit()
+                    .putInt("gothic_weather_code", code)
+                    .putString("gothic_weather_temp", kotlin.math.round(temperature).toInt().toString())
+                    .putInt("gothic_weather_day", if (symbol.endsWith("_night")) 0 else 1)
+                    .putLong("gothic_weather_updated", System.currentTimeMillis())
+                    .putLong("gothic_weather_expires", nextCheck)
+                    .putString("gothic_weather_provider", "MET Norway")
+                if (!humidity.isNaN()) editor.putInt("gothic_weather_humidity", kotlin.math.round(humidity).toInt())
+                if (!wind.isNaN()) editor.putString("gothic_weather_wind", kotlin.math.round(wind * 3.6).toInt().toString())
+                connection.getHeaderField("Last-Modified")?.let {
+                    editor.putString("gothic_weather_last_modified", it)
+                }
+                editor.apply()
+                runOnUiThread { if (!drawerOpen && ::pages.isInitialized) showHome() }
             } catch (_: Exception) {
-                // Sem rede: preserva o ultimo dado disponivel e nao bloqueia a tela.
+                // Sem rede: mantém a última previsão válida e não bloqueia a tela.
+            } finally {
+                connection?.disconnect()
             }
         }.start()
     }
 
-    private fun gothicWeatherSettings() {
+        private fun gothicWeatherSettings() {
         val input = EditText(this).apply {
             setSingleLine(true)
             hint = "Latitude, longitude (ex.: -20.4, -54.6)"
@@ -1482,14 +1522,16 @@ class MainActivity : Activity(), SensorEventListener {
                 if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0) {
                     prefs.edit().putString("gothic_weather_lat", lat.toString())
                         .putString("gothic_weather_lon", lon.toString())
-                        .putLong("gothic_weather_updated", 0L).apply()
+                        .putLong("gothic_weather_updated", 0L)
+                        .remove("gothic_weather_expires").remove("gothic_weather_last_modified").apply()
                     refreshGothicWeather()
                     showHome()
                 } else Toast.makeText(this, "Use latitude, longitude válidas", Toast.LENGTH_LONG).show()
             }
             .setNeutralButton("Desativar clima") { _, _ ->
                 prefs.edit().remove("gothic_weather_lat").remove("gothic_weather_lon")
-                    .remove("gothic_weather_updated").apply()
+                    .remove("gothic_weather_updated").remove("gothic_weather_expires")
+                    .remove("gothic_weather_last_modified").apply()
                 showHome()
             }
             .setNegativeButton("Cancelar", null)
