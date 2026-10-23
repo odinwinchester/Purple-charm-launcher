@@ -1547,7 +1547,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val sunStyle = prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
         val sunSymbols = arrayOf("☼", "✺", "⛅", "☀")
-        val sunNames = arrayOf("Sol Gótico", "Sol de Cristal", "Sol com Nuvens", "Sol Nascente")
+        val sunNames = arrayOf("Dia Quente", "Dia Limpo", "Dia Nublado", "Nascer do Sol")
         val weatherActive = prefs.contains("gothic_weather_lat")
         val weatherLoaded = weatherActive && prefs.getLong("gothic_weather_updated", 0L) > 0L
         val weatherCode = prefs.getInt("gothic_weather_code", 0)
@@ -1605,7 +1605,7 @@ class MainActivity : Activity(), SensorEventListener {
             gravity = Gravity.CENTER
             setTextColor(lilac)
         })
-        if (size == 2) panel.addView(label("☽  Purple Charm Crystal Glass  ☾", 13f).apply {
+        if (size == 2) panel.addView(label("☽  Purple Charm Crystal Class  ☾", 13f).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(12), 0, 0)
         })
@@ -1624,8 +1624,8 @@ class MainActivity : Activity(), SensorEventListener {
             "▣ Compacto 2 × 2", "▤ Padrão 4 × 2", "▥ Ampliado 4 × 3",
             "✦ Alternar gótico / minimalista",
             "✕ Ocultar widget", "☁ Configurar cidade e clima",
-            "☀ Sol Gótico • Clássico", "✺ Sol de Cristal",
-            "⛅ Sol com Nuvens", "☀ Sol Nascente",
+            "☀ Dia Quente", "✺ Dia Limpo",
+            "⛅ Dia Nublado", "☀ Nascer do Sol",
             "☾ Lua Gótica • fase automática",
             "☾ Lua Crescente", "● Lua Cheia", "☽ Lua Minguante", "◯ Lua Nova"
         )
