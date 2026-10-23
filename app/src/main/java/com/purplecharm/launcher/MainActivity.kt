@@ -1593,10 +1593,10 @@ class MainActivity : Activity(), SensorEventListener {
             else -> 0
         }
         val moonArt = arrayOf(
-            intArrayOf(R.drawable._01_lua_nova_noite_limpa, R.drawable._02_lua_crescente_noite_limpa, R.drawable._03_lua_cheia_noite_limpa, R.drawable._04_lua_minguante_noite_limpa),
-            intArrayOf(R.drawable._05_lua_nova_noite_nublada, R.drawable._06_lua_crescente_noite_nublada, R.drawable._07_lua_cheia_noite_nublada, R.drawable._08_lua_minguante_noite_nublada),
-            intArrayOf(R.drawable._09_lua_nova_noite_chuvosa, R.drawable._10_lua_crescente_noite_chuvosa, R.drawable._11_lua_cheia_noite_chuvosa, R.drawable._12_lua_minguante_noite_chuvosa),
-            intArrayOf(R.drawable._13_lua_nova_noite_fria_neve, R.drawable._14_lua_crescente_noite_fria_neve, R.drawable._15_lua_cheia_noite_fria_neve, R.drawable._16_lua_minguante_noite_fria_neve)
+            intArrayOf(R.drawable.lua_01_lua_nova_noite_limpa, R.drawable.lua_02_lua_crescente_noite_limpa, R.drawable.lua_03_lua_cheia_noite_limpa, R.drawable.lua_04_lua_minguante_noite_limpa),
+            intArrayOf(R.drawable.lua_05_lua_nova_noite_nublada, R.drawable.lua_06_lua_crescente_noite_nublada, R.drawable.lua_07_lua_cheia_noite_nublada, R.drawable.lua_08_lua_minguante_noite_nublada),
+            intArrayOf(R.drawable.lua_09_lua_nova_noite_chuvosa, R.drawable.lua_10_lua_crescente_noite_chuvosa, R.drawable.lua_11_lua_cheia_noite_chuvosa, R.drawable.lua_12_lua_minguante_noite_chuvosa),
+            intArrayOf(R.drawable.lua_13_lua_nova_noite_fria_neve, R.drawable.lua_14_lua_crescente_noite_fria_neve, R.drawable.lua_15_lua_cheia_noite_fria_neve, R.drawable.lua_16_lua_minguante_noite_fria_neve)
         )
         val artwork = ImageView(this).apply {
             setImageResource(if (isSun) sunArt[selectedSun] else moonArt[weatherArtIndex][phaseArtIndex])
