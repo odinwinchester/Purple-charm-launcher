@@ -1546,7 +1546,7 @@ class MainActivity : Activity(), SensorEventListener {
             else -> hour in 6..17
         }
         val sunStyle = prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
-        val sunSymbols = arrayOf("☼", "✺", "⛅", "☀")
+        val sunArt = intArrayOf(R.drawable.dia_quente, R.drawable.dia_limpo, R.drawable.dia_nublado, R.drawable.nascer_do_sol)
         val sunNames = arrayOf("Dia Quente", "Dia Limpo", "Dia Nublado", "Nascer do Sol")
         val weatherActive = prefs.contains("gothic_weather_lat")
         val weatherLoaded = weatherActive && prefs.getLong("gothic_weather_updated", 0L) > 0L
@@ -1580,16 +1580,31 @@ class MainActivity : Activity(), SensorEventListener {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val moon = TextView(this).apply {
-            text = if (snowy || cold) "❄" else if (rainy) "☂" else if (isSun) sunSymbols[if (mode == 0) {
-                when (hour) { in 6..9 -> 3; in 16..17 -> 0; else -> 1 }
-            } else sunStyle] else phases[phase]
-            textSize = if (size == 0) 53f else 77f
-            setTextColor(Color.rgb(219, 166, 255))
-            gravity = Gravity.CENTER
-            setShadowLayer(17f, 0f, 0f, Color.MAGENTA)
+        val selectedSun = if (mode == 0) {
+            when (hour) { in 6..9 -> 3; in 16..17 -> 0; else -> 1 }
+        } else sunStyle
+        // Ordenação das artes lunares: nova, crescente, cheia, minguante.
+        // Ordenação interna do widget: crescente, cheia, minguante, nova.
+        val phaseArtIndex = intArrayOf(1, 2, 3, 0)[phase]
+        val weatherArtIndex = when {
+            snowy || cold -> 3
+            rainy -> 2
+            weatherLoaded && weatherCode in 1..3 -> 1
+            else -> 0
         }
-        line.addView(moon, LinearLayout.LayoutParams(0, -2, 1f))
+        val moonArt = arrayOf(
+            intArrayOf(R.drawable._01_lua_nova_noite_limpa, R.drawable._02_lua_crescente_noite_limpa, R.drawable._03_lua_cheia_noite_limpa, R.drawable._04_lua_minguante_noite_limpa),
+            intArrayOf(R.drawable._05_lua_nova_noite_nublada, R.drawable._06_lua_crescente_noite_nublada, R.drawable._07_lua_cheia_noite_nublada, R.drawable._08_lua_minguante_noite_nublada),
+            intArrayOf(R.drawable._09_lua_nova_noite_chuvosa, R.drawable._10_lua_crescente_noite_chuvosa, R.drawable._11_lua_cheia_noite_chuvosa, R.drawable._12_lua_minguante_noite_chuvosa),
+            intArrayOf(R.drawable._13_lua_nova_noite_fria_neve, R.drawable._14_lua_crescente_noite_fria_neve, R.drawable._15_lua_cheia_noite_fria_neve, R.drawable._16_lua_minguante_noite_fria_neve)
+        )
+        val artwork = ImageView(this).apply {
+            setImageResource(if (isSun) sunArt[selectedSun] else moonArt[weatherArtIndex][phaseArtIndex])
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+            contentDescription = if (isSun) sunNames[selectedSun] else "Lua ${names[phase]}"
+        }
+        line.addView(artwork, LinearLayout.LayoutParams(0, dp(if (size == 0) 100 else 148), 1f))
         val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val celestialName = if (isSun) sunNames[if (mode == 0) {
             when (hour) { in 6..9 -> 3; in 16..17 -> 0; else -> 1 }
