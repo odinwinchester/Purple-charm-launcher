@@ -1563,7 +1563,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val size = prefs.getInt("gothic_moon_size", 1).coerceIn(0, 2)
         val animated = prefs.getBoolean("gothic_moon_ornate", true)
-        val heights = intArrayOf(205, 260, 320)
+        val heights = intArrayOf(160, 210, 270)
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1604,28 +1604,8 @@ class MainActivity : Activity(), SensorEventListener {
             adjustViewBounds = true
             contentDescription = if (isSun) sunNames[selectedSun] else "Lua ${names[phase]}"
         }
-        // A arte ocupa toda a largura do widget, sem recorte nem distorção.
-        line.addView(artwork, LinearLayout.LayoutParams(-1, dp(intArrayOf(130, 180, 235)[size])))
-        val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val celestialName = if (isSun) sunNames[if (mode == 0) {
-            when (hour) { in 6..9 -> 3; in 16..17 -> 0; else -> 1 }
-        } else sunStyle] else "Lua ${names[phase]}"
-        val sceneName = weatherScene ?: celestialName
-        info.addView(label(if (animated) "✦ ${sceneName.uppercase(Locale.ROOT)} ✦" else sceneName, 12f, true).apply { gravity = Gravity.CENTER })
-        val clock = java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(java.util.Date())
-        info.addView(label(if (weatherLoaded) "${prefs.getString("gothic_weather_temp", "--")}°C  •  $clock" else clock, 20f, true).apply { gravity = Gravity.CENTER })
-        info.addView(label(java.text.SimpleDateFormat("EEE, dd MMM", Locale.getDefault()).format(java.util.Date()), 12f).apply { gravity = Gravity.CENTER })
-        info.gravity = Gravity.CENTER
-        line.addView(info, LinearLayout.LayoutParams(-1, -2))
-        panel.addView(line)
-        if (size > 0) panel.addView(label("✧ ────── ❖ ────── ✧", 14f).apply {
-            gravity = Gravity.CENTER
-            setTextColor(lilac)
-        })
-        if (size == 2) panel.addView(label("☽  Purple Charm Crystal Class  ☾", 13f).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, dp(12), 0, 0)
-        })
+        // A imagem original já inclui as informações visuais; não duplicar textos.
+        panel.addView(artwork, LinearLayout.LayoutParams(-1, -1))
         panel.setOnClickListener { moonWidgetOptions() }
         panel.setOnLongClickListener { moonWidgetOptions(); true }
         return panel.apply {
