@@ -13,7 +13,7 @@
 
     <application
         android:theme="@style/AppTheme"
-        android:label="@string/launcher_display_name"
+        android:label="Purple Charm Crystal Class"
         android:icon="@drawable/purple_eye_app_icon"
         android:allowBackup="false"
         android:supportsRtl="true">
