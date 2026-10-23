@@ -2,7 +2,7 @@ name: Compilar Purple Charm Launcher
 
 on:
   push:
-    branches: [main, feature/permissive-launcher-evaluation, fix/workspace-drag-stability]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -40,20 +40,18 @@ jobs:
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
           "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|application-label:)"
           PACKAGE_NAME="$("$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
-          if [[ "${GITHUB_REF_NAME}" == "fix/workspace-drag-stability" ]]; then
-            test "$PACKAGE_NAME" = "com.purplecharm.launcher.test"
-          fi
+          test "$PACKAGE_NAME" = "com.purplecharm.launcher"
           sha256sum "$APK"
 
       - name: Nomear APK para instalacao
         shell: bash
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Purple-Charm-v0.7.0-${{ github.ref_name == 'fix/workspace-drag-stability' && 'TEST' || 'debug' }}.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Purple-Charm-Crystal-Class-v0.7.0.apk
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Purple-Charm-v0.7.0-${{ github.ref_name == 'fix/workspace-drag-stability' && 'TEST' || 'debug' }}
+          name: Purple-Charm-Crystal-Class-v0.7.0
           path: dist/*.apk
           if-no-files-found: error
