@@ -1475,7 +1475,7 @@ class MainActivity : Activity(), SensorEventListener {
                     editor.putString("gothic_weather_wind", json.getDouble("wind_speed_10m").toInt().toString())
                     editor.putLong("gothic_weather_updated", System.currentTimeMillis())
                     editor.apply()
-                    runOnUiThread { if (!drawerOpen && ::pages.isInitialized) showHome() }
+                    runOnUiThread { refreshVisibleGothicWidget() }
                 } finally {
                     connection.disconnect()
                 }
@@ -1520,6 +1520,18 @@ class MainActivity : Activity(), SensorEventListener {
             }
             .setNegativeButton("Cancelar", null)
             .show()
+    }
+
+    // Atualiza somente o painel meteorológico, sem recriar páginas, dock ou atalhos.
+    private fun refreshVisibleGothicWidget() {
+        if (!::pages.isInitialized || isFinishing || isDestroyed) return
+        val current = pages.findViewWithTag<View>("gothic_moon_widget") ?: return
+        val parent = current.parent as? android.view.ViewGroup ?: return
+        val position = parent.indexOfChild(current)
+        if (position < 0) return
+        val params = current.layoutParams
+        parent.removeViewAt(position)
+        parent.addView(gothicMoonWidget(), position, params)
     }
 
     private fun gothicMoonWidget(): View {
@@ -1612,6 +1624,7 @@ class MainActivity : Activity(), SensorEventListener {
         panel.setOnClickListener { moonWidgetOptions() }
         panel.setOnLongClickListener { moonWidgetOptions(); true }
         return panel.apply {
+            tag = "gothic_moon_widget"
             layoutParams = LinearLayout.LayoutParams(-1, dp(heights[size])).apply {
                 setMargins(dp(7), dp(8), dp(7), 0)
             }
