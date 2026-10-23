@@ -1416,34 +1416,8 @@ class MainActivity : Activity(), SensorEventListener {
         updateDots()
 
         root.addView(dock())
-        if (editMode) {
-            val controls = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(8), dp(5), dp(8), dp(5))
-            }
-            controls.addView(label("✦ Modo de edição • segure e arraste um ícone", 12f))
-            val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            val undo = glassButton("↶ Desfazer", 12f).apply {
-                setOnClickListener {
-                    val snapshot = undoPage
-                    if (snapshot != null) {
-                        savePage(snapshot.first, snapshot.second)
-                        pageIndex = snapshot.first
-                        undoPage = null
-                        showHome()
-                    }
-                }
-            }
-            actions.addView(undo, LinearLayout.LayoutParams(0, -2, 1f))
-            actions.addView(glassButton("A–Z Organizar", 12f).apply {
-                setOnClickListener { alphabetizeCurrentPage() }
-            }, LinearLayout.LayoutParams(0, -2, 1f))
-            actions.addView(glassButton("✓ Concluído", 12f).apply {
-                setOnClickListener { leaveEditMode() }
-            }, LinearLayout.LayoutParams(0, -2, 1f))
-            controls.addView(actions)
-            root.addView(controls)
-        }
+        // A edição permanece acessível pelo menu de personalização do gesto inferior.
+        // A antiga faixa duplicada não é adicionada à tela inicial.
     }
 
     // Widget integrado ao launcher: quatro fases góticas, tamanhos e estilo persistidos.
@@ -2366,6 +2340,10 @@ class MainActivity : Activity(), SensorEventListener {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (editMode) {
+            leaveEditMode()
+            return
+        }
         if (drawerOpen || pageIndex != 0) {
             pageIndex = 0
             showHome()
