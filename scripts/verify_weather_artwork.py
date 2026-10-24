@@ -28,3 +28,10 @@ for item in inventory:
     assert (item['width'], item['height']) == struct.unpack('>II', image.read_bytes()[16:24])
     assert item['association']
 print('20/20 inventory entries agree with original hashes, dimensions and associations.')
+
+import re
+catalog = Path('app/src/main/java/com/purplecharm/launcher/WeatherArtworkCatalog.kt').read_text()
+resources = re.findall(r'R\.drawable\.([a-z0-9_]+)', catalog)
+assert len(resources) == 20 and len(set(resources)) == 20
+assert set(resources) == {Path(name).stem for name in expected}
+print('20/20 catalog resources resolve to the inventoried original PNGs.')

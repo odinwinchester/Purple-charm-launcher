@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import kotlin.math.roundToInt
 
 /** Width snaps to the home column grid; height follows the original artwork ratio. */
 internal class WeatherResizeLayout(
@@ -18,7 +19,7 @@ internal class WeatherResizeLayout(
     onOptions: () -> Unit
 ) : ViewGroup(context) {
     private val handleSize = (24 * resources.displayMetrics.density).toInt().coerceAtLeast(1)
-    private val border = resources.displayMetrics.density.toInt().coerceAtLeast(1)
+    private val border = resources.displayMetrics.density.roundToInt().coerceAtLeast(1)
     private val sw = image.drawable.intrinsicWidth
     private val sh = image.drawable.intrinsicHeight
     private val art = WeatherArtworkFrame(context, image, 2)

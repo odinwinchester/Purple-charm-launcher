@@ -1463,6 +1463,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var celestialView: View? = null
     private var widgetEditor: WeatherResizeLayout? = null
     private var widgetResizeActive = false
+    private var widgetResizeGesture = false
 
     // Replace only the widget, preserving pages, scroll state and drag/drop.
     private fun refreshCelestialView() {
@@ -1486,7 +1487,6 @@ class MainActivity : Activity(), SensorEventListener {
     private fun gothicWeatherSettings() { weatherLocation.showOptions() }
 
     private fun gothicMoonWidget(): View {
-        val names = arrayOf("Crescente", "Cheia", "Minguante", "Nova")
         // Ciclo sinódico médio de 29,530588853 dias; aproximação offline.
         // Referência: Lua Nova de 06/01/2000 às 18:14 UTC.
         val now = System.currentTimeMillis()
@@ -1509,8 +1509,6 @@ class MainActivity : Activity(), SensorEventListener {
             else -> forecast?.isDay ?: (hour in 6..17)
         }
         val sunStyle = prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
-        val sunArt = intArrayOf(R.drawable.dia_quente, R.drawable.dia_limpo, R.drawable.dia_nublado, R.drawable.nascer_do_sol)
-        val sunNames = arrayOf("Dia Quente", "Dia Limpo", "Dia Nublado", "Nascer do Sol")
         val weatherActive = prefs.contains("gothic_weather_lat")
         val weatherLoaded = weatherActive && forecast != null
         val weatherCode = forecast?.code ?: 0
@@ -1526,7 +1524,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val selectedSun = if (mode == 0) {
             when {
-                rainy || snowy || weatherCode in 2..3 || weatherCode == 45 -> 2
+                rainy || snowy || cold || weatherCode in 2..3 || weatherCode == 45 -> 2
                 hour in 6..9 -> 3
                 (forecast?.temperature ?: 0.0) >= 30 -> 0
                 else -> 1
@@ -1541,17 +1539,13 @@ class MainActivity : Activity(), SensorEventListener {
             weatherLoaded && (weatherCode in 2..3 || weatherCode == 45) -> 1
             else -> 0
         }
-        val moonArt = arrayOf(
-            intArrayOf(R.drawable.lua_01_lua_nova_noite_limpa, R.drawable.lua_02_lua_crescente_noite_limpa, R.drawable.lua_03_lua_cheia_noite_limpa, R.drawable.lua_04_lua_minguante_noite_limpa),
-            intArrayOf(R.drawable.lua_05_lua_nova_noite_nublada, R.drawable.lua_06_lua_crescente_noite_nublada, R.drawable.lua_07_lua_cheia_noite_nublada, R.drawable.lua_08_lua_minguante_noite_nublada),
-            intArrayOf(R.drawable.lua_09_lua_nova_noite_chuvosa, R.drawable.lua_10_lua_crescente_noite_chuvosa, R.drawable.lua_11_lua_cheia_noite_chuvosa, R.drawable.lua_12_lua_minguante_noite_chuvosa),
-            intArrayOf(R.drawable.lua_13_lua_nova_noite_fria_neve, R.drawable.lua_14_lua_crescente_noite_fria_neve, R.drawable.lua_15_lua_cheia_noite_fria_neve, R.drawable.lua_16_lua_minguante_noite_fria_neve)
-        )
+        val selectedArt = WeatherArtworkCatalog.select(isSun, selectedSun, weatherArtIndex,
+            phaseArtIndex, prefs.getString("gothic_manual_art", null))
         val artwork = ImageView(this).apply {
-            setImageResource(if (isSun) sunArt[selectedSun] else moonArt[weatherArtIndex][phaseArtIndex])
+            setImageResource(selectedArt.resource)
             scaleType = ImageView.ScaleType.FIT_CENTER
             adjustViewBounds = true
-            contentDescription = if (isSun) sunNames[selectedSun] else "Lua ${names[phase]}"
+            contentDescription = selectedArt.label
         }
         // Original PNGs remain byte-for-byte intact, including their sample lettering.
         // Real forecast is explicitly separated so sample values cannot be mistaken for live data.
@@ -1598,56 +1592,33 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun moonWidgetOptions() {
-        val choices = arrayOf(
-            "☀☾ Ciclo automático Sol / Lua",
-            "▣ Compacto", "▤ Padrão", "▥ Ampliado",
-            "✦ Artes originais preservadas",
-            "✕ Ocultar widget", "☁ Configurar cidade e clima",
-            "☀ Dia Quente", "✺ Dia Limpo",
-            "⛅ Dia Nublado", "☀ Nascer do Sol",
-            "☾ Lua Gótica • fase automática",
-            "☾ Lua Crescente", "● Lua Cheia", "☽ Lua Minguante", "◯ Lua Nova"
-        )
-        AlertDialog.Builder(this)
-            .setTitle("☀☾ Ciclo Gótico • Purple Charm")
-            .setItems(choices) { _, option ->
-                val editor = prefs.edit()
-                when (option) {
-                    0 -> {
-                        editor.putInt("gothic_celestial_mode", 0)
-                        editor.putBoolean("gothic_moon_auto", true)
+        AlertDialog.Builder(this).setTitle("Clima • automático por padrão")
+            .setItems(arrayOf("Localização e clima", "Personalizar arte (opcional)",
+                "Restaurar comportamento automático", "Redimensionar com alças", "Ocultar widget", "Sobre as artes")) { _, which ->
+                when (which) {
+                    0 -> gothicWeatherSettings()
+                    1 -> AlertDialog.Builder(this).setTitle("Escolher uma das 20 artes originais")
+                        .setItems(WeatherArtworkCatalog.all.map { it.label }.toTypedArray()) { _, index ->
+                            prefs.edit().putString("gothic_manual_art", WeatherArtworkCatalog.all[index].slug)
+                                .putInt("gothic_celestial_mode", 0).putBoolean("gothic_moon_auto", true).apply()
+                            refreshCelestialView()
+                        }.setNegativeButton("Cancelar", null).show()
+                    2 -> {
+                        prefs.edit().remove("gothic_manual_art").putInt("gothic_celestial_mode", 0)
+                            .putBoolean("gothic_moon_auto", true).apply()
+                        refreshCelestialView()
                     }
-                    in 1..3 -> editor.putInt("gothic_moon_size", option - 1)
+                    3 -> widgetEditor?.beginEditing()
                     4 -> {
-                        AlertDialog.Builder(this).setTitle("Artes originais")
-                            .setMessage("Os 20 PNGs são exibidos completos, incluindo personagens, relógios, textos, cores e molduras. A previsão dinâmica aparece abaixo da arte. Sem efeitos sobrepostos nesta etapa. Dados: MET Norway, CC BY 4.0.")
-                            .setPositiveButton("Fechar", null).show()
-                        return@setItems
-                    }
-                    5 -> {
-                        editor.putBoolean("gothic_moon_visible", false)
+                        prefs.edit().putBoolean("gothic_moon_visible", false).apply()
                         weatherLocation.stop()
+                        showHome()
                     }
-                    6 -> { gothicWeatherSettings(); return@setItems }
-                    in 7..10 -> {
-                        editor.putInt("gothic_celestial_mode", 1)
-                        editor.putInt("gothic_sun_style", option - 7)
-                    }
-                    11 -> {
-                        editor.putInt("gothic_celestial_mode", 2)
-                        editor.putBoolean("gothic_moon_auto", true)
-                    }
-                    in 12..15 -> {
-                        editor.putInt("gothic_celestial_mode", 2)
-                        editor.putBoolean("gothic_moon_auto", false)
-                        editor.putInt("gothic_moon_phase", option - 12)
-                    }
+                    5 -> AlertDialog.Builder(this).setTitle("Artes originais")
+                        .setMessage("As 20 artes permanecem completas, incluindo personagens, relógios, textos, cores e molduras. A previsão real permanece separada dos valores ilustrativos. Dados: MET Norway, CC BY 4.0.")
+                        .setPositiveButton("Fechar", null).show()
                 }
-                editor.apply()
-                showHome()
-            }
-            .setPositiveButton("Fechar", null)
-            .show()
+            }.setNegativeButton("Fechar", null).show()
     }
 
     private fun homePage(index: Int): View {
@@ -2273,8 +2244,9 @@ class MainActivity : Activity(), SensorEventListener {
     override fun dispatchTouchEvent(
         event: MotionEvent
     ): Boolean {
-        if (widgetResizeActive) {
+        if (widgetResizeActive || widgetResizeGesture) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                widgetResizeGesture = true
                 val bounds = android.graphics.Rect()
                 val editor = widgetEditor
                 if (editor == null || !editor.getGlobalVisibleRect(bounds) ||
@@ -2282,6 +2254,8 @@ class MainActivity : Activity(), SensorEventListener {
                     editor?.endEditing()
                 }
             }
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)
+                widgetResizeGesture = false
             return super.dispatchTouchEvent(event)
         }
         if (!drawerOpen && !dragging) {
