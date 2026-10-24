@@ -26,4 +26,8 @@ Base: `763f3890950de72d9602b5a8ae34cc6c0ee48ca7`. Main deve permanecer em `c07c6
 ## Evidência de compilação
 - Primeira validação desta etapa: `568ae368024f7530dafa7c7da16d6a3a76e514ee`, Actions https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40064879266 .
 - 16 testes executados, sem falhas, erros ou testes ignorados. Inventário/integridade, compilação e validação de assinatura/alinhamento passaram.
-- Ajuste posterior evita salvar o frame anterior quando o dedo é solto antes do próximo layout da alça. A validação final desse ajuste será registrada após o Actions; interação por toque continua pendente no aparelho.
+- Ajuste posterior evita salvar o frame anterior quando o dedo é solto antes do próximo layout da alça. Validação final aprovada para `72454e6cdfc682b9e4a2d7cb78d21df6aa154bde`: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40065049461 . Interação por toque continua pendente no aparelho.
+
+- Validação final: 16 testes JVM executados, sem falhas, erros ou testes ignorados; conferência das 20 imagens, inventário e catálogo aprovada; compilação, ZIP, alinhamento e assinatura aprovados.
+- APK debug do código validado: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40065049461/artifacts/12549246448 . SHA-256: `2287a9b408fd2b9bf01ed5d5c000d65947ac3ddd37678c36e9d4776cbfa82bab`.
+- Main conferida sem alteração em `c07c643ce2edbdfbfa580d2461e771b96aa2f13c`. Não foi feito merge. Este registro final altera somente documentação, não o código compilado acima.
