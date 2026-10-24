@@ -118,10 +118,12 @@ class MainActivity : Activity(), SensorEventListener {
         super.onPause()
         sensorManager.unregisterListener(this)
         weatherHandler.removeCallbacks(weatherTick)
+        weatherLocation.stop()
     }
     override fun onResume() {
         super.onResume()
         weatherHandler.removeCallbacks(weatherTick)
+        weatherLocation.start()
         weatherHandler.post(weatherTick)
     }
 
@@ -1424,6 +1426,26 @@ class MainActivity : Activity(), SensorEventListener {
 
     private val weatherHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val weatherClient by lazy { MetWeatherClient(prefs) }
+    private val weatherLocation by lazy {
+        WeatherLocationController(this, prefs) { coordinatesChanged ->
+            if (coordinatesChanged) {
+                weatherClient.clearForecast()
+                refreshGothicWeather()
+            }
+            refreshCelestialView()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        weatherLocation.onPermissionResult(requestCode)
+    }
+
+    override fun onDestroy() {
+        weatherHandler.removeCallbacks(weatherTick)
+        weatherLocation.close()
+        super.onDestroy()
+    }
     private val weatherTick = object : Runnable {
         override fun run() {
             refreshGothicWeather()
@@ -1444,6 +1466,7 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun refreshGothicWeather() {
+        if (!prefs.getBoolean("gothic_moon_visible", true)) return
         weatherClient.refresh {
             runOnUiThread {
                 if (!isFinishing && !isDestroyed) refreshCelestialView()
@@ -1451,49 +1474,9 @@ class MainActivity : Activity(), SensorEventListener {
         }
     }
 
-    private fun gothicWeatherSettings() {
-        val input = EditText(this).apply {
-            setSingleLine(true)
-            hint = "Latitude, longitude (ex.: -20.4, -54.6)"
-            setText(
-                listOfNotNull(
-                    prefs.getString("gothic_weather_lat", null),
-                    prefs.getString("gothic_weather_lon", null)
-                ).joinToString(", ")
-            )
-            setPadding(dp(18), dp(14), dp(18), dp(14))
-        }
-        AlertDialog.Builder(this)
-            .setTitle("✧ Local do Clima Gótico")
-            .setMessage("Informe coordenadas da cidade desejada. Não acessamos sua localização automaticamente. Previsão: MET Norway (CC BY 4.0); valores arredondados. As coordenadas são enviadas ao provedor.")
-            .setView(input)
-            .setPositiveButton("Salvar") { _, _ ->
-                val parts = input.text.toString().split(",").map { it.trim() }
-                val lat = parts.getOrNull(0)?.toDoubleOrNull()
-                val lon = parts.getOrNull(1)?.toDoubleOrNull()
-                if (parts.size == 2 && lat != null && lon != null && lat.isFinite() && lon.isFinite() && lat in -90.0..90.0 && lon in -180.0..180.0) {
-                    prefs.edit().putString("gothic_weather_lat", lat.toString())
-                        .putString("gothic_weather_lon", lon.toString())
-                        .putLong("gothic_weather_updated", 0L)
-                        .remove("gothic_weather_expires").remove("gothic_weather_last_modified").apply()
-                    weatherClient.clearForecast()
-                    refreshGothicWeather()
-                    showHome()
-                } else Toast.makeText(this, "Use latitude, longitude válidas", Toast.LENGTH_LONG).show()
-            }
-            .setNeutralButton("Desativar clima") { _, _ ->
-                prefs.edit().remove("gothic_weather_lat").remove("gothic_weather_lon")
-                    .remove("gothic_weather_updated").remove("gothic_weather_expires")
-                    .remove("gothic_weather_last_modified").apply()
-                weatherClient.clearForecast()
-                showHome()
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
-    }
+    private fun gothicWeatherSettings() { weatherLocation.showOptions() }
 
     private fun gothicMoonWidget(): View {
-        val phases = arrayOf("☾", "●", "☽", "◯")
         val names = arrayOf("Crescente", "Cheia", "Minguante", "Nova")
         // Ciclo sinódico médio de 29,530588853 dias; aproximação offline.
         // Referência: Lua Nova de 06/01/2000 às 18:14 UTC.
@@ -1525,31 +1508,12 @@ class MainActivity : Activity(), SensorEventListener {
         val rainy = weatherLoaded && (weatherCode in 51..67 || weatherCode in 80..82 || weatherCode in 95..99)
         val snowy = weatherLoaded && (weatherCode in 71..77 || weatherCode in 85..86)
         val cold = weatherLoaded && (forecast?.temperature ?: 99.0) <= 12
-        val weatherScene = when {
-            snowy -> if (isSun) "❄ Inverno Gótico" else "❄ Noite Gelada"
-            rainy -> if (isSun) "☂ Chuva Gótica" else "☂ Noite Chuvosa"
-            cold -> if (isSun) "❅ Dia Frio" else "❅ Noite Fria"
-            weatherLoaded && weatherCode in 1..3 -> if (isSun) "☁ Céu Gótico" else "☁ Noite Nublada"
-            else -> null
-        }
         val size = prefs.getInt("gothic_moon_size", 1).coerceIn(0, 2)
-        val animated = prefs.getBoolean("gothic_sun_animated", false)
-        val heights = intArrayOf(160, 210, 270)
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(8), dp(14), dp(8))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.argb(95, 34, 8, 55), Color.argb(35, 13, 6, 32))
-            ).apply {
-                cornerRadius = dp(20).toFloat()
-                setStroke(dp(1), Color.rgb(170, 107, 239))
-            }
-        }
-        val line = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, 0, 0, 0)
+            setBackgroundColor(Color.TRANSPARENT)
         }
         val selectedSun = if (mode == 0) {
             when {
@@ -1574,7 +1538,7 @@ class MainActivity : Activity(), SensorEventListener {
             intArrayOf(R.drawable.lua_09_lua_nova_noite_chuvosa, R.drawable.lua_10_lua_crescente_noite_chuvosa, R.drawable.lua_11_lua_cheia_noite_chuvosa, R.drawable.lua_12_lua_minguante_noite_chuvosa),
             intArrayOf(R.drawable.lua_13_lua_nova_noite_fria_neve, R.drawable.lua_14_lua_crescente_noite_fria_neve, R.drawable.lua_15_lua_cheia_noite_fria_neve, R.drawable.lua_16_lua_minguante_noite_fria_neve)
         )
-        val artwork = SolarArtworkView(this, if (isSun && animated) selectedSun else -1).apply {
+        val artwork = ImageView(this).apply {
             setImageResource(if (isSun) sunArt[selectedSun] else moonArt[weatherArtIndex][phaseArtIndex])
             scaleType = ImageView.ScaleType.FIT_CENTER
             adjustViewBounds = true
@@ -1582,10 +1546,10 @@ class MainActivity : Activity(), SensorEventListener {
         }
         // Original PNGs remain byte-for-byte intact, including their sample lettering.
         // Real forecast is explicitly separated so sample values cannot be mistaken for live data.
-        panel.addView(artwork, LinearLayout.LayoutParams(-1, 0, 1f))
+        panel.addView(WeatherArtworkFrame(this, artwork, size), LinearLayout.LayoutParams(-2, -2))
         panel.addView(label("Arte original • valores impressos ilustrativos", 10f))
         val liveText = when {
-            !weatherActive -> "Configure as coordenadas para ver a previsão"
+            !weatherActive -> "Escolha localização automática ou busque uma cidade"
             forecast == null -> "Previsão indisponível • tentando atualizar"
             else -> {
                 val time = java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
@@ -1598,13 +1562,16 @@ class MainActivity : Activity(), SensorEventListener {
                     "\nMET Norway • previsão $time$stale"
             }
         }
-        panel.addView(label(liveText, 11f).apply { contentDescription = liveText })
+        val locationText = weatherLocation.summary
+        panel.addView(label("$locationText\n$liveText", 11f).apply {
+            contentDescription = "$locationText. $liveText"
+        })
         panel.setOnClickListener { moonWidgetOptions() }
         panel.setOnLongClickListener { moonWidgetOptions(); true }
         celestialView = panel
         return panel.apply {
-            layoutParams = LinearLayout.LayoutParams(-1, dp(heights[size] + 70)).apply {
-                setMargins(dp(7), dp(8), dp(7), 0)
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+                setMargins(0, dp(2), 0, 0)
             }
         }
     }
@@ -1612,8 +1579,8 @@ class MainActivity : Activity(), SensorEventListener {
     private fun moonWidgetOptions() {
         val choices = arrayOf(
             "☀☾ Ciclo automático Sol / Lua",
-            "▣ Compacto 2 × 2", "▤ Padrão 4 × 2", "▥ Ampliado 4 × 3",
-            "✦ Alternar sol estático / brilho animado",
+            "▣ Compacto", "▤ Padrão", "▥ Ampliado",
+            "✦ Artes originais preservadas",
             "✕ Ocultar widget", "☁ Configurar cidade e clima",
             "☀ Dia Quente", "✺ Dia Limpo",
             "⛅ Dia Nublado", "☀ Nascer do Sol",
@@ -1630,9 +1597,16 @@ class MainActivity : Activity(), SensorEventListener {
                         editor.putBoolean("gothic_moon_auto", true)
                     }
                     in 1..3 -> editor.putInt("gothic_moon_size", option - 1)
-                    4 -> editor.putBoolean("gothic_sun_animated",
-                        !prefs.getBoolean("gothic_sun_animated", false))
-                    5 -> editor.putBoolean("gothic_moon_visible", false)
+                    4 -> {
+                        AlertDialog.Builder(this).setTitle("Artes originais")
+                            .setMessage("Os 20 PNGs são exibidos completos, incluindo personagens, relógios, textos, cores e molduras. A previsão dinâmica aparece abaixo da arte. Sem efeitos sobrepostos nesta etapa. Dados: MET Norway, CC BY 4.0.")
+                            .setPositiveButton("Fechar", null).show()
+                        return@setItems
+                    }
+                    5 -> {
+                        editor.putBoolean("gothic_moon_visible", false)
+                        weatherLocation.stop()
+                    }
                     6 -> { gothicWeatherSettings(); return@setItems }
                     in 7..10 -> {
                         editor.putInt("gothic_celestial_mode", 1)

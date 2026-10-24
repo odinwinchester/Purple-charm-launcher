@@ -116,10 +116,10 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                     onChanged()
                 } else {
                     val retry = connection.getHeaderField("Retry-After")?.toLongOrNull()
-                    retryAfter = System.currentTimeMillis() + (retry ?: 900L).coerceAtLeast(60L) * 1000L
+                    if (location() == key) retryAfter = System.currentTimeMillis() + (retry ?: 900L).coerceAtLeast(60L) * 1000L
                 }
             } catch (_: Exception) {
-                retryAfter = System.currentTimeMillis() + 15 * 60_000L
+                if (location() == key) retryAfter = System.currentTimeMillis() + 15 * 60_000L
             } finally {
                 connection?.disconnect()
                 loading.set(false)

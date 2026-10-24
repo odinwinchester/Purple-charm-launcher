@@ -25,3 +25,31 @@ Base: `c07c643ce2edbdfbfa580d2461e771b96aa2f13c` (`main`).
 - Substituir números impressos dentro da moldura exigiria remover parte da imagem original; isso não foi feito. A área dinâmica separada preserva integralmente as artes, mas não equivale a um template em camadas.
 - Validar visualmente no Android os três tamanhos, ciclo sol/lua, localização, rede/offline e efeitos.
 - Não publicar como versão estável validada no aparelho.
+
+# Etapa 2 — localização e apresentação (PR #2)
+
+Base desta etapa: `255db5016d72a21835e0af4518a44ef52b7bb332` na branch `codex/weather-widgets`. Não fazer merge sem autorização.
+
+## Implementado
+- Menu com localização automática e busca por nome de cidade, sem exigir digitação de latitude/longitude. Coordenadas anteriores continuam utilizáveis.
+- Permissão Android de localização aproximada solicitada somente ao tocar em “Usar minha localização”. Não solicita localização precisa nem acesso em segundo plano.
+- Localização de rede apenas com launcher em primeiro plano e widget visível: intervalo mínimo de 5 minutos e deslocamento mínimo de 2 km. Última posição aceita somente até 30 minutos e precisão até 10 km. Pausa remove o listener.
+- Mudanças de posição aceitas invalidam a previsão anterior e atualizam coordenadas/cidade. Pequenas oscilações não invalidam o cache. A localização aproximada não identifica exatamente os limites municipais.
+- Geocoder Android: busca por cidade com lista de resultados (cidade/estado/país) e escolha explícita. API 33+ assíncrona; APIs 26–32 fora da thread de interface. Falhas, ausência do serviço, negação de permissão e localização desativada têm mensagens/alternativas.
+- Altura calculada pela proporção intrínseca completa de cada PNG, com larguras desejadas de 240/320/420 dp limitadas à largura disponível. Removidos altura fixa, preenchimento grande e painel em degradê.
+- Uma borda externa roxa discreta (~1 dp), fundo transparente e 1 dp de separação para não pintar sobre a arte. Sem cortes, tintas, máscaras ou efeitos sobre os PNGs. Efeitos solares preliminares deixam de ser aplicados nesta etapa; arquivo-fonte mantido sem uso.
+- Previsão dinâmica e local permanecem fora da imagem. Personagens, relógios, textos impressos, cores e molduras originais continuam visíveis.
+- Testes adicionados para dimensões das 20 imagens (3 tamanhos, 5 larguras, 4 densidades), variação de proporções, posição antiga/inválida/imprecisa, oscilação, viagem e linha internacional de data.
+
+## Verificado localmente
+- 20/20 SHA-256 originais preservados.
+- Dimensões dos 20 fixtures de teste conferidas contra o cabeçalho real de cada PNG.
+- `git diff --check`: sem erros.
+- Testes JVM e compilação desta etapa: aguardando Actions; não confundir com a validação anterior de ce8f9b3.
+
+## Testes ainda necessários no aparelho
+- Conceder/negar/revogar permissão, permissão temporária, retorno das configurações e localização desativada.
+- Buscar cidades homônimas; testar rede ausente e aparelho sem Geocoder/provedor de rede.
+- Trocar de cidade fisicamente e retornar ao launcher; confirmar atualização e consumo de bateria.
+- Inspecionar as 20 artes nos três tamanhos, em retrato/paisagem e diferentes densidades/tamanhos de fonte, inclusive relógios/textos/molduras nas bordas.
+- Validar que gaveta, atalhos, dock e gestos continuam funcionando. A compilação não substitui esses testes.

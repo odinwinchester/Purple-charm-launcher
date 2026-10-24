@@ -2,7 +2,7 @@ name: Compilar Purple Charm Launcher
 
 on:
   push:
-    branches: [main, "codex/weather-widgets"]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -30,7 +30,7 @@ jobs:
       - name: Conferir integridade das vinte artes
         run: python3 scripts/verify_weather_artwork.py
 
-      - name: Testar previsão e seleção de condições
+      - name: Testar previsão, localização e proporções
         run: gradle :app:testDebugUnitTest --stacktrace
 
       - name: Compilar APK
