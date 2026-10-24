@@ -304,7 +304,10 @@ class WorkspaceAndroidTest {
         val field = MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }
         assertEquals(2, field.getInt(a))
         surface.dispatchDragEvent(event(DragEvent.ACTION_DRAG_LOCATION, session, x = 1f))
-        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1000))
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(350))
+        assertEquals(1, field.getInt(a))
+        // Handler scheduling is a minimum delay; rendering may advance the simulated clock.
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(700))
         assertEquals(0, field.getInt(a)); assertEquals(before, p.all)
         assertSame(surface, a.window.decorView.findViewWithTag<WorkspaceDragLayout>("workspace_drag_surface"))
         surface.dispatchDragEvent(event(DragEvent.ACTION_DRAG_ENDED, session))
