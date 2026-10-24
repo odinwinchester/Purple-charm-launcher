@@ -119,6 +119,7 @@ class MainActivity : Activity(), SensorEventListener {
         sensorManager.unregisterListener(this)
         weatherHandler.removeCallbacks(weatherTick)
         weatherLocation.stop()
+        widgetEditor?.endEditing()
     }
     override fun onResume() {
         super.onResume()
@@ -1331,6 +1332,8 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun showHome() {
+        widgetEditor?.endEditing()
+        widgetEditor = null
         drawerOpen = false
         loadApps()
 
@@ -1458,10 +1461,12 @@ class MainActivity : Activity(), SensorEventListener {
         }
     }
     private var celestialView: View? = null
+    private var widgetEditor: WeatherResizeLayout? = null
+    private var widgetResizeActive = false
 
     // Replace only the widget, preserving pages, scroll state and drag/drop.
     private fun refreshCelestialView() {
-        if (isFinishing || isDestroyed || dragging) return
+        if (isFinishing || isDestroyed || dragging || widgetResizeActive) return
         val old = celestialView ?: return
         val parent = old.parent as? ViewGroup ?: return
         val index = parent.indexOfChild(old)
@@ -1550,7 +1555,14 @@ class MainActivity : Activity(), SensorEventListener {
         }
         // Original PNGs remain byte-for-byte intact, including their sample lettering.
         // Real forecast is explicitly separated so sample values cannot be mistaken for live data.
-        panel.addView(WeatherArtworkFrame(this, artwork, size), LinearLayout.LayoutParams(-1, 0, 2f))
+        val columns = horizontalIconColumns()
+        val initialSpan = prefs.getInt("gothic_widget_span", intArrayOf(2, 3, columns)[size]).coerceIn(1, columns)
+        val editor = WeatherResizeLayout(this, artwork, columns, initialSpan,
+            { active -> widgetResizeActive = active },
+            { span -> prefs.edit().putInt("gothic_widget_span", span).apply() },
+            { moonWidgetOptions() })
+        widgetEditor = editor
+        panel.addView(editor, LinearLayout.LayoutParams(-1, 0, 2f))
         val readout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         readout.addView(label("Arte original • valores impressos ilustrativos", 10f))
         val liveText = when {
@@ -1578,7 +1590,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         panel.addView(readoutScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         panel.setOnClickListener { moonWidgetOptions() }
-        panel.setOnLongClickListener { moonWidgetOptions(); true }
+        panel.setOnLongClickListener { editor.beginEditing(); true }
         celestialView = panel
         return panel.apply {
             layoutParams = ViewGroup.LayoutParams(-1, -1)
@@ -2261,6 +2273,17 @@ class MainActivity : Activity(), SensorEventListener {
     override fun dispatchTouchEvent(
         event: MotionEvent
     ): Boolean {
+        if (widgetResizeActive) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                val bounds = android.graphics.Rect()
+                val editor = widgetEditor
+                if (editor == null || !editor.getGlobalVisibleRect(bounds) ||
+                    !bounds.contains(event.rawX.toInt(), event.rawY.toInt())) {
+                    editor?.endEditing()
+                }
+            }
+            return super.dispatchTouchEvent(event)
+        }
         if (!drawerOpen && !dragging) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -2338,6 +2361,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (widgetResizeActive) { widgetEditor?.endEditing(); return }
         if (editMode) {
             leaveEditMode()
             return

@@ -12,6 +12,7 @@ internal class WeatherArtworkFrame(context: Context, image: ImageView, size: Int
     private val border = resources.displayMetrics.density.roundToInt().coerceAtLeast(1)
     private val preferredWidth = (intArrayOf(240, 320, 420)[size.coerceIn(0, 2)] *
         resources.displayMetrics.density).roundToInt()
+    var resizedWidth: Int? = null
     private val sourceWidth = image.drawable.intrinsicWidth
     private val sourceHeight = image.drawable.intrinsicHeight
     init {
@@ -29,7 +30,7 @@ internal class WeatherArtworkFrame(context: Context, image: ImageView, size: Int
             preferredWidth else MeasureSpec.getSize(widthMeasureSpec)
         val maxHeight = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED)
             Int.MAX_VALUE else MeasureSpec.getSize(heightMeasureSpec)
-        val target = WeatherGeometry.fitWithin(available, maxHeight, preferredWidth, sourceWidth, sourceHeight, border)
+        val target = WeatherGeometry.fitWithin(available, maxHeight, resizedWidth ?: preferredWidth, sourceWidth, sourceHeight, border)
         super.onMeasure(MeasureSpec.makeMeasureSpec(target.width, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(target.height, MeasureSpec.EXACTLY))
     }
