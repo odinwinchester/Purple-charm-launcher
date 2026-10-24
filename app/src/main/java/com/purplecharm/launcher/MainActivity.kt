@@ -65,6 +65,37 @@ class MainActivity : Activity(), SensorEventListener {
     private var workspaceRefreshScheduled = false
     private var dragDropCommitted = false
     private var dragOrigin: Pair<Int, List<String>>? = null
+    private var dragSession: WorkspaceDragSession? = null
+    private var dragSource: View? = null
+    private val workspaceStore by lazy { WorkspaceItemsStore(prefs) }
+    private val workspaceMime = "application/vnd.purplecharm.workspace-item"
+    private var folderDialog: Dialog? = null
+    private var openFolderId: String? = null
+    private var pendingDrawerDrag = false
+
+    private fun workspaceItems(): WorkspaceItems = WorkspaceItems(
+        (0 until pageCount()).map { pageCells(it).toList() }, dockSlots().toList(), workspaceStore.folders())
+    private fun knownItem(key: String): Boolean = resolveKey(key) != null ||
+        (WorkspaceItems.isFolder(key) && runCatching { key in workspaceStore.folders() }.getOrDefault(false))
+
+    private fun saveWorkspaceEdit(proposed: WorkspaceItems?): Boolean {
+        val current = runCatching { workspaceItems() }.getOrNull()
+        if (current == null || proposed == null) {
+            Toast.makeText(this, "Não foi possível concluir sem alterar outros atalhos", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        val before = WorkspaceLayoutSafety(prefs).capture()
+        val saved = if (dragging) dragSession?.commit(current, proposed, workspaceStore::save) == true
+            else workspaceStore.save(proposed)
+        if (!saved) {
+            Toast.makeText(this, "Operação não salva; origem preservada", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        undoWorkspaceSnapshot = before
+        if (dragging) dragDropCommitted = true
+        refreshWorkspaceSafely()
+        return true
+    }
     private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
     private var accelerometer: Sensor? = null
 
@@ -117,10 +148,16 @@ class MainActivity : Activity(), SensorEventListener {
     override fun onPause() {
         super.onPause()
         sensorManager.unregisterListener(this)
+        weatherHandler.removeCallbacks(weatherTick)
+        weatherLocation.stop()
+        if (dragging) cancelWorkspaceDrag()
+        widgetEditor?.endEditing()
     }
     override fun onResume() {
         super.onResume()
-        // Sensor desativado para organização automática.
+        weatherHandler.removeCallbacks(weatherTick)
+        weatherLocation.start()
+        weatherHandler.post(weatherTick)
     }
 
 
@@ -210,9 +247,10 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun pageCells(index: Int): MutableList<String> {
         val keys = savedPage(index).distinct()
-        val cells = MutableList(homeCapacity()) { "" }
-        prefs.getString("layout_page_cells_$index", null)?.split("|")
-            ?.take(cells.size)?.forEachIndexed { slot, key ->
+        val stored = prefs.getString("layout_page_cells_$index", null)?.split("|")
+        // A narrower grid must not truncate persisted shortcuts or folder references.
+        val cells = MutableList(maxOf(homeCapacity(), stored?.size ?: 0, keys.size)) { "" }
+        stored?.forEachIndexed { slot, key ->
                 if (key.isNotEmpty() && key in keys && key !in cells) cells[slot] = key
             }
         keys.forEach { key ->
@@ -249,39 +287,60 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun resolveKey(key: String): ResolveInfo? = apps.firstOrNull { appKey(it) == key }
 
-    private fun startAppDrag(view: View, app: ResolveInfo): Boolean {
-        val data = ClipData.newPlainText("purplecharm", appKey(app))
+    private fun startAppDrag(view: View, app: ResolveInfo): Boolean = startItemDrag(view, appKey(app))
+
+    private fun startItemDrag(view: View, key: String, shadow: View.DragShadowBuilder = View.DragShadowBuilder(view)): Boolean {
+        if (dragging || !knownItem(key) || !view.isAttachedToWindow) return false
+        val state = runCatching { workspaceItems() }.getOrNull()?.takeIf { it.valid() } ?: return false
+        widgetEditor?.endEditing()
+        val session = WorkspaceDragSession(key, state)
+        dragSession = session
+        dragSource = view
         dragDropCommitted = false
         dragFinishScheduled = false
         dragOrigin = pageIndex to savedPage(pageIndex).toList()
-        dragging = view.startDragAndDrop(data, View.DragShadowBuilder(view), null, 0)
-        if (!dragging) dragOrigin = null
-        return dragging
+        // Drag-start callbacks can be dispatched synchronously by Android.
+        dragging = true
+        view.parent?.requestDisallowInterceptTouchEvent(true)
+        val data = ClipData("Purple Charm", arrayOf(workspaceMime), ClipData.Item(key))
+        val started = try { view.startDragAndDrop(data, shadow, session, 0) } catch (_: Exception) { false }
+        if (!started) {
+            session.cancel(); dragSession = null; dragging = false; dragOrigin = null
+            view.parent?.requestDisallowInterceptTouchEvent(false)
+            dragSource = null
+        } else view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        return started
     }
+
+    private fun ownsDrag(event: DragEvent): Boolean = dragging && dragSession != null &&
+        event.localState === dragSession && event.clipDescription?.hasMimeType(workspaceMime) == true
 
     private fun draggedKey(event: DragEvent): String? {
+        if (!ownsDrag(event)) return null
         val clip = event.clipData ?: return null
-        if (clip.itemCount == 0) return null
+        if (clip.itemCount != 1) return null
         val key = clip.getItemAt(0).text?.toString() ?: return null
-        return key.takeIf { resolveKey(it) != null }
+        return key.takeIf { it == dragSession?.key && knownItem(it) }
     }
 
-    private fun acceptDrop(view: View, action: (String) -> Unit) {
+    private fun acceptDrop(view: View, action: (String) -> Boolean) =
+        acceptDropAt(view) { key, _ -> action(key) }
+
+    private fun acceptDropAt(view: View, action: (String, DragEvent) -> Boolean) {
         view.setOnDragListener { target, event ->
             when (event.action) {
-                DragEvent.ACTION_DRAG_STARTED -> {
-                    val ok = event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
-                    if (ok) target.alpha = 0.8f
-                    ok
+                DragEvent.ACTION_DRAG_STARTED -> ownsDrag(event).also { if (it) target.alpha = 0.8f }
+                DragEvent.ACTION_DRAG_ENTERED -> { if (ownsDrag(event)) target.alpha = 0.55f; ownsDrag(event) }
+                DragEvent.ACTION_DRAG_EXITED -> { target.alpha = 0.8f; ownsDrag(event) }
+                DragEvent.ACTION_DROP -> draggedKey(event)?.let { key ->
+                    if (dragDropCommitted) false else action(key, event)
+                } ?: false
+                DragEvent.ACTION_DRAG_ENDED -> {
+                    target.alpha = 1f
+                    if (event.localState === dragSession) finishWorkspaceDrag()
+                    true
                 }
-                DragEvent.ACTION_DRAG_ENTERED -> { target.alpha = 0.55f; true }
-                DragEvent.ACTION_DRAG_EXITED -> { target.alpha = 0.8f; true }
-                DragEvent.ACTION_DROP -> {
-                    val key = draggedKey(event)
-                    if (key != null) { action(key); true } else false
-                }
-                DragEvent.ACTION_DRAG_ENDED -> { target.alpha = 1f; finishWorkspaceDrag(); true }
-                else -> true
+                else -> ownsDrag(event)
             }
         }
     }
@@ -300,9 +359,19 @@ class MainActivity : Activity(), SensorEventListener {
         }
     }
 
+    private fun cancelWorkspaceDrag() {
+        dragSession?.cancel()
+        runCatching { dragSource?.cancelDragAndDrop() }
+        finishWorkspaceDrag()
+    }
+
     private fun completeWorkspaceDrag() {
+        dragSession?.cancel()
+        dragSession = null
         dragging = false
         dragOrigin = null
+        dragSource?.parent?.requestDisallowInterceptTouchEvent(false)
+        dragSource = null
         if (pendingWorkspaceRefresh && !workspaceRefreshScheduled) {
             workspaceRefreshScheduled = true
             // Atualiza apenas após o ciclo atual de DragEvent terminar.
@@ -310,7 +379,10 @@ class MainActivity : Activity(), SensorEventListener {
                 workspaceRefreshScheduled = false
                 if (!dragging && pendingWorkspaceRefresh) {
                     pendingWorkspaceRefresh = false
+                    val reopen = openFolderId
+                    folderDialog?.dismiss()
                     showHome()
+                    if (reopen != null) showFolder(reopen)
                 }
             }
         }
@@ -320,57 +392,31 @@ class MainActivity : Activity(), SensorEventListener {
         if (dragging) {
             pendingWorkspaceRefresh = true
         } else {
+            val reopen = openFolderId
+            folderDialog?.dismiss()
             showHome()
+            if (reopen != null) showFolder(reopen)
         }
     }
 
-    private fun placeOnPage(key: String, index: Int, position: Int? = null) {
-        if (dragging && dragDropCommitted) return
-        val cells = pageCells(index)
-        val source = cells.indexOf(key)
-        if (source < 0 && cells.none { it.isEmpty() }) {
-            Toast.makeText(this, "Página cheia", Toast.LENGTH_SHORT).show()
-            return
+    private fun placeOnPage(key: String, index: Int, position: Int? = null, group: Boolean = false): Boolean {
+        if (dragging && dragDropCommitted) return false
+        val state = runCatching { workspaceItems() }.getOrNull() ?: return false
+        if (index !in state.pages.indices) return false
+        val cells = state.pages[index]
+        val target = position?.takeIf { it in cells.indices }
+            ?: cells.indexOfFirst { it.isEmpty() }.takeIf { it >= 0 }
+            ?: cells.indexOf(key).takeIf { it >= 0 }
+        if (target == null) {
+            Toast.makeText(this, "Página cheia; escolha outra célula ou crie uma pasta sobre um aplicativo", Toast.LENGTH_SHORT).show()
+            return false
         }
-        val target = position?.coerceIn(0, cells.lastIndex)
-            ?: cells.indexOfLast { it.isEmpty() }.takeIf { it >= 0 }
-            ?: source.coerceAtLeast(0)
-        if (source == target) return
-        val displaced = cells[target]
-        if (source >= 0) cells[source] = displaced
-        else if (displaced.isNotEmpty()) {
-            val free = cells.indexOfFirst { it.isEmpty() }
-            if (free < 0) return
-            cells[free] = displaced
-        }
-        cells[target] = key
-        val before = WorkspaceLayoutSafety(prefs).capture()
-        val edit = prefs.edit()
-        for (other in 0 until pageCount()) if (other != index) {
-            val others = pageCells(other)
-            val at = others.indexOf(key)
-            if (at >= 0) {
-                others[at] = ""
-                edit.putString("layout_page_$other", others.filter { it.isNotEmpty() }.joinToString("|"))
-                edit.putString("layout_page_cells_$other", others.joinToString("|"))
-            }
-        }
-        val dock = dockSlots()
-        val dockAt = dock.indexOf(key)
-        if (dockAt >= 0) {
-            dock[dockAt] = ""
-            edit.putString("layout_dock_slots", dock.joinToString("|"))
-        }
-        edit.putString("layout_page_$index", cells.filter { it.isNotEmpty() }.joinToString("|"))
-            .putString("layout_page_cells_$index", cells.joinToString("|"))
-        if (!edit.commit()) {
-            Toast.makeText(this, "Falha ao salvar posição", Toast.LENGTH_SHORT).show()
-            return
-        }
-        undoWorkspaceSnapshot = before
-        if (dragging) dragDropCommitted = true
+        val proposed = WorkspaceEdits.page(state, key, index, target, group)
+        val previousPage = pageIndex
         pageIndex = index
-        refreshWorkspaceSafely()
+        val saved = saveWorkspaceEdit(proposed)
+        if (!saved) pageIndex = previousPage
+        return saved
     }
 
     // O dock usa quatro posições fixas, sem deslocar os outros ícones.
@@ -390,73 +436,164 @@ class MainActivity : Activity(), SensorEventListener {
         prefs.edit().putString("layout_dock_slots", slots.take(4).joinToString("|")).apply()
     }
 
-    private fun placeInDock(key: String, position: Int) {
-        // Uma única operação de escrita evita perder o atalho substituído.
-        val before = WorkspaceLayoutSafety(prefs).capture()
-        val destination = position.coerceIn(0, 3)
-        val slots = dockSlots()
-        val displaced = slots[destination]
-        if (displaced == key) return
-
-        val sourceSlot = slots.indexOf(key)
-        val sourcePage = (0 until pageCount()).firstOrNull { key in savedPage(it) }
-        val sourcePosition = sourcePage?.let { pageCells(it).indexOf(key) } ?: -1
-
-        // Sem posição de origem para receber o atalho substituído:
-        // não modificar o dock nem remover atalhos existentes.
-        if (displaced.isNotEmpty() && sourceSlot < 0 && sourcePage == null) {
-            Toast.makeText(this, "Escolha uma posição de origem para trocar os atalhos", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val updatedPages = (0 until pageCount()).map { pageCells(it) }
-        if (sourceSlot >= 0) {
-            slots[sourceSlot] = displaced
-        } else if (sourcePage != null) {
-            val page = updatedPages[sourcePage]
-            if (sourcePosition in page.indices) {
-                page[sourcePosition] = displaced
-            }
-        }
-        slots[destination] = key
-
-        // Atualização conjunta: páginas e dock são persistidos no mesmo commit.
-        val edit = prefs.edit()
-        updatedPages.forEachIndexed { index, page ->
-            edit.putString("layout_page_$index", page.filter { it.isNotEmpty() }.distinct().joinToString("|"))
-            edit.putString("layout_page_cells_$index", page.joinToString("|"))
-        }
-        edit.putString("layout_dock_slots", slots.joinToString("|"))
-        if (!edit.commit()) {
-            Toast.makeText(this, "Não foi possível salvar a troca", Toast.LENGTH_SHORT).show()
-            return
-        }
-        // A recuperação permanece disponível para futuras integrações do Desfazer.
-        undoWorkspaceSnapshot = before
-        if (dragging) dragDropCommitted = true
-        refreshWorkspaceSafely()
+    private fun placeInDock(key: String, position: Int): Boolean {
+        if (dragging && dragDropCommitted) return false
+        val state = runCatching { workspaceItems() }.getOrNull() ?: return false
+        return saveWorkspaceEdit(WorkspaceEdits.dock(state, key, position.coerceIn(0, 3)))
     }
 
-    private fun removeShortcut(key: String) {
-        var changed = false
-        for (page in 0 until pageCount()) {
-            val list = savedPage(page)
-            if (list.remove(key)) {
-                savePage(page, list)
-                changed = true
+    private fun removeShortcut(key: String): Boolean {
+        val state = runCatching { workspaceItems() }.getOrNull() ?: return false
+        if (WorkspaceItems.isFolder(key)) {
+            Toast.makeText(this, "Abra a pasta para mover ou remover seus atalhos com segurança", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        return saveWorkspaceEdit(WorkspaceEdits.removeShortcut(state, key))
+    }
+
+    private fun folderTile(id: String, compact: Boolean): View {
+        val folder = runCatching { workspaceStore.folders()[id] }.getOrNull()
+        val tile = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(2), dp(6), dp(2), dp(8))
+            contentDescription = "Pasta ${folder?.name ?: "indisponível"}"
+        }
+        val preview = GridLayout(this).apply {
+            columnCount = 2; rowCount = 2
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            background = glass(10, false)
+        }
+        val previewSize = if (compact) 45 else 53
+        folder?.apps?.take(4)?.forEach { key ->
+            preview.addView(ImageView(this).apply {
+                resolveKey(key)?.let { setImageDrawable(customIcon(it)) }
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }, GridLayout.LayoutParams().apply {
+                width = dp((previewSize - 8) / 2); height = dp((previewSize - 8) / 2)
+            })
+        }
+        tile.addView(preview, LinearLayout.LayoutParams(dp(previewSize), dp(previewSize)))
+        if (!compact) tile.addView(label(folder?.name ?: "Pasta indisponível", 10f).apply {
+            maxLines = 2; minLines = 2; setPadding(0, dp(6), 0, 0)
+        })
+        tile.setOnClickListener { showFolder(id) }
+        tile.setOnLongClickListener {
+            if (!startItemDrag(tile, id)) Toast.makeText(this, "Não foi possível iniciar o arraste. Tente novamente.", Toast.LENGTH_SHORT).show()
+            true
+        }
+        return tile
+    }
+
+    private fun showFolder(id: String) {
+        val folder = runCatching { workspaceStore.folders()[id] }.getOrNull()
+        if (folder == null) {
+            Toast.makeText(this, "Dados da pasta indisponíveis; nada foi alterado", Toast.LENGTH_SHORT).show()
+            return
+        }
+        folderDialog?.dismiss()
+        val dialog = Dialog(this)
+        folderDialog = dialog
+        openFolderId = id
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = glass(18, true)
+        }
+        panel.addView(label(folder.name, 19f, true).apply { setOnClickListener { renameFolder(id) } })
+        panel.addView(label("Toque para abrir • segure e arraste para reorganizar", 11f))
+        val grid = GridLayout(this).apply { columnCount = 4 }
+        folder.apps.forEachIndexed { index, key ->
+            val app = resolveKey(key)
+            val tile = if (app != null) appTile(app, false, false) else label(key.substringAfterLast('/'), 10f)
+            tile.tag = "folder_member_$index"
+            tile.setOnLongClickListener { startItemDrag(tile, key) }
+            acceptDrop(tile) { incoming ->
+                val state = runCatching { workspaceItems() }.getOrNull()
+                state != null && saveWorkspaceEdit(WorkspaceEdits.intoFolder(state, incoming, id, index))
             }
+            grid.addView(tile, GridLayout.LayoutParams().apply {
+                width = 0; height = dp(92)
+                columnSpec = GridLayout.spec(index % 4, 1f); rowSpec = GridLayout.spec(index / 4)
+            })
         }
-        val slots = dockSlots()
-        val at = slots.indexOf(key)
-        if (at >= 0) {
-            slots[at] = ""
-            saveDockSlots(slots)
-            changed = true
+        val scroll = ScrollView(this).apply { addView(grid) }
+        panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(230)))
+        val addTarget = glassButton("Solte aqui para adicionar à pasta", 12f)
+        acceptDrop(addTarget) { incoming ->
+            val state = runCatching { workspaceItems() }.getOrNull()
+            state != null && saveWorkspaceEdit(WorkspaceEdits.intoFolder(state, incoming, id))
         }
-        if (changed) {
-            Toast.makeText(this, "Atalho removido (aplicativo mantido)", Toast.LENGTH_SHORT).show()
-            showHome()
+        panel.addView(addTarget)
+        val extractTarget = glassButton("Solte aqui para mover à tela inicial", 12f)
+        acceptDrop(extractTarget) { incoming ->
+            val state = runCatching { workspaceItems() }.getOrNull()
+            state != null && saveWorkspaceEdit(WorkspaceEdits.extract(state, id, incoming, pageIndex))
         }
+        panel.addView(extractTarget)
+        val tools = LinearLayout(this)
+        listOf("Adicionar" to { addFolderApps(id) }, "Renomear" to { renameFolder(id) },
+            "Organizar" to { folderAppActions(id) }).forEach { (title, action) ->
+            tools.addView(glassButton(title, 12f).apply { setOnClickListener { action() } },
+                LinearLayout.LayoutParams(0, -2, 1f))
+        }
+        panel.addView(tools)
+        panel.addView(glassButton("Fechar", 12f).apply { setOnClickListener { dialog.dismiss() } })
+        dialog.setOnCancelListener { if (dragging) cancelWorkspaceDrag() }
+        dialog.setOnDismissListener {
+            if (folderDialog === dialog) { folderDialog = null; openFolderId = null }
+        }
+        dialog.setContentView(panel)
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+    }
+
+    private fun renameFolder(id: String) {
+        val folder = runCatching { workspaceStore.folders()[id] }.getOrNull() ?: return
+        val input = EditText(this).apply { setText(folder.name); setSingleLine(true) }
+        AlertDialog.Builder(this).setTitle("Renomear pasta").setView(input)
+            .setPositiveButton("Salvar") { _, _ ->
+                val state = runCatching { workspaceItems() }.getOrNull()
+                if (state != null) saveWorkspaceEdit(WorkspaceEdits.rename(state, id, input.text.toString()))
+            }.setNegativeButton("Cancelar", null).show()
+    }
+
+    private fun addFolderApps(id: String) {
+        val folder = runCatching { workspaceStore.folders()[id] }.getOrNull() ?: return
+        val available = apps.filter { appKey(it) !in folder.apps }
+        val selected = BooleanArray(available.size)
+        AlertDialog.Builder(this).setTitle("Adicionar aplicativos")
+            .setMultiChoiceItems(available.map { it.loadLabel(packageManager).toString() }.toTypedArray(), selected) { _, index, checked ->
+                selected[index] = checked
+            }.setPositiveButton("Adicionar") { _, _ ->
+                var next: WorkspaceItems? = runCatching { workspaceItems() }.getOrNull()
+                available.forEachIndexed { index, app -> if (selected[index])
+                    next = next?.let { WorkspaceEdits.intoFolder(it, appKey(app), id) }
+                }
+                saveWorkspaceEdit(next)
+            }.setNegativeButton("Cancelar", null).show()
+    }
+
+    private fun folderAppActions(id: String) {
+        val folder = runCatching { workspaceStore.folders()[id] }.getOrNull() ?: return
+        AlertDialog.Builder(this).setTitle("Organizar aplicativos da pasta")
+            .setItems(folder.apps.map { resolveKey(it)?.loadLabel(packageManager)?.toString() ?: it.substringAfterLast('/') }.toTypedArray()) { _, index ->
+                val key = folder.apps[index]
+                AlertDialog.Builder(this).setTitle(resolveKey(key)?.loadLabel(packageManager)?.toString() ?: key)
+                    .setItems(arrayOf("Mover para a tela inicial", "Remover atalho da pasta", "Mover antes", "Mover depois")) { _, action ->
+                        val state = runCatching { workspaceItems() }.getOrNull() ?: return@setItems
+                        val next = when (action) {
+                            0 -> WorkspaceEdits.extract(state, id, key, pageIndex)
+                            1 -> WorkspaceEdits.removeApp(state, id, key)
+                            2 -> WorkspaceEdits.intoFolder(state, key, id, (index - 1).coerceAtLeast(0))
+                            else -> WorkspaceEdits.intoFolder(state, key, id, index + 1)
+                        }
+                        saveWorkspaceEdit(next)
+                    }.setNegativeButton("Cancelar", null).show()
+            }.setNegativeButton("Cancelar", null).show()
     }
 
     private val lilac = Color.rgb(236, 201, 255)
@@ -582,16 +719,12 @@ class MainActivity : Activity(), SensorEventListener {
         }
         option("✦ Restaurar organização dos ícones") {
             AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Restaurar organização?")
-                .setMessage("As posições das páginas e do dock serão apagadas.")
+                .setMessage("As posições das páginas, pastas e dock serão restauradas. Aplicativos não serão desinstalados.")
                 .setPositiveButton("Restaurar") { _, _ ->
-                    val edit = prefs.edit()
-                    for (i in 0 until maxPages) {
-                        edit.remove("layout_page_$i")
-                        edit.remove("layout_page_cells_$i")
-                    }
-                    edit.remove("layout_page_count").remove("layout_dock")
-                        .remove("layout_dock_slots").apply()
-                    showHome()
+                    if (workspaceStore.reset()) {
+                        folderDialog?.dismiss()
+                        showHome()
+                    } else Toast.makeText(this, "Não foi possível restaurar; organização anterior mantida", Toast.LENGTH_SHORT).show()
                 }.setNegativeButton("Cancelar", null).show()
         }
         }
@@ -1327,6 +1460,8 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun showHome() {
+        widgetEditor?.endEditing()
+        widgetEditor = null
         drawerOpen = false
         loadApps()
 
@@ -1343,7 +1478,11 @@ class MainActivity : Activity(), SensorEventListener {
         }
 
         // Área de trabalho com bordas sensíveis ao arraste entre páginas.
-        val workspace = FrameLayout(this)
+        val workspace = FrameLayout(this).apply {
+            clipChildren = true
+            clipToPadding = true
+            minimumHeight = 0
+        }
         workspace.addView(pages, FrameLayout.LayoutParams(-1, -1))
         for (direction in listOf(-1, 1)) {
             val edge = View(this)
@@ -1355,7 +1494,7 @@ class MainActivity : Activity(), SensorEventListener {
             edge.setOnDragListener { _, event ->
                 when (event.action) {
                     DragEvent.ACTION_DRAG_STARTED ->
-                        event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+                        ownsDrag(event)
                     DragEvent.ACTION_DRAG_ENTERED -> {
                         cancelPending()
                         val task = object : Runnable {
@@ -1383,7 +1522,7 @@ class MainActivity : Activity(), SensorEventListener {
                     DragEvent.ACTION_DROP -> {
                         cancelPending()
                         val key = draggedKey(event)
-                        if (key != null) { placeOnPage(key, pageIndex); true } else false
+                        if (key != null) placeOnPage(key, pageIndex) else false
                     }
                     DragEvent.ACTION_DRAG_ENDED -> {
                         cancelPending()
@@ -1420,127 +1559,66 @@ class MainActivity : Activity(), SensorEventListener {
         // A antiga faixa duplicada não é adicionada à tela inicial.
     }
 
-    // Widget integrado ao launcher: quatro fases góticas, tamanhos e estilo persistidos.
-    // Open-Meteo: consulta apenas coordenadas configuradas pelo usuario.
-    // Sem coordenadas, o widget continua astronomico e offline.
-    private fun refreshGothicWeather() {
-        val lat = prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull() ?: return
-        val lon = prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull() ?: return
-        if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return
-        val now = System.currentTimeMillis()
-        val last = prefs.getLong("gothic_weather_updated", 0L)
-        val expires = prefs.getLong("gothic_weather_expires", 0L)
-        if (last > 0 && now < expires) return
-        Thread {
-            var connection: java.net.HttpURLConnection? = null
-            try {
-                // MET Norway exige coordenadas com no máximo quatro casas decimais.
-                val latValue = java.lang.String.format(java.util.Locale.US, "%.4f", lat)
-                val lonValue = java.lang.String.format(java.util.Locale.US, "%.4f", lon)
-                val url = java.net.URL("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=$latValue&lon=$lonValue")
-                connection = url.openConnection() as java.net.HttpURLConnection
-                connection.connectTimeout = 8000
-                connection.readTimeout = 8000
-                connection.setRequestProperty("User-Agent", "PurpleCharmLauncher/0.7.0 (https://github.com/odinwinchester/Purple-charm-launcher)")
-                connection.setRequestProperty("Accept", "application/json")
-                val previousModified = prefs.getString("gothic_weather_last_modified", null)
-                if (previousModified != null && last > 0) {
-                    connection.setRequestProperty("If-Modified-Since", previousModified)
-                }
-                val status = connection.responseCode
-                val cacheUntil = connection.getHeaderFieldDate("Expires", -1L)
-                val nextCheck = if (cacheUntil > System.currentTimeMillis())
-                    cacheUntil else System.currentTimeMillis() + 60 * 60 * 1000L
-                if (status == java.net.HttpURLConnection.HTTP_NOT_MODIFIED) {
-                    prefs.edit().putLong("gothic_weather_expires", nextCheck).apply()
-                    return@Thread
-                }
-                if (status != java.net.HttpURLConnection.HTTP_OK) return@Thread
-                val root = org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-                val series = root.getJSONObject("properties").getJSONArray("timeseries")
-                if (series.length() == 0) return@Thread
-                val point = series.getJSONObject(0).getJSONObject("data")
-                val instant = point.getJSONObject("instant").getJSONObject("details")
-                val symbol = point.optJSONObject("next_1_hours")?.optJSONObject("summary")
-                    ?.optString("symbol_code", "") ?: ""
-                // Mapeia símbolos MET para as categorias WMO já usadas nas artes existentes.
-                val code = when {
-                    "thunder" in symbol -> 95
-                    "snow" in symbol || "sleet" in symbol -> 71
-                    "rain" in symbol -> 61
-                    "fog" in symbol -> 45
-                    "cloudy" in symbol && "partly" !in symbol -> 3
-                    "partlycloudy" in symbol -> 2
-                    "fair" in symbol -> 1
-                    else -> 0
-                }
-                val temperature = instant.getDouble("air_temperature")
-                val humidity = instant.optDouble("relative_humidity", Double.NaN)
-                val wind = instant.optDouble("wind_speed", Double.NaN)
-                val editor = prefs.edit()
-                    .putInt("gothic_weather_code", code)
-                    .putString("gothic_weather_temp", kotlin.math.round(temperature).toInt().toString())
-                    .putInt("gothic_weather_day", if (symbol.endsWith("_night")) 0 else 1)
-                    .putLong("gothic_weather_updated", System.currentTimeMillis())
-                    .putLong("gothic_weather_expires", nextCheck)
-                    .putString("gothic_weather_provider", "MET Norway")
-                if (!humidity.isNaN()) editor.putInt("gothic_weather_humidity", kotlin.math.round(humidity).toInt())
-                if (!wind.isNaN()) editor.putString("gothic_weather_wind", kotlin.math.round(wind * 3.6).toInt().toString())
-                connection.getHeaderField("Last-Modified")?.let {
-                    editor.putString("gothic_weather_last_modified", it)
-                }
-                editor.apply()
-                runOnUiThread { if (!drawerOpen && ::pages.isInitialized) showHome() }
-            } catch (_: Exception) {
-                // Sem rede: mantém a última previsão válida e não bloqueia a tela.
-            } finally {
-                connection?.disconnect()
+    private val weatherHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val weatherClient by lazy { MetWeatherClient(prefs) }
+    private val weatherLocation by lazy {
+        WeatherLocationController(this, prefs) { coordinatesChanged ->
+            if (coordinatesChanged) {
+                weatherClient.clearForecast()
+                refreshGothicWeather()
             }
-        }.start()
+            refreshCelestialView()
+        }
     }
 
-        private fun gothicWeatherSettings() {
-        val input = EditText(this).apply {
-            setSingleLine(true)
-            hint = "Latitude, longitude (ex.: -20.4, -54.6)"
-            setText(
-                listOfNotNull(
-                    prefs.getString("gothic_weather_lat", null),
-                    prefs.getString("gothic_weather_lon", null)
-                ).joinToString(", ")
-            )
-            setPadding(dp(18), dp(14), dp(18), dp(14))
-        }
-        AlertDialog.Builder(this)
-            .setTitle("✧ Local do Clima Gótico")
-            .setMessage("Informe coordenadas da cidade desejada. Não acessamos sua localização automaticamente.")
-            .setView(input)
-            .setPositiveButton("Salvar") { _, _ ->
-                val parts = input.text.toString().split(",").map { it.trim() }
-                val lat = parts.getOrNull(0)?.toDoubleOrNull()
-                val lon = parts.getOrNull(1)?.toDoubleOrNull()
-                if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0) {
-                    prefs.edit().putString("gothic_weather_lat", lat.toString())
-                        .putString("gothic_weather_lon", lon.toString())
-                        .putLong("gothic_weather_updated", 0L)
-                        .remove("gothic_weather_expires").remove("gothic_weather_last_modified").apply()
-                    refreshGothicWeather()
-                    showHome()
-                } else Toast.makeText(this, "Use latitude, longitude válidas", Toast.LENGTH_LONG).show()
-            }
-            .setNeutralButton("Desativar clima") { _, _ ->
-                prefs.edit().remove("gothic_weather_lat").remove("gothic_weather_lon")
-                    .remove("gothic_weather_updated").remove("gothic_weather_expires")
-                    .remove("gothic_weather_last_modified").apply()
-                showHome()
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        weatherLocation.onPermissionResult(requestCode)
     }
+
+    override fun onDestroy() {
+        weatherHandler.removeCallbacks(weatherTick)
+        weatherLocation.close()
+        folderDialog?.dismiss()
+        dragSession?.cancel()
+        dragSession = null
+        super.onDestroy()
+    }
+    private val weatherTick = object : Runnable {
+        override fun run() {
+            refreshGothicWeather()
+            refreshCelestialView()
+            weatherHandler.postDelayed(this, 60_000L)
+        }
+    }
+    private var celestialView: View? = null
+    private var widgetEditor: WeatherResizeLayout? = null
+    private var widgetResizeActive = false
+    private var widgetResizeGesture = false
+    private var iconViewportGesture = false
+
+    // Replace only the widget, preserving pages, scroll state and drag/drop.
+    private fun refreshCelestialView() {
+        if (isFinishing || isDestroyed || dragging || widgetResizeActive) return
+        val old = celestialView ?: return
+        val parent = old.parent as? ViewGroup ?: return
+        val index = parent.indexOfChild(old)
+        parent.removeViewAt(index)
+        parent.addView(gothicMoonWidget(), index)
+    }
+
+    private fun refreshGothicWeather() {
+        if (!prefs.getBoolean("gothic_moon_visible", true)) return
+        weatherClient.refresh {
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) refreshCelestialView()
+            }
+        }
+    }
+
+    private fun gothicWeatherSettings() { weatherLocation.showOptions() }
 
     private fun gothicMoonWidget(): View {
-        val phases = arrayOf("☾", "●", "☽", "◯")
-        val names = arrayOf("Crescente", "Cheia", "Minguante", "Nova")
         // Ciclo sinódico médio de 29,530588853 dias; aproximação offline.
         // Referência: Lua Nova de 06/01/2000 às 18:14 UTC.
         val now = System.currentTimeMillis()
@@ -1556,48 +1634,33 @@ class MainActivity : Activity(), SensorEventListener {
             else prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
         val mode = prefs.getInt("gothic_celestial_mode", 0) // 0 auto, 1 sol, 2 lua
+        val forecast = weatherClient.current()
         val isSun = when (mode) {
             1 -> true
             2 -> false
-            else -> hour in 6..17
+            else -> forecast?.isDay ?: (hour in 6..17)
         }
         val sunStyle = prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
-        val sunArt = intArrayOf(R.drawable.dia_quente, R.drawable.dia_limpo, R.drawable.dia_nublado, R.drawable.nascer_do_sol)
-        val sunNames = arrayOf("Dia Quente", "Dia Limpo", "Dia Nublado", "Nascer do Sol")
         val weatherActive = prefs.contains("gothic_weather_lat")
-        val weatherLoaded = weatherActive && prefs.getLong("gothic_weather_updated", 0L) > 0L
-        val weatherCode = prefs.getInt("gothic_weather_code", 0)
+        val weatherLoaded = weatherActive && forecast != null
+        val weatherCode = forecast?.code ?: 0
         val rainy = weatherLoaded && (weatherCode in 51..67 || weatherCode in 80..82 || weatherCode in 95..99)
         val snowy = weatherLoaded && (weatherCode in 71..77 || weatherCode in 85..86)
-        val cold = weatherLoaded && (prefs.getString("gothic_weather_temp", "99")?.toIntOrNull() ?: 99) <= 12
-        val weatherScene = when {
-            snowy -> if (isSun) "❄ Inverno Gótico" else "❄ Noite Gelada"
-            rainy -> if (isSun) "☂ Chuva Gótica" else "☂ Noite Chuvosa"
-            cold -> if (isSun) "❅ Dia Frio" else "❅ Noite Fria"
-            weatherLoaded && weatherCode in 1..3 -> if (isSun) "☁ Céu Gótico" else "☁ Noite Nublada"
-            else -> null
-        }
+        val cold = weatherLoaded && (forecast?.temperature ?: 99.0) <= 12
         val size = prefs.getInt("gothic_moon_size", 1).coerceIn(0, 2)
-        val animated = prefs.getBoolean("gothic_moon_ornate", true)
-        val heights = intArrayOf(160, 210, 270)
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(8), dp(14), dp(8))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.argb(95, 34, 8, 55), Color.argb(35, 13, 6, 32))
-            ).apply {
-                cornerRadius = dp(20).toFloat()
-                setStroke(dp(1), Color.rgb(170, 107, 239))
-            }
-        }
-        val line = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, 0, 0, 0)
+            setBackgroundColor(Color.TRANSPARENT)
         }
         val selectedSun = if (mode == 0) {
-            when (hour) { in 6..9 -> 3; in 16..17 -> 0; else -> 1 }
+            when {
+                rainy || snowy || cold || weatherCode in 2..3 || weatherCode == 45 -> 2
+                hour in 6..9 -> 3
+                (forecast?.temperature ?: 0.0) >= 30 -> 0
+                else -> 1
+            }
         } else sunStyle
         // Ordenação das artes lunares: nova, crescente, cheia, minguante.
         // Ordenação interna do widget: crescente, cheia, minguante, nova.
@@ -1605,102 +1668,117 @@ class MainActivity : Activity(), SensorEventListener {
         val weatherArtIndex = when {
             snowy || cold -> 3
             rainy -> 2
-            weatherLoaded && weatherCode in 1..3 -> 1
+            weatherLoaded && (weatherCode in 2..3 || weatherCode == 45) -> 1
             else -> 0
         }
-        val moonArt = arrayOf(
-            intArrayOf(R.drawable.lua_01_lua_nova_noite_limpa, R.drawable.lua_02_lua_crescente_noite_limpa, R.drawable.lua_03_lua_cheia_noite_limpa, R.drawable.lua_04_lua_minguante_noite_limpa),
-            intArrayOf(R.drawable.lua_05_lua_nova_noite_nublada, R.drawable.lua_06_lua_crescente_noite_nublada, R.drawable.lua_07_lua_cheia_noite_nublada, R.drawable.lua_08_lua_minguante_noite_nublada),
-            intArrayOf(R.drawable.lua_09_lua_nova_noite_chuvosa, R.drawable.lua_10_lua_crescente_noite_chuvosa, R.drawable.lua_11_lua_cheia_noite_chuvosa, R.drawable.lua_12_lua_minguante_noite_chuvosa),
-            intArrayOf(R.drawable.lua_13_lua_nova_noite_fria_neve, R.drawable.lua_14_lua_crescente_noite_fria_neve, R.drawable.lua_15_lua_cheia_noite_fria_neve, R.drawable.lua_16_lua_minguante_noite_fria_neve)
-        )
+        val selectedArt = WeatherArtworkCatalog.select(isSun, selectedSun, weatherArtIndex,
+            phaseArtIndex, prefs.getString("gothic_manual_art", null))
         val artwork = ImageView(this).apply {
-            setImageResource(if (isSun) sunArt[selectedSun] else moonArt[weatherArtIndex][phaseArtIndex])
+            setImageResource(selectedArt.resource)
             scaleType = ImageView.ScaleType.FIT_CENTER
             adjustViewBounds = true
-            contentDescription = if (isSun) sunNames[selectedSun] else "Lua ${names[phase]}"
+            contentDescription = selectedArt.label
         }
-        // A imagem original já inclui as informações visuais; não duplicar textos.
-        panel.addView(artwork, LinearLayout.LayoutParams(-1, -1))
-        panel.setOnClickListener { moonWidgetOptions() }
-        panel.setOnLongClickListener { moonWidgetOptions(); true }
-        return panel.apply {
-            layoutParams = LinearLayout.LayoutParams(-1, dp(heights[size])).apply {
-                setMargins(dp(7), dp(8), dp(7), 0)
+        // Original PNGs remain byte-for-byte intact, including their sample lettering.
+        // Real forecast is explicitly separated so sample values cannot be mistaken for live data.
+        val columns = horizontalIconColumns()
+        val initialSpan = prefs.getInt("gothic_widget_span", intArrayOf(2, 3, columns)[size]).coerceIn(1, columns)
+        val editor = WeatherResizeLayout(this, artwork, columns, initialSpan,
+            { active -> widgetResizeActive = active },
+            { span -> prefs.edit().putInt("gothic_widget_span", span).apply() },
+            { moonWidgetOptions() })
+        widgetEditor = editor
+        panel.addView(editor, LinearLayout.LayoutParams(-1, 0, 2f))
+        val readout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        readout.addView(label("Arte original • valores impressos ilustrativos", 10f))
+        val liveText = when {
+            !weatherActive -> "Escolha localização automática ou busque uma cidade"
+            forecast == null -> "Previsão indisponível • tentando atualizar"
+            else -> {
+                val time = java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
+                    .format(java.util.Date(forecast.time))
+                val stale = if (System.currentTimeMillis() - forecast.time > 2 * 60 * 60 * 1000L)
+                    " • desatualizada" else ""
+                "${kotlin.math.round(forecast.temperature).toInt()}°C • ${forecast.description}" +
+                    (forecast.humidity?.let { " • Umidade ${kotlin.math.round(it).toInt()}%" } ?: "") +
+                    (forecast.wind?.let { " • Vento ${kotlin.math.round(it * 3.6).toInt()} km/h" } ?: "") +
+                    "\nMET Norway • previsão $time$stale"
             }
+        }
+        val locationText = weatherLocation.summary
+        readout.addView(label("$locationText\n$liveText", 11f).apply {
+            contentDescription = "$locationText. $liveText"
+        })
+        val readoutScroll = ScrollView(this).apply {
+            clipChildren = true
+            clipToPadding = true
+            addView(readout)
+        }
+        panel.addView(readoutScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        panel.setOnClickListener { moonWidgetOptions() }
+        panel.setOnLongClickListener { editor.beginEditing(); true }
+        celestialView = panel
+        return panel.apply {
+            layoutParams = ViewGroup.LayoutParams(-1, -1)
         }
     }
 
     private fun moonWidgetOptions() {
-        val choices = arrayOf(
-            "☀☾ Ciclo automático Sol / Lua",
-            "▣ Compacto 2 × 2", "▤ Padrão 4 × 2", "▥ Ampliado 4 × 3",
-            "✦ Alternar gótico / minimalista",
-            "✕ Ocultar widget", "☁ Configurar cidade e clima",
-            "☀ Dia Quente", "✺ Dia Limpo",
-            "⛅ Dia Nublado", "☀ Nascer do Sol",
-            "☾ Lua Gótica • fase automática",
-            "☾ Lua Crescente", "● Lua Cheia", "☽ Lua Minguante", "◯ Lua Nova"
-        )
-        AlertDialog.Builder(this)
-            .setTitle("☀☾ Ciclo Gótico • Purple Charm")
-            .setItems(choices) { _, option ->
-                val editor = prefs.edit()
-                when (option) {
-                    0 -> {
-                        editor.putInt("gothic_celestial_mode", 0)
-                        editor.putBoolean("gothic_moon_auto", true)
+        AlertDialog.Builder(this).setTitle("Clima • automático por padrão")
+            .setItems(arrayOf("Localização e clima", "Personalizar arte (opcional)",
+                "Restaurar comportamento automático", "Redimensionar com alças", "Ocultar widget", "Sobre as artes")) { _, which ->
+                when (which) {
+                    0 -> gothicWeatherSettings()
+                    1 -> AlertDialog.Builder(this).setTitle("Escolher uma das 20 artes originais")
+                        .setItems(WeatherArtworkCatalog.all.map { it.label }.toTypedArray()) { _, index ->
+                            prefs.edit().putString("gothic_manual_art", WeatherArtworkCatalog.all[index].slug)
+                                .putInt("gothic_celestial_mode", 0).putBoolean("gothic_moon_auto", true).apply()
+                            refreshCelestialView()
+                        }.setNegativeButton("Cancelar", null).show()
+                    2 -> {
+                        prefs.edit().remove("gothic_manual_art").putInt("gothic_celestial_mode", 0)
+                            .putBoolean("gothic_moon_auto", true).apply()
+                        refreshCelestialView()
                     }
-                    in 1..3 -> editor.putInt("gothic_moon_size", option - 1)
-                    4 -> editor.putBoolean("gothic_moon_ornate",
-                        !prefs.getBoolean("gothic_moon_ornate", true))
-                    5 -> editor.putBoolean("gothic_moon_visible", false)
-                    6 -> { gothicWeatherSettings(); return@setItems }
-                    in 7..10 -> {
-                        editor.putInt("gothic_celestial_mode", 1)
-                        editor.putInt("gothic_sun_style", option - 7)
+                    3 -> widgetEditor?.beginEditing()
+                    4 -> {
+                        prefs.edit().putBoolean("gothic_moon_visible", false).apply()
+                        weatherLocation.stop()
+                        showHome()
                     }
-                    11 -> {
-                        editor.putInt("gothic_celestial_mode", 2)
-                        editor.putBoolean("gothic_moon_auto", true)
-                    }
-                    in 12..15 -> {
-                        editor.putInt("gothic_celestial_mode", 2)
-                        editor.putBoolean("gothic_moon_auto", false)
-                        editor.putInt("gothic_moon_phase", option - 12)
-                    }
+                    5 -> AlertDialog.Builder(this).setTitle("Artes originais")
+                        .setMessage("As 20 artes permanecem completas, incluindo personagens, relógios, textos, cores e molduras. A previsão real permanece separada dos valores ilustrativos. Dados: MET Norway, CC BY 4.0.")
+                        .setPositiveButton("Fechar", null).show()
                 }
-                editor.apply()
-                showHome()
-            }
-            .setPositiveButton("Fechar", null)
-            .show()
+            }.setNegativeButton("Fechar", null).show()
     }
 
     private fun homePage(index: Int): View {
         val scroll = ScrollView(this).apply {
+            tag = "home_icons_scroll"
             isFillViewport = true
-            clipToPadding = false
+            clipToPadding = true
+            clipChildren = true
             setPadding(0, 0, 0, dp(3))
         }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        // Reserva visual para widgets futuros. Não interfere na gaveta de apps.
-        // Altura personalizável por página; 180dp na tela principal por padrão.
-        val widgetSpace = setting("widget_space_dp", "180")
-            .toIntOrNull()?.coerceIn(0, 360) ?: 180
-        if (index == 0 && prefs.getBoolean("gothic_moon_visible", true)) {
-            content.addView(gothicMoonWidget())
-        } else if (index == 0 && widgetSpace > 0) {
-            content.addView(View(this), LinearLayout.LayoutParams(-1, dp(widgetSpace)))
-        }
         val grid = GridLayout(this).apply {
             columnCount = horizontalIconColumns()
             setPadding(dp(1), 0, dp(1), dp(5))
         }
         pageCells(index).forEachIndexed { position, key ->
             val app = resolveKey(key)
-            val tile = if (app == null) View(this) else appTile(app, false, false)
-            if (app != null) acceptDrop(tile) { dropped -> placeOnPage(dropped, index, position) }
+            val tile = when {
+                WorkspaceItems.isFolder(key) -> folderTile(key, false)
+                app != null -> appTile(app, false, false)
+                else -> View(this)
+            }
+            tile.tag = "workspace_cell_${index}_$position"
+            acceptDropAt(tile) { dropped, event ->
+                val center = event.x in tile.width * 0.2f..tile.width * 0.8f &&
+                    event.y in tile.height * 0.2f..tile.height * 0.8f
+                placeOnPage(dropped, index, position, group = center && key.isNotEmpty())
+            }
             grid.addView(tile, GridLayout.LayoutParams().apply {
                 width = 0
                 height = dp(86)
@@ -1724,7 +1802,7 @@ class MainActivity : Activity(), SensorEventListener {
         scroll.setOnDragListener { _, event ->
             when (event.action) {
                 DragEvent.ACTION_DRAG_STARTED ->
-                    event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+                    ownsDrag(event)
                 DragEvent.ACTION_DROP -> {
                     val key = draggedKey(event)
                     if (key != null) {
@@ -1735,16 +1813,18 @@ class MainActivity : Activity(), SensorEventListener {
                         val y = (event.y + scroll.scrollY - grid.top).coerceAtLeast(0f)
                         val column = (x.toInt() / cellWidth).coerceIn(0, columns - 1)
                         val row = (y.toInt() / cellHeight).coerceAtLeast(0)
-                        val position = (row * columns + column).coerceIn(0, homeCapacity() - 1)
+                        val position = (row * columns + column).coerceIn(0, pageCells(index).lastIndex)
                         placeOnPage(key, index, position)
-                        true
                     } else false
                 }
                 DragEvent.ACTION_DRAG_ENDED -> { finishWorkspaceDrag(); true }
                 else -> true
             }
         }
-        return scroll
+        if (index != 0) return scroll
+        val widget = if (prefs.getBoolean("gothic_moon_visible", true)) gothicMoonWidget()
+            else FrameLayout(this).also { celestialView = null }
+        return HomeWorkspaceLayout(this, widget, scroll)
     }
 
     private fun editWorkspaceMenu() {
@@ -1811,9 +1891,13 @@ class MainActivity : Activity(), SensorEventListener {
                 }
             } else {
                 val dockIndex = if (slot < 2) slot else slot - 1
-                val app = keys.getOrNull(dockIndex)?.takeIf { it.isNotEmpty() }?.let { resolveKey(it) }
-                val view = if (app != null) appTile(app, false, true)
-                           else label("+", 22f).apply { setTextColor(lilac) }
+                val item = keys.getOrNull(dockIndex).orEmpty()
+                val app = item.takeIf { it.isNotEmpty() }?.let { resolveKey(it) }
+                val view = when {
+                    WorkspaceItems.isFolder(item) -> folderTile(item, true)
+                    app != null -> appTile(app, false, true)
+                    else -> label("+", 22f).apply { setTextColor(lilac) }
+                }
                 acceptDrop(view) { key -> placeInDock(key, dockIndex) }
                 view
             }
@@ -2244,6 +2328,15 @@ class MainActivity : Activity(), SensorEventListener {
             )
         )
 
+        if (allowFavorite && !compact) iconFrame.addView(TextView(this).apply {
+            text = "⋮"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setTextColor(lilac)
+            contentDescription = "Ações de ${app.loadLabel(packageManager)}"
+            setOnClickListener { drawerAppActions(app) }
+        }, FrameLayout.LayoutParams(dp(22), dp(24), Gravity.TOP or Gravity.END))
+
         tile.addView(
             iconFrame,
             LinearLayout.LayoutParams(
@@ -2289,13 +2382,22 @@ class MainActivity : Activity(), SensorEventListener {
 
         tile.setOnLongClickListener {
             if (drawerOpen) {
-                drawerAppActions(app)
+                val sourceTile = tile
+                pendingDrawerDrag = true
+                showHome()
+                window.decorView.post {
+                    pendingDrawerDrag = false
+                    if (!startItemDrag(pages, appKey(app), View.DragShadowBuilder(sourceTile))) {
+                        Toast.makeText(this, "Não foi possível iniciar o arraste. Tente novamente.", Toast.LENGTH_SHORT).show()
+                    }
+                }
                 true
             } else {
                 // O primeiro toque longo inicia o arraste com o mesmo dedo.
                 // Não reconstruir a tela com enterEditMode() enquanto o dedo
                 // está pressionado: isso cancelaria o gesto em andamento.
-                startAppDrag(tile, app)
+                if (!startAppDrag(tile, app)) Toast.makeText(this, "Não foi possível iniciar o arraste. Tente novamente.", Toast.LENGTH_SHORT).show()
+                true
             }
         }
 
@@ -2305,11 +2407,32 @@ class MainActivity : Activity(), SensorEventListener {
     override fun dispatchTouchEvent(
         event: MotionEvent
     ): Boolean {
+        if (pendingDrawerDrag) return super.dispatchTouchEvent(event)
+        if (widgetResizeActive || widgetResizeGesture) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                widgetResizeGesture = true
+                val bounds = android.graphics.Rect()
+                val editor = widgetEditor
+                if (editor == null || !editor.getGlobalVisibleRect(bounds) ||
+                    !bounds.contains(event.rawX.toInt(), event.rawY.toInt())) {
+                    editor?.endEditing()
+                }
+            }
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)
+                widgetResizeGesture = false
+            return super.dispatchTouchEvent(event)
+        }
         if (!drawerOpen && !dragging) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.x
                     downY = event.y
+                    val iconScroll = if (::pages.isInitialized) pages.getChildAt(pageIndex)
+                        ?.findViewWithTag<ScrollView>("home_icons_scroll") else null
+                    val bounds = android.graphics.Rect()
+                    iconViewportGesture = iconScroll != null && iconScroll.getGlobalVisibleRect(bounds) &&
+                        bounds.contains(event.rawX.toInt(), event.rawY.toInt()) &&
+                        (iconScroll.canScrollVertically(1) || iconScroll.canScrollVertically(-1))
                 }
 
                 MotionEvent.ACTION_MOVE -> {
@@ -2353,6 +2476,9 @@ class MainActivity : Activity(), SensorEventListener {
                         return true
                     }
 
+                    // A vertical scroll begun in the bounded icon viewport belongs to it.
+                    // Horizontal page gestures and bottom-menu gestures remain available elsewhere.
+                    if (iconViewportGesture && abs(dy) > abs(dx)) return super.dispatchTouchEvent(event)
                     if (
                         dy < -dp(95) &&
                         abs(dy) > abs(dx) * 1.5f
@@ -2382,6 +2508,8 @@ class MainActivity : Activity(), SensorEventListener {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (dragging) { cancelWorkspaceDrag(); return }
+        if (widgetResizeActive) { widgetEditor?.endEditing(); return }
         if (editMode) {
             leaveEditMode()
             return

@@ -1,0 +1,37 @@
+"""Ensure all twenty approved PNGs remain exactly intact (run from repository root)."""
+import hashlib
+import json
+import struct
+from pathlib import Path
+
+expected = json.loads(Path('docs/weather-artwork-sha256.json').read_text())
+assert len(expected) == 20, f'Expected 20 originals, found {len(expected)}'
+for name, digest in expected.items():
+    assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == digest, name
+print('20/20 original weather PNGs intact (SHA-256).')
+
+fixtures = {}
+for line in Path('app/src/test/resources/weather-artwork-sizes.tsv').read_text().splitlines():
+    name, width, height = line.split('\t')
+    fixtures[name] = (int(width), int(height))
+assert len(fixtures) == 20
+for name in expected:
+    image = Path(name)
+    assert struct.unpack('>II', image.read_bytes()[16:24]) == fixtures[image.stem], name
+print('20/20 geometry test fixtures match the actual PNG dimensions.')
+
+inventory = json.loads(Path('docs/weather-artwork-inventory.json').read_text())
+assert len(inventory) == 20 and {r['path'] for r in inventory} == set(expected)
+for item in inventory:
+    image = Path(item['path'])
+    assert item['sha256'] == expected[str(image)]
+    assert (item['width'], item['height']) == struct.unpack('>II', image.read_bytes()[16:24])
+    assert item['association']
+print('20/20 inventory entries agree with original hashes, dimensions and associations.')
+
+import re
+catalog = Path('app/src/main/java/com/purplecharm/launcher/WeatherArtworkCatalog.kt').read_text()
+resources = re.findall(r'R\.drawable\.([a-z0-9_]+)', catalog)
+assert len(resources) == 20 and len(set(resources)) == 20
+assert set(resources) == {Path(name).stem for name in expected}
+print('20/20 catalog resources resolve to the inventoried original PNGs.')

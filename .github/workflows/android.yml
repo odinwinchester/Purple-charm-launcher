@@ -3,6 +3,8 @@ name: Compilar Purple Charm Launcher
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -24,6 +26,34 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+
+      - name: Conferir integridade das vinte artes
+        run: python3 scripts/verify_weather_artwork.py
+
+      - name: Testar arraste, pastas, previsão e layout
+        run: gradle :app:testDebugUnitTest --stacktrace
+
+      - name: Disponibilizar relatórios de testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Purple-Charm-Test-Reports
+          path: |
+            app/build/test-results/testDebugUnitTest/*.xml
+            app/build/reports/tests/testDebugUnitTest/**
+          if-no-files-found: warn
+
+      - name: Conferir resultados dos testes
+        run: |
+          python3 - <<'PYTEST'
+          import glob
+          import xml.etree.ElementTree as ET
+          suites = [ET.parse(path).getroot() for path in glob.glob('app/build/test-results/testDebugUnitTest/TEST-*.xml')]
+          total = sum(int(s.get('tests', 0)) for s in suites)
+          failures = sum(int(s.get('failures', 0)) + int(s.get('errors', 0)) + int(s.get('skipped', 0)) for s in suites)
+          assert total >= 39 and failures == 0, (total, failures)
+          print(f'{total} testes executados, sem falhas, erros ou testes ignorados.')
+          PYTEST
 
       - name: Compilar APK
         run: gradle :app:assembleDebug --stacktrace

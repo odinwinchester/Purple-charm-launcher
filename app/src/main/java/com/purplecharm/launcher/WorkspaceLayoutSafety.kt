@@ -14,7 +14,8 @@ internal class WorkspaceLayoutSafety(private val preferences: SharedPreferences)
         val pages: List<String?>,
         val pageCells: List<String?>,
         val dock: String?,
-        val dockSlots: String?
+        val dockSlots: String?,
+        val folders: String? = null
     )
 
     fun capture(): Snapshot {
@@ -24,26 +25,24 @@ internal class WorkspaceLayoutSafety(private val preferences: SharedPreferences)
             pages = (0 until count).map { preferences.getString("layout_page_$it", null) },
             pageCells = (0 until count).map { preferences.getString("layout_page_cells_$it", null) },
             dock = preferences.getString("layout_dock", null),
-            dockSlots = preferences.getString("layout_dock_slots", null)
+            dockSlots = preferences.getString("layout_dock_slots", null),
+            folders = preferences.getString("workspace_folders_v1", null)
         )
     }
 
     fun isValid(snapshot: Snapshot): Boolean {
         if (snapshot.pageCount !in 3..8 || snapshot.pages.size != snapshot.pageCount ||
             snapshot.pageCells.size != snapshot.pageCount) return false
-        val pageItems = snapshot.pages.flatMap { raw ->
-            raw?.split('|')?.filter { it.isNotBlank() } ?: emptyList()
-        }
-        if (pageItems.any { it.contains('|') } || pageItems.size != pageItems.distinct().size) return false
-        if (snapshot.pageCells.any { raw ->
-                raw != null && raw.split('|').filter { it.isNotEmpty() }.distinct().size !=
-                    raw.split('|').count { it.isNotEmpty() }
-            }) return false
-        val dockItems = snapshot.dockSlots?.split('|')?.filter { it.isNotBlank() }
-            ?: snapshot.dock?.split('|')?.filter { it.isNotBlank() }
-            ?: emptyList()
-        if (dockItems.size > 4 || dockItems.size != dockItems.distinct().size) return false
-        return pageItems.none { it in dockItems }
+        // Legacy installations may intentionally repeat an app on multiple pages.
+        // Validate structure without dropping those existing shortcuts during recovery.
+        return try {
+            val folders = WorkspaceItems.decodeFolders(snapshot.folders)
+            val roots = snapshot.pages.flatMap { it?.split('|')?.filter(String::isNotBlank) ?: emptyList() } +
+                (snapshot.dockSlots ?: snapshot.dock)?.split('|').orEmpty().filter(String::isNotBlank)
+            roots.filter { WorkspaceItems.isFolder(it) }.all { it in folders } &&
+                folders.values.all { it.name.isNotBlank() && it.apps.distinct().size == it.apps.size &&
+                    it.apps.none(WorkspaceItems::isFolder) }
+        } catch (_: Exception) { false }
     }
 
     /**
@@ -65,6 +64,8 @@ internal class WorkspaceLayoutSafety(private val preferences: SharedPreferences)
         else edit.putString("layout_dock", snapshot.dock)
         if (snapshot.dockSlots == null) edit.remove("layout_dock_slots")
         else edit.putString("layout_dock_slots", snapshot.dockSlots)
+        if (snapshot.folders == null) edit.remove("workspace_folders_v1")
+        else edit.putString("workspace_folders_v1", snapshot.folders)
         return edit.commit()
     }
 }
