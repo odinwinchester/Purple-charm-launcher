@@ -1,12 +1,14 @@
 package com.purplecharm.launcher
 
 internal object WeatherArtworkCatalog {
-    data class Art(val slug: String, val label: String, val resource: Int)
+    enum class Kind { SOLAR, LUNAR_PHASE, LUNAR_ALTERNATIVE, ECLIPSE }
+    data class Art(val slug: String, val label: String, val resource: Int,
+                   val kind: Kind = Kind.LUNAR_PHASE, val panoramic: Boolean = false)
     val all = listOf(
-        Art("dia_quente", "Dia Quente", R.drawable.dia_quente),
-        Art("dia_limpo", "Dia Limpo", R.drawable.dia_limpo),
-        Art("dia_nublado", "Dia Nublado", R.drawable.dia_nublado),
-        Art("nascer_do_sol", "Nascer do Sol", R.drawable.nascer_do_sol),
+        Art("dia_quente", "Dia Quente", R.drawable.dia_quente, Kind.SOLAR),
+        Art("dia_limpo", "Dia Limpo", R.drawable.dia_limpo, Kind.SOLAR),
+        Art("dia_nublado", "Dia Nublado", R.drawable.dia_nublado, Kind.SOLAR),
+        Art("nascer_do_sol", "Nascer do Sol", R.drawable.nascer_do_sol, Kind.SOLAR),
         Art("lua_01_lua_nova_noite_limpa", "Lua Nova • Noite limpa", R.drawable.lua_01_lua_nova_noite_limpa),
         Art("lua_02_lua_crescente_noite_limpa", "Lua Crescente • Noite limpa", R.drawable.lua_02_lua_crescente_noite_limpa),
         Art("lua_03_lua_cheia_noite_limpa", "Lua Cheia • Noite limpa", R.drawable.lua_03_lua_cheia_noite_limpa),
@@ -22,9 +24,29 @@ internal object WeatherArtworkCatalog {
         Art("lua_13_lua_nova_noite_fria_neve", "Lua Nova • Noite fria / neve", R.drawable.lua_13_lua_nova_noite_fria_neve),
         Art("lua_14_lua_crescente_noite_fria_neve", "Lua Crescente • Noite fria / neve", R.drawable.lua_14_lua_crescente_noite_fria_neve),
         Art("lua_15_lua_cheia_noite_fria_neve", "Lua Cheia • Noite fria / neve", R.drawable.lua_15_lua_cheia_noite_fria_neve),
-        Art("lua_16_lua_minguante_noite_fria_neve", "Lua Minguante • Noite fria / neve", R.drawable.lua_16_lua_minguante_noite_fria_neve)
+        Art("lua_16_lua_minguante_noite_fria_neve", "Lua Minguante • Noite fria / neve", R.drawable.lua_16_lua_minguante_noite_fria_neve),
+        Art("sol_dia_chuvoso", "Sol • Dia Chuvoso", R.drawable.sol_dia_chuvoso, Kind.SOLAR),
+        Art("sol_dia_frio", "Sol • Dia Frio", R.drawable.sol_dia_frio, Kind.SOLAR),
+        Art("lua_noite_chuvosa", "Lua • Noite Chuvosa (alternativa manual)", R.drawable.lua_noite_chuvosa, Kind.LUNAR_ALTERNATIVE, panoramic = true),
+        Art("lua_noite_fria", "Lua • Noite Fria (alternativa manual)", R.drawable.lua_noite_fria, Kind.LUNAR_ALTERNATIVE, panoramic = true),
+        Art("eclipse_solar_frio", "Eclipse Solar • Frio (manual, evento não confirmado)", R.drawable.eclipse_solar_frio, Kind.ECLIPSE),
+        Art("eclipse_lunar_limpo", "Eclipse Lunar • Limpo (manual, evento não confirmado)", R.drawable.eclipse_lunar_limpo, Kind.ECLIPSE)
     )
-    fun select(isSun: Boolean, sunIndex: Int, condition: Int, phase: Int, manual: String?): Art =
-        all.firstOrNull { it.slug == manual } ?:
-            all[if (isSun) sunIndex.coerceIn(0, 3) else 4 + condition.coerceIn(0, 3) * 4 + phase.coerceIn(0, 3)]
+    fun select(isSun: Boolean, sunIndex: Int, condition: Int, phase: Int, manual: String?,
+               automaticWeather: Boolean = true): Art {
+        all.firstOrNull { it.slug == manual }?.let { return it }
+        // Climate can select the new solar art, never an eclipse or phase-free lunar alternative.
+        if (isSun && automaticWeather) {
+            if (condition == 2) return all.first { it.slug == "sol_dia_chuvoso" }
+            if (condition == 3) return all.first { it.slug == "sol_dia_frio" }
+        }
+        // The first 20 entries and all four phase mappings remain unchanged.
+        return all[if (isSun) sunIndex.coerceIn(0, 3) else 4 + condition.coerceIn(0, 3) * 4 + phase.coerceIn(0, 3)]
+    }
+    fun note(art: Art, phase: Int): String = when (art.kind) {
+        Kind.ECLIPSE -> "Arte de eclipse • seleção manual; evento e visibilidade não confirmados"
+        Kind.LUNAR_ALTERNATIVE -> "Arte lunar alternativa • fase do componente: " +
+            listOf("Nova", "Crescente", "Cheia", "Minguante")[phase.coerceIn(0, 3)]
+        else -> "Arte preservada • valores impressos ilustrativos"
+    }
 }

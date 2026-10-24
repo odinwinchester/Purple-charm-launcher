@@ -1672,7 +1672,7 @@ class MainActivity : Activity(), SensorEventListener {
             else -> 0
         }
         val selectedArt = WeatherArtworkCatalog.select(isSun, selectedSun, weatherArtIndex,
-            phaseArtIndex, prefs.getString("gothic_manual_art", null))
+            phaseArtIndex, prefs.getString("gothic_manual_art", null), automaticWeather = mode == 0)
         val artwork = ImageView(this).apply {
             setImageResource(selectedArt.resource)
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -1682,15 +1682,21 @@ class MainActivity : Activity(), SensorEventListener {
         // Original PNGs remain byte-for-byte intact, including their sample lettering.
         // Real forecast is explicitly separated so sample values cannot be mistaken for live data.
         val columns = horizontalIconColumns()
-        val initialSpan = prefs.getInt("gothic_widget_span", intArrayOf(2, 3, columns)[size]).coerceIn(1, columns)
+        // Panoramic alternatives open at full grid width; a deliberate per-art resize persists.
+        // Existing global sizing preferences remain unchanged for the original and other arts.
+        val spanKey = if (selectedArt.panoramic) "gothic_widget_span_${selectedArt.slug}" else "gothic_widget_span"
+        val defaultSpan = if (selectedArt.panoramic) columns else intArrayOf(2, 3, columns)[size]
+        val initialSpan = prefs.getInt(spanKey, defaultSpan).coerceIn(1, columns)
         val editor = WeatherResizeLayout(this, artwork, columns, initialSpan,
             { active -> widgetResizeActive = active },
-            { span -> prefs.edit().putInt("gothic_widget_span", span).apply() },
+            { span -> prefs.edit().putInt(spanKey, span).apply() },
             { moonWidgetOptions() })
         widgetEditor = editor
         panel.addView(editor, LinearLayout.LayoutParams(-1, 0, 2f))
         val readout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        readout.addView(label("Arte original • valores impressos ilustrativos", 10f))
+        readout.addView(label(WeatherArtworkCatalog.note(selectedArt, phaseArtIndex) +
+            if (selectedArt.kind == WeatherArtworkCatalog.Kind.ECLIPSE || selectedArt.panoramic)
+                "\nValores impressos ilustrativos • previsão real abaixo" else "", 10f))
         val liveText = when {
             !weatherActive -> "Escolha localização automática ou busque uma cidade"
             forecast == null -> "Previsão indisponível • tentando atualizar"
@@ -1729,7 +1735,7 @@ class MainActivity : Activity(), SensorEventListener {
                 "Restaurar comportamento automático", "Redimensionar com alças", "Ocultar widget", "Sobre as artes")) { _, which ->
                 when (which) {
                     0 -> gothicWeatherSettings()
-                    1 -> AlertDialog.Builder(this).setTitle("Escolher uma das 20 artes originais")
+                    1 -> AlertDialog.Builder(this).setTitle("Escolher uma das ${WeatherArtworkCatalog.all.size} artes")
                         .setItems(WeatherArtworkCatalog.all.map { it.label }.toTypedArray()) { _, index ->
                             prefs.edit().putString("gothic_manual_art", WeatherArtworkCatalog.all[index].slug)
                                 .putInt("gothic_celestial_mode", 0).putBoolean("gothic_moon_auto", true).apply()
@@ -1747,7 +1753,7 @@ class MainActivity : Activity(), SensorEventListener {
                         showHome()
                     }
                     5 -> AlertDialog.Builder(this).setTitle("Artes originais")
-                        .setMessage("As 20 artes permanecem completas, incluindo personagens, relógios, textos, cores e molduras. A previsão real permanece separada dos valores ilustrativos. Dados: MET Norway, CC BY 4.0.")
+                        .setMessage("As ${WeatherArtworkCatalog.all.size} artes permanecem completas, incluindo personagens, relógios, textos, cores e molduras. A previsão real permanece separada dos valores ilustrativos. Dados: MET Norway, CC BY 4.0.")
                         .setPositiveButton("Fechar", null).show()
                 }
             }.setNegativeButton("Fechar", null).show()
