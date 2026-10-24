@@ -325,4 +325,48 @@ class WorkspaceAndroidTest {
         controller.pause().stop().destroy()
     }
 
+    @Test fun nativeRootRoutesDragToStableSurfaceAfterPageChange() {
+        seed(); val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get(); layout(a)
+        val root = a.window.decorView
+        val surface = root.findViewWithTag<WorkspaceDragLayout>("workspace_drag_surface")!!
+        val session = WorkspaceDragSession(id, current(a))
+        set(a, "dragSession", session); set(a, "dragging", true)
+        val base = IntArray(2); val origin = IntArray(2)
+        root.getLocationOnScreen(base); surface.getLocationOnScreen(origin)
+        assertTrue(root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_STARTED, session)))
+        root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_LOCATION, session,
+            x = origin[0] - base[0] + surface.width - 1f, y = origin[1] - base[1] + surface.height / 2f))
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(350)); layout(a)
+        val field = MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }
+        assertEquals(1, field.getInt(a))
+        val target = root.findViewWithTag<View>("workspace_cell_1_2")!!
+        val at = IntArray(2); target.getLocationOnScreen(at)
+        val x = at[0] - base[0] + target.width / 2f; val y = at[1] - base[1] + target.height / 2f
+        root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_LOCATION, session, x = x, y = y))
+        assertTrue(root.dispatchDragEvent(event(DragEvent.ACTION_DROP, session, x = x, y = y)))
+        root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_ENDED, session))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(id, current(a).pages[1][2]); assertEquals("", current(a).pages[0][0])
+        controller.pause().stop().destroy()
+    }
+    @Test fun removingLastMemberClosesOpenFolderAndReleasesDockSlot() {
+        val p = seed(); val s = state().copy(
+            pages = List(3) { List(20) { "" } }, dock = listOf(id, "", "", ""),
+            folders = mapOf(id to WorkspaceFolder("Última", listOf("pkg/A"))))
+        assertTrue(WorkspaceItemsStore(p).save(s))
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get()
+        MainActivity::class.java.getDeclaredMethod("showFolder", String::class.java).apply { isAccessible = true }.invoke(a, id)
+        val dialog = MainActivity::class.java.getDeclaredField("folderDialog").apply { isAccessible = true }.get(a) as android.app.Dialog
+        assertTrue(dialog.isShowing)
+        val edited = WorkspaceEdits.removeApp(current(a), id, "pkg/A")!!
+        assertEquals(true, MainActivity::class.java.getDeclaredMethod("saveWorkspaceEdit", WorkspaceItems::class.java)
+            .apply { isAccessible = true }.invoke(a, edited))
+        assertFalse(dialog.isShowing); assertTrue(current(a).folders.isEmpty())
+        assertEquals(List(4) { "" }, current(a).dock)
+        assertEquals("|||", p.getString("layout_dock_slots", null))
+        controller.pause().stop().destroy()
+    }
+
 }
