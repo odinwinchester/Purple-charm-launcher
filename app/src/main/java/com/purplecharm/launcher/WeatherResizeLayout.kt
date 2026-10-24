@@ -72,7 +72,8 @@ internal class WeatherResizeLayout(
                         handleDragging = false
                         // ACTION_UP may arrive before the next measure/layout pass.
                         // Resolve the latest requested span now, not the previous frame.
-                        span = WidgetResizeGeometry.place(width, height, columns, span,
+                        span = WidgetResizeGeometry.place(this@WeatherResizeLayout.width,
+                            this@WeatherResizeLayout.height, columns, span,
                             handleSize, sw, sh, border).span
                         onCommitted(span)
                         requestLayout()

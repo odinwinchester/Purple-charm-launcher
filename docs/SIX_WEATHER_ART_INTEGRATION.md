@@ -36,7 +36,7 @@ Inventário estruturado e identificação dos blobs de origem: `weather-addition
 - Lua Nova, Crescente, Cheia e Minguante continuam sendo calculadas/selecionadas pelo mecanismo anterior. As novas luas são alternativas manuais sem identificação confiável de quatro fases; a fase do componente aparece separada da arte.
 - Eclipses têm classificação astronômica explícita, nunca meteorológica. Somente escolha manual, acompanhada de aviso fora da imagem: evento/visibilidade não confirmados. Não há mecanismo automático de eclipse nesta etapa.
 - A arte original é sempre exibida inteira com FIT_CENTER e borda externa existente. Valores impressos continuam ilustrativos; a previsão MET e os avisos são separados, sem sobreposição à imagem.
-- Os dois banners lunares têm proporção próxima de 4,8–4,9:1. Abrem usando todas as colunas disponíveis e permitem redimensionamento próprio persistido. A preferência global anterior não é sobrescrita. Em telefone estreito, textos impressos de um banner de 1942 px podem continuar pequenos; não foram ampliados por recorte nem escondidos.
+- Os dois banners lunares têm proporção próxima de 4,7–4,9:1. Abrem usando todas as colunas disponíveis e permitem redimensionamento próprio persistido. A preferência global anterior não é sobrescrita. Em telefone estreito, textos impressos de um banner de 1942 px podem continuar pequenos; não foram ampliados por recorte nem escondidos.
 - Áreas de widget/ícones, navegação, wallpaper, dock, arraste e pastas são reutilizados. Nenhuma classe desses mecanismos foi substituída.
 
 ## Validação antes de entrega
@@ -54,3 +54,8 @@ Inventário estruturado e identificação dos blobs de origem: `weather-addition
 - Automação de eclipse pendente: exige fonte/cálculo confiável de ocorrência, horário e visibilidade por localização e validação específica. Não usar fase lunar aproximada ou temperatura como prova de eclipse.
 - Novos GIFs e novo painel de dados reais não foram implementados nesta integração. Os valores impressos nos PNGs não foram alterados.
 - Não fazer merge na `main` sem autorização.
+
+## Primeira execução e correção localizada
+- Actions https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40075438536 : o código compilou e 49 dos 50 testes passaram; a integridade dos 26 PNGs passou.
+- O teste de eventos reais simulados da alça detectou `esperado 3, obtido 1`: na revisão anterior, `ACTION_UP` consultava `width/height` do TextView da alça (24 dp), não do contêiner. Isso fazia a preferência diminuir à menor largura.
+- Correção pontual: qualificar `this@WeatherResizeLayout.width/height`. O mecanismo existente não foi reimplementado. Teste adicional exercita também uma arte original; mínimo atualizado para 51 testes. Aguardar resultado da revisão correspondente.

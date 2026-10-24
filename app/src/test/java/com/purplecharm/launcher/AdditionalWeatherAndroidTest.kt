@@ -145,4 +145,27 @@ class AdditionalWeatherAndroidTest {
         assertEquals(3, spanField.getInt(editor))
         controller.pause().stop().destroy()
     }
+    @Test fun originalArtAlsoCommitsContainerWidthInsteadOfHandleWidth() {
+        val p = seed()
+        p.edit().putString("gothic_manual_art", "dia_limpo").putInt("gothic_widget_span", 4)
+            .putString("pc_columns", "4").commit()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        val editor = views(activity.window.decorView).filterIsInstance<WeatherResizeLayout>().first()
+        val density = activity.resources.displayMetrics.density
+        val width = (360 * density).toInt(); val height = (250 * density).toInt()
+        editor.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+        editor.layout(0, 0, width, height); editor.beginEditing()
+        val handle = WeatherResizeLayout::class.java.getDeclaredField("rightHandle").apply { isAccessible = true }.get(editor) as View
+        val time = SystemClock.uptimeMillis()
+        for ((action, x) in listOf(MotionEvent.ACTION_DOWN to 12f, MotionEvent.ACTION_MOVE to (12f - width / 4f), MotionEvent.ACTION_UP to (12f - width / 4f))) {
+            val event = MotionEvent.obtain(time, time + action, action, x, 12f, 0)
+            handle.dispatchTouchEvent(event); event.recycle()
+        }
+        editor.endEditing()
+        assertEquals(3, p.getInt("gothic_widget_span", -1))
+        assertFalse(p.contains("gothic_widget_span_lua_noite_chuvosa"))
+        controller.pause().stop().destroy()
+    }
+
 }
