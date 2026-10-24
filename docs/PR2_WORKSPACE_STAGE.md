@@ -22,3 +22,8 @@ Base: `763f3890950de72d9602b5a8ae34cc6c0ee48ca7`. Main deve permanecer em `c07c6
 - Rolar ícones na área limitada, navegar horizontalmente, arrastar atalhos entre páginas, usar gaveta/dock/menu inferior e verificar que todos os atalhos continuam acessíveis. A reserva de 40% é uma escolha de layout desta etapa, a calibrar no aparelho; em telas curtas exige rolagem dos ícones.
 - Conceder/negar/revogar localização, buscar cidade, testar offline e deslocamento real. Esses recursos anteriores não foram considerados validados em aparelho apenas por passarem nos testes JVM.
 - Aprovar ou ajustar a proposta de apresentação dos dados reais antes de nova implementação visual. GIFs finais continuam pendentes e fora desta etapa.
+
+## Evidência de compilação
+- Primeira validação desta etapa: `568ae368024f7530dafa7c7da16d6a3a76e514ee`, Actions https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40064879266 .
+- 16 testes executados, sem falhas, erros ou testes ignorados. Inventário/integridade, compilação e validação de assinatura/alinhamento passaram.
+- Ajuste posterior evita salvar o frame anterior quando o dedo é solto antes do próximo layout da alça. A validação final desse ajuste será registrada após o Actions; interação por toque continua pendente no aparelho.
