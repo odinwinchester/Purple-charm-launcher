@@ -46,7 +46,10 @@ Base desta etapa: `255db5016d72a21835e0af4518a44ef52b7bb332` na branch `codex/we
 - Dimensões dos 20 fixtures de teste conferidas contra o cabeçalho real de cada PNG.
 - `git diff --check`: sem erros.
 - Primeira validação desta etapa: `5ac45ee2dee4da41bcd956f3f3d183d766eefff9` passou em todas as etapas: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40057755982 .
-- Ajuste posterior: busca tem timeout de 20 segundos, ignora respostas tardias e fecha ao pausar. Permissão concedida enquanto pausado só registra acompanhamento ao retomar. Revalidação deste ajuste: aguardando Actions.
+- Ajuste posterior: busca tem timeout de 20 segundos, ignora respostas tardias e fecha ao pausar. Permissão concedida enquanto pausado só registra acompanhamento ao retomar. Revalidação deste ajuste: passou para `ccb5ffb6251155e4bdad3c91d6a013139e2bbbd5`: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40057920477 .
+- Actions confirmou 10 testes executados, sem falhas, erros ou testes ignorados, integridade das 20 artes, compilação e validação de alinhamento/assinatura do APK.
+- APK desta etapa: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40057920477/artifacts/12545752775 . SHA-256: `e6c91cfad343a160c40fed444f5844bca38442faee5964cf4432988be60132e9`.
+- `main` conferida em `c07c643ce2edbdfbfa580d2461e771b96aa2f13c`, sem merge.
 
 ## Testes ainda necessários no aparelho
 - Conceder/negar/revogar permissão, permissão temporária, retorno das configurações e localização desativada.
