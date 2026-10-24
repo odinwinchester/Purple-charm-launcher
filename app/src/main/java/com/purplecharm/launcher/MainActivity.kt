@@ -65,6 +65,36 @@ class MainActivity : Activity(), SensorEventListener {
     private var workspaceRefreshScheduled = false
     private var dragDropCommitted = false
     private var dragOrigin: Pair<Int, List<String>>? = null
+    private var dragSession: WorkspaceDragSession? = null
+    private val workspaceStore by lazy { WorkspaceItemsStore(prefs) }
+    private val workspaceMime = "application/vnd.purplecharm.workspace-item"
+    private var folderDialog: Dialog? = null
+    private var openFolderId: String? = null
+    private var pendingDrawerDrag = false
+
+    private fun workspaceItems(): WorkspaceItems = WorkspaceItems(
+        (0 until pageCount()).map { pageCells(it).toList() }, dockSlots().toList(), workspaceStore.folders())
+    private fun knownItem(key: String): Boolean = resolveKey(key) != null ||
+        (WorkspaceItems.isFolder(key) && runCatching { key in workspaceStore.folders() }.getOrDefault(false))
+
+    private fun saveWorkspaceEdit(proposed: WorkspaceItems?): Boolean {
+        val current = runCatching { workspaceItems() }.getOrNull()
+        if (current == null || proposed == null) {
+            Toast.makeText(this, "Não foi possível concluir sem alterar outros atalhos", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        val before = WorkspaceLayoutSafety(prefs).capture()
+        val saved = if (dragging) dragSession?.commit(current, proposed, workspaceStore::save) == true
+            else workspaceStore.save(proposed)
+        if (!saved) {
+            Toast.makeText(this, "Operação não salva; origem preservada", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        undoWorkspaceSnapshot = before
+        if (dragging) dragDropCommitted = true
+        refreshWorkspaceSafely()
+        return true
+    }
     private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
     private var accelerometer: Sensor? = null
 
@@ -254,39 +284,58 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun resolveKey(key: String): ResolveInfo? = apps.firstOrNull { appKey(it) == key }
 
-    private fun startAppDrag(view: View, app: ResolveInfo): Boolean {
-        val data = ClipData.newPlainText("purplecharm", appKey(app))
+    private fun startAppDrag(view: View, app: ResolveInfo): Boolean = startItemDrag(view, appKey(app))
+
+    private fun startItemDrag(view: View, key: String, shadow: View.DragShadowBuilder = View.DragShadowBuilder(view)): Boolean {
+        if (dragging || !knownItem(key) || !view.isAttachedToWindow) return false
+        val state = runCatching { workspaceItems() }.getOrNull()?.takeIf { it.valid() } ?: return false
+        widgetEditor?.endEditing()
+        val session = WorkspaceDragSession(key, state)
+        dragSession = session
         dragDropCommitted = false
         dragFinishScheduled = false
         dragOrigin = pageIndex to savedPage(pageIndex).toList()
-        dragging = view.startDragAndDrop(data, View.DragShadowBuilder(view), null, 0)
-        if (!dragging) dragOrigin = null
-        return dragging
+        // Drag-start callbacks can be dispatched synchronously by Android.
+        dragging = true
+        view.parent?.requestDisallowInterceptTouchEvent(true)
+        val data = ClipData("Purple Charm", arrayOf(workspaceMime), ClipData.Item(key))
+        val started = try { view.startDragAndDrop(data, shadow, session, 0) } catch (_: Exception) { false }
+        if (!started) {
+            session.cancel(); dragSession = null; dragging = false; dragOrigin = null
+            view.parent?.requestDisallowInterceptTouchEvent(false)
+        } else view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        return started
     }
+
+    private fun ownsDrag(event: DragEvent): Boolean = dragging && dragSession != null &&
+        event.localState === dragSession && event.clipDescription?.hasMimeType(workspaceMime) == true
 
     private fun draggedKey(event: DragEvent): String? {
+        if (!ownsDrag(event)) return null
         val clip = event.clipData ?: return null
-        if (clip.itemCount == 0) return null
+        if (clip.itemCount != 1) return null
         val key = clip.getItemAt(0).text?.toString() ?: return null
-        return key.takeIf { resolveKey(it) != null }
+        return key.takeIf { it == dragSession?.key && knownItem(it) }
     }
 
-    private fun acceptDrop(view: View, action: (String) -> Unit) {
+    private fun acceptDrop(view: View, action: (String) -> Boolean) =
+        acceptDropAt(view) { key, _ -> action(key) }
+
+    private fun acceptDropAt(view: View, action: (String, DragEvent) -> Boolean) {
         view.setOnDragListener { target, event ->
             when (event.action) {
-                DragEvent.ACTION_DRAG_STARTED -> {
-                    val ok = event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
-                    if (ok) target.alpha = 0.8f
-                    ok
+                DragEvent.ACTION_DRAG_STARTED -> ownsDrag(event).also { if (it) target.alpha = 0.8f }
+                DragEvent.ACTION_DRAG_ENTERED -> { if (ownsDrag(event)) target.alpha = 0.55f; ownsDrag(event) }
+                DragEvent.ACTION_DRAG_EXITED -> { target.alpha = 0.8f; ownsDrag(event) }
+                DragEvent.ACTION_DROP -> draggedKey(event)?.let { key ->
+                    if (dragDropCommitted) false else action(key, event)
+                } ?: false
+                DragEvent.ACTION_DRAG_ENDED -> {
+                    target.alpha = 1f
+                    if (event.localState === dragSession) finishWorkspaceDrag()
+                    true
                 }
-                DragEvent.ACTION_DRAG_ENTERED -> { target.alpha = 0.55f; true }
-                DragEvent.ACTION_DRAG_EXITED -> { target.alpha = 0.8f; true }
-                DragEvent.ACTION_DROP -> {
-                    val key = draggedKey(event)
-                    if (key != null) { action(key); true } else false
-                }
-                DragEvent.ACTION_DRAG_ENDED -> { target.alpha = 1f; finishWorkspaceDrag(); true }
-                else -> true
+                else -> ownsDrag(event)
             }
         }
     }
@@ -306,8 +355,11 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun completeWorkspaceDrag() {
+        dragSession?.cancel()
+        dragSession = null
         dragging = false
         dragOrigin = null
+        window.decorView.parent?.requestDisallowInterceptTouchEvent(false)
         if (pendingWorkspaceRefresh && !workspaceRefreshScheduled) {
             workspaceRefreshScheduled = true
             // Atualiza apenas após o ciclo atual de DragEvent terminar.
@@ -315,7 +367,10 @@ class MainActivity : Activity(), SensorEventListener {
                 workspaceRefreshScheduled = false
                 if (!dragging && pendingWorkspaceRefresh) {
                     pendingWorkspaceRefresh = false
+                    val reopen = openFolderId
+                    folderDialog?.dismiss()
                     showHome()
+                    if (reopen != null) showFolder(reopen)
                 }
             }
         }
@@ -325,57 +380,31 @@ class MainActivity : Activity(), SensorEventListener {
         if (dragging) {
             pendingWorkspaceRefresh = true
         } else {
+            val reopen = openFolderId
+            folderDialog?.dismiss()
             showHome()
+            if (reopen != null) showFolder(reopen)
         }
     }
 
-    private fun placeOnPage(key: String, index: Int, position: Int? = null) {
-        if (dragging && dragDropCommitted) return
-        val cells = pageCells(index)
-        val source = cells.indexOf(key)
-        if (source < 0 && cells.none { it.isEmpty() }) {
-            Toast.makeText(this, "Página cheia", Toast.LENGTH_SHORT).show()
-            return
+    private fun placeOnPage(key: String, index: Int, position: Int? = null, group: Boolean = false): Boolean {
+        if (dragging && dragDropCommitted) return false
+        val state = runCatching { workspaceItems() }.getOrNull() ?: return false
+        if (index !in state.pages.indices) return false
+        val cells = state.pages[index]
+        val target = position?.takeIf { it in cells.indices }
+            ?: cells.indexOfFirst { it.isEmpty() }.takeIf { it >= 0 }
+            ?: cells.indexOf(key).takeIf { it >= 0 }
+        if (target == null) {
+            Toast.makeText(this, "Página cheia; escolha outra célula ou crie uma pasta sobre um aplicativo", Toast.LENGTH_SHORT).show()
+            return false
         }
-        val target = position?.coerceIn(0, cells.lastIndex)
-            ?: cells.indexOfLast { it.isEmpty() }.takeIf { it >= 0 }
-            ?: source.coerceAtLeast(0)
-        if (source == target) return
-        val displaced = cells[target]
-        if (source >= 0) cells[source] = displaced
-        else if (displaced.isNotEmpty()) {
-            val free = cells.indexOfFirst { it.isEmpty() }
-            if (free < 0) return
-            cells[free] = displaced
-        }
-        cells[target] = key
-        val before = WorkspaceLayoutSafety(prefs).capture()
-        val edit = prefs.edit()
-        for (other in 0 until pageCount()) if (other != index) {
-            val others = pageCells(other)
-            val at = others.indexOf(key)
-            if (at >= 0) {
-                others[at] = ""
-                edit.putString("layout_page_$other", others.filter { it.isNotEmpty() }.joinToString("|"))
-                edit.putString("layout_page_cells_$other", others.joinToString("|"))
-            }
-        }
-        val dock = dockSlots()
-        val dockAt = dock.indexOf(key)
-        if (dockAt >= 0) {
-            dock[dockAt] = ""
-            edit.putString("layout_dock_slots", dock.joinToString("|"))
-        }
-        edit.putString("layout_page_$index", cells.filter { it.isNotEmpty() }.joinToString("|"))
-            .putString("layout_page_cells_$index", cells.joinToString("|"))
-        if (!edit.commit()) {
-            Toast.makeText(this, "Falha ao salvar posição", Toast.LENGTH_SHORT).show()
-            return
-        }
-        undoWorkspaceSnapshot = before
-        if (dragging) dragDropCommitted = true
+        val proposed = WorkspaceEdits.page(state, key, index, target, group)
+        val previousPage = pageIndex
         pageIndex = index
-        refreshWorkspaceSafely()
+        val saved = saveWorkspaceEdit(proposed)
+        if (!saved) pageIndex = previousPage
+        return saved
     }
 
     // O dock usa quatro posições fixas, sem deslocar os outros ícones.
@@ -395,73 +424,160 @@ class MainActivity : Activity(), SensorEventListener {
         prefs.edit().putString("layout_dock_slots", slots.take(4).joinToString("|")).apply()
     }
 
-    private fun placeInDock(key: String, position: Int) {
-        // Uma única operação de escrita evita perder o atalho substituído.
-        val before = WorkspaceLayoutSafety(prefs).capture()
-        val destination = position.coerceIn(0, 3)
-        val slots = dockSlots()
-        val displaced = slots[destination]
-        if (displaced == key) return
-
-        val sourceSlot = slots.indexOf(key)
-        val sourcePage = (0 until pageCount()).firstOrNull { key in savedPage(it) }
-        val sourcePosition = sourcePage?.let { pageCells(it).indexOf(key) } ?: -1
-
-        // Sem posição de origem para receber o atalho substituído:
-        // não modificar o dock nem remover atalhos existentes.
-        if (displaced.isNotEmpty() && sourceSlot < 0 && sourcePage == null) {
-            Toast.makeText(this, "Escolha uma posição de origem para trocar os atalhos", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val updatedPages = (0 until pageCount()).map { pageCells(it) }
-        if (sourceSlot >= 0) {
-            slots[sourceSlot] = displaced
-        } else if (sourcePage != null) {
-            val page = updatedPages[sourcePage]
-            if (sourcePosition in page.indices) {
-                page[sourcePosition] = displaced
-            }
-        }
-        slots[destination] = key
-
-        // Atualização conjunta: páginas e dock são persistidos no mesmo commit.
-        val edit = prefs.edit()
-        updatedPages.forEachIndexed { index, page ->
-            edit.putString("layout_page_$index", page.filter { it.isNotEmpty() }.distinct().joinToString("|"))
-            edit.putString("layout_page_cells_$index", page.joinToString("|"))
-        }
-        edit.putString("layout_dock_slots", slots.joinToString("|"))
-        if (!edit.commit()) {
-            Toast.makeText(this, "Não foi possível salvar a troca", Toast.LENGTH_SHORT).show()
-            return
-        }
-        // A recuperação permanece disponível para futuras integrações do Desfazer.
-        undoWorkspaceSnapshot = before
-        if (dragging) dragDropCommitted = true
-        refreshWorkspaceSafely()
+    private fun placeInDock(key: String, position: Int): Boolean {
+        if (dragging && dragDropCommitted) return false
+        val state = runCatching { workspaceItems() }.getOrNull() ?: return false
+        return saveWorkspaceEdit(WorkspaceEdits.dock(state, key, position.coerceIn(0, 3)))
     }
 
-    private fun removeShortcut(key: String) {
-        var changed = false
-        for (page in 0 until pageCount()) {
-            val list = savedPage(page)
-            if (list.remove(key)) {
-                savePage(page, list)
-                changed = true
+    private fun removeShortcut(key: String): Boolean {
+        val state = runCatching { workspaceItems() }.getOrNull() ?: return false
+        if (WorkspaceItems.isFolder(key)) {
+            Toast.makeText(this, "Abra a pasta para mover ou remover seus atalhos com segurança", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        return saveWorkspaceEdit(WorkspaceEdits.removeShortcut(state, key))
+    }
+
+    private fun folderTile(id: String, compact: Boolean): View {
+        val folder = runCatching { workspaceStore.folders()[id] }.getOrNull()
+        val tile = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(2), dp(6), dp(2), dp(8))
+            contentDescription = "Pasta ${folder?.name ?: "indisponível"}"
+        }
+        val preview = GridLayout(this).apply {
+            columnCount = 2; rowCount = 2
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            background = glass(10, false)
+        }
+        val previewSize = if (compact) 45 else 53
+        folder?.apps?.take(4)?.forEach { key ->
+            preview.addView(ImageView(this).apply {
+                resolveKey(key)?.let { setImageDrawable(customIcon(it)) }
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }, GridLayout.LayoutParams().apply {
+                width = dp((previewSize - 8) / 2); height = dp((previewSize - 8) / 2)
+            })
+        }
+        tile.addView(preview, LinearLayout.LayoutParams(dp(previewSize), dp(previewSize)))
+        if (!compact) tile.addView(label(folder?.name ?: "Pasta indisponível", 10f).apply {
+            maxLines = 2; minLines = 2; setPadding(0, dp(6), 0, 0)
+        })
+        tile.setOnClickListener { showFolder(id) }
+        tile.setOnLongClickListener { startItemDrag(tile, id) }
+        return tile
+    }
+
+    private fun showFolder(id: String) {
+        val folder = runCatching { workspaceStore.folders()[id] }.getOrNull()
+        if (folder == null) {
+            Toast.makeText(this, "Dados da pasta indisponíveis; nada foi alterado", Toast.LENGTH_SHORT).show()
+            return
+        }
+        folderDialog?.dismiss()
+        val dialog = Dialog(this)
+        folderDialog = dialog
+        openFolderId = id
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = glass(18, true)
+        }
+        panel.addView(label(folder.name, 19f, true).apply { setOnClickListener { renameFolder(id) } })
+        panel.addView(label("Toque para abrir • segure e arraste para reorganizar", 11f))
+        val grid = GridLayout(this).apply { columnCount = 4 }
+        folder.apps.forEachIndexed { index, key ->
+            val app = resolveKey(key)
+            val tile = if (app != null) appTile(app, false, false) else label(key.substringAfterLast('/'), 10f)
+            tile.tag = "folder_member_$index"
+            tile.setOnLongClickListener { startItemDrag(tile, key) }
+            acceptDrop(tile) { incoming ->
+                val state = runCatching { workspaceItems() }.getOrNull()
+                state != null && saveWorkspaceEdit(WorkspaceEdits.intoFolder(state, incoming, id, index))
             }
+            grid.addView(tile, GridLayout.LayoutParams().apply {
+                width = 0; height = dp(92)
+                columnSpec = GridLayout.spec(index % 4, 1f); rowSpec = GridLayout.spec(index / 4)
+            })
         }
-        val slots = dockSlots()
-        val at = slots.indexOf(key)
-        if (at >= 0) {
-            slots[at] = ""
-            saveDockSlots(slots)
-            changed = true
+        val scroll = ScrollView(this).apply { addView(grid) }
+        panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(230)))
+        val addTarget = glassButton("Solte aqui para adicionar à pasta", 12f)
+        acceptDrop(addTarget) { incoming ->
+            val state = runCatching { workspaceItems() }.getOrNull()
+            state != null && saveWorkspaceEdit(WorkspaceEdits.intoFolder(state, incoming, id))
         }
-        if (changed) {
-            Toast.makeText(this, "Atalho removido (aplicativo mantido)", Toast.LENGTH_SHORT).show()
-            showHome()
+        panel.addView(addTarget)
+        val extractTarget = glassButton("Solte aqui para mover à tela inicial", 12f)
+        acceptDrop(extractTarget) { incoming ->
+            val state = runCatching { workspaceItems() }.getOrNull()
+            state != null && saveWorkspaceEdit(WorkspaceEdits.extract(state, id, incoming, pageIndex))
         }
+        panel.addView(extractTarget)
+        val tools = LinearLayout(this)
+        listOf("Adicionar" to { addFolderApps(id) }, "Renomear" to { renameFolder(id) },
+            "Organizar" to { folderAppActions(id) }).forEach { (title, action) ->
+            tools.addView(glassButton(title, 12f).apply { setOnClickListener { action() } },
+                LinearLayout.LayoutParams(0, -2, 1f))
+        }
+        panel.addView(tools)
+        panel.addView(glassButton("Fechar", 12f).apply { setOnClickListener { dialog.dismiss() } })
+        dialog.setOnDismissListener {
+            if (folderDialog === dialog) { folderDialog = null; openFolderId = null }
+        }
+        dialog.setContentView(panel)
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+    }
+
+    private fun renameFolder(id: String) {
+        val folder = runCatching { workspaceStore.folders()[id] }.getOrNull() ?: return
+        val input = EditText(this).apply { setText(folder.name); setSingleLine(true) }
+        AlertDialog.Builder(this).setTitle("Renomear pasta").setView(input)
+            .setPositiveButton("Salvar") { _, _ ->
+                val state = runCatching { workspaceItems() }.getOrNull()
+                if (state != null) saveWorkspaceEdit(WorkspaceEdits.rename(state, id, input.text.toString()))
+            }.setNegativeButton("Cancelar", null).show()
+    }
+
+    private fun addFolderApps(id: String) {
+        val folder = runCatching { workspaceStore.folders()[id] }.getOrNull() ?: return
+        val available = apps.filter { appKey(it) !in folder.apps }
+        val selected = BooleanArray(available.size)
+        AlertDialog.Builder(this).setTitle("Adicionar aplicativos")
+            .setMultiChoiceItems(available.map { it.loadLabel(packageManager).toString() }.toTypedArray(), selected) { _, index, checked ->
+                selected[index] = checked
+            }.setPositiveButton("Adicionar") { _, _ ->
+                var next: WorkspaceItems? = runCatching { workspaceItems() }.getOrNull()
+                available.forEachIndexed { index, app -> if (selected[index])
+                    next = next?.let { WorkspaceEdits.intoFolder(it, appKey(app), id) }
+                }
+                saveWorkspaceEdit(next)
+            }.setNegativeButton("Cancelar", null).show()
+    }
+
+    private fun folderAppActions(id: String) {
+        val folder = runCatching { workspaceStore.folders()[id] }.getOrNull() ?: return
+        AlertDialog.Builder(this).setTitle("Organizar aplicativos da pasta")
+            .setItems(folder.apps.map { resolveKey(it)?.loadLabel(packageManager)?.toString() ?: it.substringAfterLast('/') }.toTypedArray()) { _, index ->
+                val key = folder.apps[index]
+                AlertDialog.Builder(this).setTitle(resolveKey(key)?.loadLabel(packageManager)?.toString() ?: key)
+                    .setItems(arrayOf("Mover para a tela inicial", "Remover atalho da pasta", "Mover antes", "Mover depois")) { _, action ->
+                        val state = runCatching { workspaceItems() }.getOrNull() ?: return@setItems
+                        val next = when (action) {
+                            0 -> WorkspaceEdits.extract(state, id, key, pageIndex)
+                            1 -> WorkspaceEdits.removeApp(state, id, key)
+                            2 -> WorkspaceEdits.intoFolder(state, key, id, (index - 1).coerceAtLeast(0))
+                            else -> WorkspaceEdits.intoFolder(state, key, id, index + 1)
+                        }
+                        saveWorkspaceEdit(next)
+                    }.setNegativeButton("Cancelar", null).show()
+            }.setNegativeButton("Cancelar", null).show()
     }
 
     private val lilac = Color.rgb(236, 201, 255)
@@ -1366,7 +1482,7 @@ class MainActivity : Activity(), SensorEventListener {
             edge.setOnDragListener { _, event ->
                 when (event.action) {
                     DragEvent.ACTION_DRAG_STARTED ->
-                        event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+                        ownsDrag(event)
                     DragEvent.ACTION_DRAG_ENTERED -> {
                         cancelPending()
                         val task = object : Runnable {
@@ -1394,7 +1510,7 @@ class MainActivity : Activity(), SensorEventListener {
                     DragEvent.ACTION_DROP -> {
                         cancelPending()
                         val key = draggedKey(event)
-                        if (key != null) { placeOnPage(key, pageIndex); true } else false
+                        if (key != null) placeOnPage(key, pageIndex) else false
                     }
                     DragEvent.ACTION_DRAG_ENDED -> {
                         cancelPending()
@@ -1451,6 +1567,9 @@ class MainActivity : Activity(), SensorEventListener {
     override fun onDestroy() {
         weatherHandler.removeCallbacks(weatherTick)
         weatherLocation.close()
+        folderDialog?.dismiss()
+        dragSession?.cancel()
+        dragSession = null
         super.onDestroy()
     }
     private val weatherTick = object : Runnable {
@@ -1637,8 +1756,17 @@ class MainActivity : Activity(), SensorEventListener {
         }
         pageCells(index).forEachIndexed { position, key ->
             val app = resolveKey(key)
-            val tile = if (app == null) View(this) else appTile(app, false, false)
-            if (app != null) acceptDrop(tile) { dropped -> placeOnPage(dropped, index, position) }
+            val tile = when {
+                WorkspaceItems.isFolder(key) -> folderTile(key, false)
+                app != null -> appTile(app, false, false)
+                else -> View(this)
+            }
+            tile.tag = "workspace_cell_${index}_$position"
+            acceptDropAt(tile) { dropped, event ->
+                val center = event.x in tile.width * 0.2f..tile.width * 0.8f &&
+                    event.y in tile.height * 0.2f..tile.height * 0.8f
+                placeOnPage(dropped, index, position, group = center && key.isNotEmpty())
+            }
             grid.addView(tile, GridLayout.LayoutParams().apply {
                 width = 0
                 height = dp(86)
@@ -1662,7 +1790,7 @@ class MainActivity : Activity(), SensorEventListener {
         scroll.setOnDragListener { _, event ->
             when (event.action) {
                 DragEvent.ACTION_DRAG_STARTED ->
-                    event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+                    ownsDrag(event)
                 DragEvent.ACTION_DROP -> {
                     val key = draggedKey(event)
                     if (key != null) {
@@ -1675,7 +1803,6 @@ class MainActivity : Activity(), SensorEventListener {
                         val row = (y.toInt() / cellHeight).coerceAtLeast(0)
                         val position = (row * columns + column).coerceIn(0, homeCapacity() - 1)
                         placeOnPage(key, index, position)
-                        true
                     } else false
                 }
                 DragEvent.ACTION_DRAG_ENDED -> { finishWorkspaceDrag(); true }
@@ -1752,9 +1879,13 @@ class MainActivity : Activity(), SensorEventListener {
                 }
             } else {
                 val dockIndex = if (slot < 2) slot else slot - 1
-                val app = keys.getOrNull(dockIndex)?.takeIf { it.isNotEmpty() }?.let { resolveKey(it) }
-                val view = if (app != null) appTile(app, false, true)
-                           else label("+", 22f).apply { setTextColor(lilac) }
+                val item = keys.getOrNull(dockIndex).orEmpty()
+                val app = item.takeIf { it.isNotEmpty() }?.let { resolveKey(it) }
+                val view = when {
+                    WorkspaceItems.isFolder(item) -> folderTile(item, true)
+                    app != null -> appTile(app, false, true)
+                    else -> label("+", 22f).apply { setTextColor(lilac) }
+                }
                 acceptDrop(view) { key -> placeInDock(key, dockIndex) }
                 view
             }
@@ -2230,7 +2361,15 @@ class MainActivity : Activity(), SensorEventListener {
 
         tile.setOnLongClickListener {
             if (drawerOpen) {
-                drawerAppActions(app)
+                val shadow = View.DragShadowBuilder(tile)
+                pendingDrawerDrag = true
+                showHome()
+                window.decorView.post {
+                    pendingDrawerDrag = false
+                    if (!startItemDrag(pages, appKey(app), shadow)) {
+                        Toast.makeText(this, "Não foi possível iniciar o arraste. Tente novamente.", Toast.LENGTH_SHORT).show()
+                    }
+                }
                 true
             } else {
                 // O primeiro toque longo inicia o arraste com o mesmo dedo.
@@ -2246,6 +2385,7 @@ class MainActivity : Activity(), SensorEventListener {
     override fun dispatchTouchEvent(
         event: MotionEvent
     ): Boolean {
+        if (pendingDrawerDrag) return super.dispatchTouchEvent(event)
         if (widgetResizeActive || widgetResizeGesture) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                 widgetResizeGesture = true
