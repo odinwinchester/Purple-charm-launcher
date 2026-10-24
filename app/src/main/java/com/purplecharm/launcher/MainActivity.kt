@@ -117,10 +117,12 @@ class MainActivity : Activity(), SensorEventListener {
     override fun onPause() {
         super.onPause()
         sensorManager.unregisterListener(this)
+        weatherHandler.removeCallbacks(weatherTick)
     }
     override fun onResume() {
         super.onResume()
-        // Sensor desativado para organização automática.
+        weatherHandler.removeCallbacks(weatherTick)
+        weatherHandler.post(weatherTick)
     }
 
 
@@ -1420,86 +1422,36 @@ class MainActivity : Activity(), SensorEventListener {
         // A antiga faixa duplicada não é adicionada à tela inicial.
     }
 
-    // Widget integrado ao launcher: quatro fases góticas, tamanhos e estilo persistidos.
-    // Open-Meteo: consulta apenas coordenadas configuradas pelo usuario.
-    // Sem coordenadas, o widget continua astronomico e offline.
-    private fun refreshGothicWeather() {
-        val lat = prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull() ?: return
-        val lon = prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull() ?: return
-        if (lat !in -90.0..90.0 || lon !in -180.0..180.0) return
-        val now = System.currentTimeMillis()
-        val last = prefs.getLong("gothic_weather_updated", 0L)
-        val expires = prefs.getLong("gothic_weather_expires", 0L)
-        if (last > 0 && now < expires) return
-        Thread {
-            var connection: java.net.HttpURLConnection? = null
-            try {
-                // MET Norway exige coordenadas com no máximo quatro casas decimais.
-                val latValue = java.lang.String.format(java.util.Locale.US, "%.4f", lat)
-                val lonValue = java.lang.String.format(java.util.Locale.US, "%.4f", lon)
-                val url = java.net.URL("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=$latValue&lon=$lonValue")
-                connection = url.openConnection() as java.net.HttpURLConnection
-                connection.connectTimeout = 8000
-                connection.readTimeout = 8000
-                connection.setRequestProperty("User-Agent", "PurpleCharmLauncher/0.7.0 (https://github.com/odinwinchester/Purple-charm-launcher)")
-                connection.setRequestProperty("Accept", "application/json")
-                val previousModified = prefs.getString("gothic_weather_last_modified", null)
-                if (previousModified != null && last > 0) {
-                    connection.setRequestProperty("If-Modified-Since", previousModified)
-                }
-                val status = connection.responseCode
-                val cacheUntil = connection.getHeaderFieldDate("Expires", -1L)
-                val nextCheck = if (cacheUntil > System.currentTimeMillis())
-                    cacheUntil else System.currentTimeMillis() + 60 * 60 * 1000L
-                if (status == java.net.HttpURLConnection.HTTP_NOT_MODIFIED) {
-                    prefs.edit().putLong("gothic_weather_expires", nextCheck).apply()
-                    return@Thread
-                }
-                if (status != java.net.HttpURLConnection.HTTP_OK) return@Thread
-                val root = org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-                val series = root.getJSONObject("properties").getJSONArray("timeseries")
-                if (series.length() == 0) return@Thread
-                val point = series.getJSONObject(0).getJSONObject("data")
-                val instant = point.getJSONObject("instant").getJSONObject("details")
-                val symbol = point.optJSONObject("next_1_hours")?.optJSONObject("summary")
-                    ?.optString("symbol_code", "") ?: ""
-                // Mapeia símbolos MET para as categorias WMO já usadas nas artes existentes.
-                val code = when {
-                    "thunder" in symbol -> 95
-                    "snow" in symbol || "sleet" in symbol -> 71
-                    "rain" in symbol -> 61
-                    "fog" in symbol -> 45
-                    "cloudy" in symbol && "partly" !in symbol -> 3
-                    "partlycloudy" in symbol -> 2
-                    "fair" in symbol -> 1
-                    else -> 0
-                }
-                val temperature = instant.getDouble("air_temperature")
-                val humidity = instant.optDouble("relative_humidity", Double.NaN)
-                val wind = instant.optDouble("wind_speed", Double.NaN)
-                val editor = prefs.edit()
-                    .putInt("gothic_weather_code", code)
-                    .putString("gothic_weather_temp", kotlin.math.round(temperature).toInt().toString())
-                    .putInt("gothic_weather_day", if (symbol.endsWith("_night")) 0 else 1)
-                    .putLong("gothic_weather_updated", System.currentTimeMillis())
-                    .putLong("gothic_weather_expires", nextCheck)
-                    .putString("gothic_weather_provider", "MET Norway")
-                if (!humidity.isNaN()) editor.putInt("gothic_weather_humidity", kotlin.math.round(humidity).toInt())
-                if (!wind.isNaN()) editor.putString("gothic_weather_wind", kotlin.math.round(wind * 3.6).toInt().toString())
-                connection.getHeaderField("Last-Modified")?.let {
-                    editor.putString("gothic_weather_last_modified", it)
-                }
-                editor.apply()
-                runOnUiThread { if (!drawerOpen && ::pages.isInitialized) showHome() }
-            } catch (_: Exception) {
-                // Sem rede: mantém a última previsão válida e não bloqueia a tela.
-            } finally {
-                connection?.disconnect()
-            }
-        }.start()
+    private val weatherHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val weatherClient by lazy { MetWeatherClient(prefs) }
+    private val weatherTick = object : Runnable {
+        override fun run() {
+            refreshGothicWeather()
+            refreshCelestialView()
+            weatherHandler.postDelayed(this, 60_000L)
+        }
+    }
+    private var celestialView: View? = null
+
+    // Replace only the widget, preserving pages, scroll state and drag/drop.
+    private fun refreshCelestialView() {
+        if (isFinishing || isDestroyed || dragging) return
+        val old = celestialView ?: return
+        val parent = old.parent as? ViewGroup ?: return
+        val index = parent.indexOfChild(old)
+        parent.removeViewAt(index)
+        parent.addView(gothicMoonWidget(), index)
     }
 
-        private fun gothicWeatherSettings() {
+    private fun refreshGothicWeather() {
+        weatherClient.refresh {
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) refreshCelestialView()
+            }
+        }
+    }
+
+    private fun gothicWeatherSettings() {
         val input = EditText(this).apply {
             setSingleLine(true)
             hint = "Latitude, longitude (ex.: -20.4, -54.6)"
@@ -1513,17 +1465,18 @@ class MainActivity : Activity(), SensorEventListener {
         }
         AlertDialog.Builder(this)
             .setTitle("✧ Local do Clima Gótico")
-            .setMessage("Informe coordenadas da cidade desejada. Não acessamos sua localização automaticamente.")
+            .setMessage("Informe coordenadas da cidade desejada. Não acessamos sua localização automaticamente. Previsão: MET Norway (CC BY 4.0); valores arredondados. As coordenadas são enviadas ao provedor.")
             .setView(input)
             .setPositiveButton("Salvar") { _, _ ->
                 val parts = input.text.toString().split(",").map { it.trim() }
                 val lat = parts.getOrNull(0)?.toDoubleOrNull()
                 val lon = parts.getOrNull(1)?.toDoubleOrNull()
-                if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0) {
+                if (parts.size == 2 && lat != null && lon != null && lat.isFinite() && lon.isFinite() && lat in -90.0..90.0 && lon in -180.0..180.0) {
                     prefs.edit().putString("gothic_weather_lat", lat.toString())
                         .putString("gothic_weather_lon", lon.toString())
                         .putLong("gothic_weather_updated", 0L)
                         .remove("gothic_weather_expires").remove("gothic_weather_last_modified").apply()
+                    weatherClient.clearForecast()
                     refreshGothicWeather()
                     showHome()
                 } else Toast.makeText(this, "Use latitude, longitude válidas", Toast.LENGTH_LONG).show()
@@ -1532,6 +1485,7 @@ class MainActivity : Activity(), SensorEventListener {
                 prefs.edit().remove("gothic_weather_lat").remove("gothic_weather_lon")
                     .remove("gothic_weather_updated").remove("gothic_weather_expires")
                     .remove("gothic_weather_last_modified").apply()
+                weatherClient.clearForecast()
                 showHome()
             }
             .setNegativeButton("Cancelar", null)
@@ -1556,20 +1510,21 @@ class MainActivity : Activity(), SensorEventListener {
             else prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
         val mode = prefs.getInt("gothic_celestial_mode", 0) // 0 auto, 1 sol, 2 lua
+        val forecast = weatherClient.current()
         val isSun = when (mode) {
             1 -> true
             2 -> false
-            else -> hour in 6..17
+            else -> forecast?.isDay ?: (hour in 6..17)
         }
         val sunStyle = prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
         val sunArt = intArrayOf(R.drawable.dia_quente, R.drawable.dia_limpo, R.drawable.dia_nublado, R.drawable.nascer_do_sol)
         val sunNames = arrayOf("Dia Quente", "Dia Limpo", "Dia Nublado", "Nascer do Sol")
         val weatherActive = prefs.contains("gothic_weather_lat")
-        val weatherLoaded = weatherActive && prefs.getLong("gothic_weather_updated", 0L) > 0L
-        val weatherCode = prefs.getInt("gothic_weather_code", 0)
+        val weatherLoaded = weatherActive && forecast != null
+        val weatherCode = forecast?.code ?: 0
         val rainy = weatherLoaded && (weatherCode in 51..67 || weatherCode in 80..82 || weatherCode in 95..99)
         val snowy = weatherLoaded && (weatherCode in 71..77 || weatherCode in 85..86)
-        val cold = weatherLoaded && (prefs.getString("gothic_weather_temp", "99")?.toIntOrNull() ?: 99) <= 12
+        val cold = weatherLoaded && (forecast?.temperature ?: 99.0) <= 12
         val weatherScene = when {
             snowy -> if (isSun) "❄ Inverno Gótico" else "❄ Noite Gelada"
             rainy -> if (isSun) "☂ Chuva Gótica" else "☂ Noite Chuvosa"
@@ -1578,7 +1533,7 @@ class MainActivity : Activity(), SensorEventListener {
             else -> null
         }
         val size = prefs.getInt("gothic_moon_size", 1).coerceIn(0, 2)
-        val animated = prefs.getBoolean("gothic_moon_ornate", true)
+        val animated = prefs.getBoolean("gothic_sun_animated", false)
         val heights = intArrayOf(160, 210, 270)
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1597,7 +1552,12 @@ class MainActivity : Activity(), SensorEventListener {
             gravity = Gravity.CENTER
         }
         val selectedSun = if (mode == 0) {
-            when (hour) { in 6..9 -> 3; in 16..17 -> 0; else -> 1 }
+            when {
+                rainy || snowy || weatherCode in 2..3 || weatherCode == 45 -> 2
+                hour in 6..9 -> 3
+                (forecast?.temperature ?: 0.0) >= 30 -> 0
+                else -> 1
+            }
         } else sunStyle
         // Ordenação das artes lunares: nova, crescente, cheia, minguante.
         // Ordenação interna do widget: crescente, cheia, minguante, nova.
@@ -1605,7 +1565,7 @@ class MainActivity : Activity(), SensorEventListener {
         val weatherArtIndex = when {
             snowy || cold -> 3
             rainy -> 2
-            weatherLoaded && weatherCode in 1..3 -> 1
+            weatherLoaded && (weatherCode in 2..3 || weatherCode == 45) -> 1
             else -> 0
         }
         val moonArt = arrayOf(
@@ -1614,18 +1574,36 @@ class MainActivity : Activity(), SensorEventListener {
             intArrayOf(R.drawable.lua_09_lua_nova_noite_chuvosa, R.drawable.lua_10_lua_crescente_noite_chuvosa, R.drawable.lua_11_lua_cheia_noite_chuvosa, R.drawable.lua_12_lua_minguante_noite_chuvosa),
             intArrayOf(R.drawable.lua_13_lua_nova_noite_fria_neve, R.drawable.lua_14_lua_crescente_noite_fria_neve, R.drawable.lua_15_lua_cheia_noite_fria_neve, R.drawable.lua_16_lua_minguante_noite_fria_neve)
         )
-        val artwork = ImageView(this).apply {
+        val artwork = SolarArtworkView(this, if (isSun && animated) selectedSun else -1).apply {
             setImageResource(if (isSun) sunArt[selectedSun] else moonArt[weatherArtIndex][phaseArtIndex])
             scaleType = ImageView.ScaleType.FIT_CENTER
             adjustViewBounds = true
             contentDescription = if (isSun) sunNames[selectedSun] else "Lua ${names[phase]}"
         }
-        // A imagem original já inclui as informações visuais; não duplicar textos.
-        panel.addView(artwork, LinearLayout.LayoutParams(-1, -1))
+        // Original PNGs remain byte-for-byte intact, including their sample lettering.
+        // Real forecast is explicitly separated so sample values cannot be mistaken for live data.
+        panel.addView(artwork, LinearLayout.LayoutParams(-1, 0, 1f))
+        panel.addView(label("Arte original • valores impressos ilustrativos", 10f))
+        val liveText = when {
+            !weatherActive -> "Configure as coordenadas para ver a previsão"
+            forecast == null -> "Previsão indisponível • tentando atualizar"
+            else -> {
+                val time = java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
+                    .format(java.util.Date(forecast.time))
+                val stale = if (System.currentTimeMillis() - forecast.time > 2 * 60 * 60 * 1000L)
+                    " • desatualizada" else ""
+                "${kotlin.math.round(forecast.temperature).toInt()}°C • ${forecast.description}" +
+                    (forecast.humidity?.let { " • Umidade ${kotlin.math.round(it).toInt()}%" } ?: "") +
+                    (forecast.wind?.let { " • Vento ${kotlin.math.round(it * 3.6).toInt()} km/h" } ?: "") +
+                    "\nMET Norway • previsão $time$stale"
+            }
+        }
+        panel.addView(label(liveText, 11f).apply { contentDescription = liveText })
         panel.setOnClickListener { moonWidgetOptions() }
         panel.setOnLongClickListener { moonWidgetOptions(); true }
+        celestialView = panel
         return panel.apply {
-            layoutParams = LinearLayout.LayoutParams(-1, dp(heights[size])).apply {
+            layoutParams = LinearLayout.LayoutParams(-1, dp(heights[size] + 70)).apply {
                 setMargins(dp(7), dp(8), dp(7), 0)
             }
         }
@@ -1635,7 +1613,7 @@ class MainActivity : Activity(), SensorEventListener {
         val choices = arrayOf(
             "☀☾ Ciclo automático Sol / Lua",
             "▣ Compacto 2 × 2", "▤ Padrão 4 × 2", "▥ Ampliado 4 × 3",
-            "✦ Alternar gótico / minimalista",
+            "✦ Alternar sol estático / brilho animado",
             "✕ Ocultar widget", "☁ Configurar cidade e clima",
             "☀ Dia Quente", "✺ Dia Limpo",
             "⛅ Dia Nublado", "☀ Nascer do Sol",
@@ -1652,8 +1630,8 @@ class MainActivity : Activity(), SensorEventListener {
                         editor.putBoolean("gothic_moon_auto", true)
                     }
                     in 1..3 -> editor.putInt("gothic_moon_size", option - 1)
-                    4 -> editor.putBoolean("gothic_moon_ornate",
-                        !prefs.getBoolean("gothic_moon_ornate", true))
+                    4 -> editor.putBoolean("gothic_sun_animated",
+                        !prefs.getBoolean("gothic_sun_animated", false))
                     5 -> editor.putBoolean("gothic_moon_visible", false)
                     6 -> { gothicWeatherSettings(); return@setItems }
                     in 7..10 -> {
