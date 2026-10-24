@@ -1,5 +1,7 @@
 # Integração das seis novas artes meteorológicas
 
+Registro da etapa inicial. As alterações posteriores ao teste real no POCO, incluindo a transferência das legendas meteorológicas para o diálogo de detalhes, estão em [POCO_REGRESSION_FIXES.md](POCO_REGRESSION_FIXES.md).
+
 Base de desenvolvimento: `codex/weather-widgets` em `3b2bcf8e0ca4b546d472fa7232fee951a951e9b2`. Origem das seis imagens: `feat/novas-artes-meteorologicas` em `5b1474c03b59a0ccaf0486a1ad42576d2048e9ff`.
 
 Estratégia: branch própria `codex/integrate-six-weather-art`, baseada integralmente na PR #2. Copiados apenas os seis blobs PNG, byte a byte; nenhum código antigo da branch de artes foi mesclado por cima das correções. PR de integração terá como base `codex/weather-widgets`, não `main`. Nenhuma branch existente foi sobrescrita e não foi feito merge.

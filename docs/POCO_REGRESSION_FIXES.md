@@ -19,7 +19,14 @@ O proprietário confirmou no POCO: mover ícones na mesma página, criar/abrir/r
 
 - Verificação local SHA-256/dimensões/blobs: 26/26 PNGs intactos.
 - Regressões automatizadas adicionadas para passagem a página antes oculta, destino medido, commit único, reinício, temporizadores/bordas/cancelamento, região do widget, payload estranho, última entrada da pasta, troca/reordenação de pasta com um membro, pasta legada intocada, detalhe meteorológico e índice compacto com rolagem.
-- Compilação, resultado final dos testes e APK: registrar após conclusão do GitHub Actions.
+- Primeira execução: 58 testes, compilação e validação do APK aprovados (Actions 40109619780).
+- Ampliação: 62/63 testes passaram em 40109795186. A asserção temporal de retorno por duas páginas esperava a segunda execução exatamente no limite de 1.000 ms; observou uma página de retorno nesse instante. O teste foi separado em uma asserção para cada troca, com 50 ms de tolerância de agendamento na segunda. Mantidos os requisitos de voltar à página original, não reconstruir a área e não alterar preferências. O encaminhamento pela raiz Android e todos os testes de drop/persistência passaram nessa execução. APK foi bloqueado após a falha.
+- Código e testes validados: `c11d28ee994b3c741877381b43ed5099bed6e785`, branch `codex/integrate-six-weather-art`, PR #3 (base PR #2).
+- GitHub Actions: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40109985804 — **63 testes, zero falhas/erros/ignorados**, integridade das 26 imagens, compilação Android, ZIP, zipalign e apksigner aprovados.
+- APK de teste: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40109985804/artifacts/12566091706 . SHA-256 do APK: `c57544d1a63ee6738c4451a971d0d82b40121cd900851223a6b81c909447b6d0`.
+- Relatórios dos testes: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40109985804/artifacts/12565339506 .
+- O registro posterior altera somente documentação, sem modificar o código do APK validado. Nenhum merge realizado. Main e PR #2 permanecem preservadas.
+- A aprovação automática não confirma fluidez, latência ou ausência de intermitência no POCO. Essa confirmação continua pendente.
 
 ## Pendente no POCO
 
