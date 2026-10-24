@@ -1464,6 +1464,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var widgetEditor: WeatherResizeLayout? = null
     private var widgetResizeActive = false
     private var widgetResizeGesture = false
+    private var iconViewportGesture = false
 
     // Replace only the widget, preserving pages, scroll state and drag/drop.
     private fun refreshCelestialView() {
@@ -1623,6 +1624,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun homePage(index: Int): View {
         val scroll = ScrollView(this).apply {
+            tag = "home_icons_scroll"
             isFillViewport = true
             clipToPadding = true
             clipChildren = true
@@ -2263,6 +2265,12 @@ class MainActivity : Activity(), SensorEventListener {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.x
                     downY = event.y
+                    val iconScroll = if (::pages.isInitialized) pages.getChildAt(pageIndex)
+                        ?.findViewWithTag<ScrollView>("home_icons_scroll") else null
+                    val bounds = android.graphics.Rect()
+                    iconViewportGesture = iconScroll != null && iconScroll.getGlobalVisibleRect(bounds) &&
+                        bounds.contains(event.rawX.toInt(), event.rawY.toInt()) &&
+                        (iconScroll.canScrollVertically(1) || iconScroll.canScrollVertically(-1))
                 }
 
                 MotionEvent.ACTION_MOVE -> {
@@ -2306,6 +2314,9 @@ class MainActivity : Activity(), SensorEventListener {
                         return true
                     }
 
+                    // A vertical scroll begun in the bounded icon viewport belongs to it.
+                    // Horizontal page gestures and bottom-menu gestures remain available elsewhere.
+                    if (iconViewportGesture && abs(dy) > abs(dx)) return super.dispatchTouchEvent(event)
                     if (
                         dy < -dp(95) &&
                         abs(dy) > abs(dx) * 1.5f
