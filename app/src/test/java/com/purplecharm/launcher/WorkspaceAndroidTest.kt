@@ -139,4 +139,23 @@ class WorkspaceAndroidTest {
         controller.pause().stop().destroy()
     }
 
+    @Test fun dismissingFolderDuringDragCancelsSessionWithoutRemovingMember() {
+        val p = seed()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        val before = p.all.toMap()
+        activity.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!.performClick()
+        val dialog = MainActivity::class.java.getDeclaredField("folderDialog").apply { isAccessible = true }
+            .get(activity) as android.app.Dialog
+        val member = dialog.window!!.decorView.findViewWithTag<View>("folder_member_0")!!
+        val session = WorkspaceDragSession("pkg/A", current(activity))
+        set(activity, "dragSession", session); set(activity, "dragging", true); set(activity, "dragSource", member)
+        dialog.cancel()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(session.finished); assertFalse(dialog.isShowing)
+        assertEquals(before, p.all)
+        assertEquals(listOf("pkg/A", "pkg/B"), WorkspaceItemsStore(p).folders().getValue(id).apps)
+        controller.pause().stop().destroy()
+    }
+
 }

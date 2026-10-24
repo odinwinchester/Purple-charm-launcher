@@ -49,3 +49,6 @@ Base: `9536cc2fa48f6cca1f2c9cf3e293b652ec3d0303`, branch `codex/weather-widgets`
 - A primeira execução compilou o código e executou 35 testes; 33 passaram. Dois testes de eventos Android falharam no construtor de eventos do próprio teste, que pressupunha uma assinatura interna de 7 parâmetros; o Android simulado inclui também o binder de permissões de drag.
 - O helper foi ajustado para os parâmetros reais da API simulada, sem enfraquecer as asserções. Também foi acrescentado teste de toque prolongado e cancelamento por Voltar, elevando o mínimo esperado a 36.
 - Cancelamento por Voltar/pausa usa a API nativa e restaura interceptação no pai da view de origem. Nenhuma posição é gravada ao cancelar.
+
+- Segunda execução: código `4be70c5a077c6209224376c1f99d085eb675d56d`, https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40066446490 , passou em testes, integridade e compilação/verificação do APK.
+- Ajuste final: fechar/cancelar o diálogo de pasta também cancela uma sessão nativa ativa. Um teste Android adicional verifica que isso não remove o membro nem modifica preferências; mínimo esperado atualizado para 37 testes. Aguardar a execução correspondente antes de declarar essa revisão validada.

@@ -538,6 +538,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         panel.addView(tools)
         panel.addView(glassButton("Fechar", 12f).apply { setOnClickListener { dialog.dismiss() } })
+        dialog.setOnCancelListener { if (dragging) cancelWorkspaceDrag() }
         dialog.setOnDismissListener {
             if (folderDialog === dialog) { folderDialog = null; openFolderId = null }
         }
