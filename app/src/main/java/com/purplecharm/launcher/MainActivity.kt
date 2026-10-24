@@ -360,6 +360,7 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun cancelWorkspaceDrag() {
+        window.decorView.findViewWithTag<WorkspaceDragLayout>("workspace_drag_surface")?.stopHover()
         dragSession?.cancel()
         runCatching { dragSource?.cancelDragAndDrop() }
         finishWorkspaceDrag()
@@ -382,7 +383,7 @@ class MainActivity : Activity(), SensorEventListener {
                     val reopen = openFolderId
                     folderDialog?.dismiss()
                     showHome()
-                    if (reopen != null) showFolder(reopen)
+                    if (reopen != null && reopen in workspaceStore.folders()) showFolder(reopen)
                 }
             }
         }
@@ -395,8 +396,30 @@ class MainActivity : Activity(), SensorEventListener {
             val reopen = openFolderId
             folderDialog?.dismiss()
             showHome()
-            if (reopen != null) showFolder(reopen)
+            if (reopen != null && reopen in workspaceStore.folders()) showFolder(reopen)
         }
+    }
+
+    private fun dropOnVisiblePage(surface: View, event: DragEvent): Boolean {
+        val key = draggedKey(event) ?: return false
+        if (dragDropCommitted) return false
+        val visible = pages.currentView ?: return false
+        val grid = visible.findViewWithTag<GridLayout>("workspace_grid_$pageIndex") ?: return false
+        val scroll = visible.findViewWithTag<ScrollView>("home_icons_scroll") ?: return false
+        val origin = IntArray(2); val gridOrigin = IntArray(2); val viewport = IntArray(2)
+        surface.getLocationOnScreen(origin); grid.getLocationOnScreen(gridOrigin); scroll.getLocationOnScreen(viewport)
+        val screenX = origin[0] + event.x; val screenY = origin[1] + event.y
+        if (screenY < viewport[1] || screenY >= viewport[1] + scroll.height || grid.childCount == 0) return false
+        // Children retain their actual measured positions, padding and scroll offset.
+        val x = screenX - gridOrigin[0]; val y = screenY - gridOrigin[1]
+        val tile = (0 until grid.childCount).map { grid.getChildAt(it) }.minByOrNull {
+            val dx = x - (it.left + it.width / 2f); val dy = y - (it.top + it.height / 2f)
+            dx * dx + dy * dy
+        } ?: return false
+        val position = grid.indexOfChild(tile)
+        val center = x - tile.left in tile.width * 0.2f..tile.width * 0.8f &&
+            y - tile.top in tile.height * 0.2f..tile.height * 0.8f
+        return placeOnPage(key, pageIndex, position, group = center && pageCells(pageIndex)[position].isNotEmpty())
     }
 
     private fun placeOnPage(key: String, index: Int, position: Int? = null, group: Boolean = false): Boolean {
@@ -1478,65 +1501,28 @@ class MainActivity : Activity(), SensorEventListener {
         }
 
         // Área de trabalho com bordas sensíveis ao arraste entre páginas.
-        val workspace = FrameLayout(this).apply {
+        val workspace = WorkspaceDragLayout(this).apply {
+            tag = "workspace_drag_surface"
             clipChildren = true
             clipToPadding = true
             minimumHeight = 0
+            owns = { ownsDrag(it) }
+            canNavigate = { dragging && !dragDropCommitted && !drawerOpen }
+            navigate = { direction ->
+                val target = pageIndex + direction
+                if (target in 0 until pageCount()) {
+                    pages.inAnimation = null
+                    pages.outAnimation = null
+                    pageIndex = target
+                    pages.displayedChild = target
+                    updateDots()
+                    true
+                } else false
+            }
+            drop = { event -> dropOnVisiblePage(this, event) }
+            ended = { finishWorkspaceDrag() }
         }
         workspace.addView(pages, FrameLayout.LayoutParams(-1, -1))
-        for (direction in listOf(-1, 1)) {
-            val edge = View(this)
-            var pending: Runnable? = null
-            fun cancelPending() {
-                pending?.let { edge.removeCallbacks(it) }
-                pending = null
-            }
-            edge.setOnDragListener { _, event ->
-                when (event.action) {
-                    DragEvent.ACTION_DRAG_STARTED ->
-                        ownsDrag(event)
-                    DragEvent.ACTION_DRAG_ENTERED -> {
-                        cancelPending()
-                        val task = object : Runnable {
-                            override fun run() {
-                                if (!dragging || drawerOpen) return
-                                val target = pageIndex + direction
-                                if (target in 0 until pageCount()) {
-                                    // Sem animação: não recria views nem cancela o drag ativo.
-                                    pages.inAnimation = null
-                                    pages.outAnimation = null
-                                    pageIndex = target
-                                    pages.displayedChild = target
-                                    updateDots()
-                                    // Mantendo o dedo na borda, pode atravessar outras páginas.
-                                    edge.postDelayed(this, 650L)
-                                    pending = this
-                                }
-                            }
-                        }
-                        pending = task
-                        edge.postDelayed(task, 550L)
-                        true
-                    }
-                    DragEvent.ACTION_DRAG_EXITED -> { cancelPending(); true }
-                    DragEvent.ACTION_DROP -> {
-                        cancelPending()
-                        val key = draggedKey(event)
-                        if (key != null) placeOnPage(key, pageIndex) else false
-                    }
-                    DragEvent.ACTION_DRAG_ENDED -> {
-                        cancelPending()
-                        finishWorkspaceDrag()
-                        true
-                    }
-                    else -> true
-                }
-            }
-            workspace.addView(edge, FrameLayout.LayoutParams(
-                dp(32), -1,
-                if (direction < 0) Gravity.START else Gravity.END
-            ))
-        }
         root.addView(
             workspace,
             LinearLayout.LayoutParams(-1, 0, 1f)
@@ -1679,8 +1665,7 @@ class MainActivity : Activity(), SensorEventListener {
             adjustViewBounds = true
             contentDescription = selectedArt.label
         }
-        // Original PNGs remain byte-for-byte intact, including their sample lettering.
-        // Real forecast is explicitly separated so sample values cannot be mistaken for live data.
+        // PNGs remain intact. Live data is available only in the details dialog.
         val columns = horizontalIconColumns()
         // Panoramic alternatives open at full grid width; a deliberate per-art resize persists.
         // Existing global sizing preferences remain unchanged for the original and other arts.
@@ -1692,11 +1677,16 @@ class MainActivity : Activity(), SensorEventListener {
             { span -> prefs.edit().putInt(spanKey, span).apply() },
             { moonWidgetOptions() })
         widgetEditor = editor
-        panel.addView(editor, LinearLayout.LayoutParams(-1, 0, 2f))
-        val readout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        readout.addView(label(WeatherArtworkCatalog.note(selectedArt, phaseArtIndex) +
-            if (selectedArt.kind == WeatherArtworkCatalog.Kind.ECLIPSE || selectedArt.panoramic)
-                "\nValores impressos ilustrativos • previsão real abaixo" else "", 10f))
+        panel.addView(editor, LinearLayout.LayoutParams(-1, -1))
+        panel.setOnClickListener { moonWidgetOptions() }
+        panel.setOnLongClickListener { editor.beginEditing(); true }
+        celestialView = panel
+        return panel.apply { layoutParams = ViewGroup.LayoutParams(-1, -1) }
+    }
+
+    private fun weatherDetails() {
+        val forecast = weatherClient.current()
+        val weatherActive = prefs.contains("gothic_weather_lat")
         val liveText = when {
             !weatherActive -> "Escolha localização automática ou busque uma cidade"
             forecast == null -> "Previsão indisponível • tentando atualizar"
@@ -1711,28 +1701,15 @@ class MainActivity : Activity(), SensorEventListener {
                     "\nMET Norway • previsão $time$stale"
             }
         }
-        val locationText = weatherLocation.summary
-        readout.addView(label("$locationText\n$liveText", 11f).apply {
-            contentDescription = "$locationText. $liveText"
-        })
-        val readoutScroll = ScrollView(this).apply {
-            clipChildren = true
-            clipToPadding = true
-            addView(readout)
-        }
-        panel.addView(readoutScroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        panel.setOnClickListener { moonWidgetOptions() }
-        panel.setOnLongClickListener { editor.beginEditing(); true }
-        celestialView = panel
-        return panel.apply {
-            layoutParams = ViewGroup.LayoutParams(-1, -1)
-        }
+        AlertDialog.Builder(this).setTitle("Previsão real • MET Norway")
+            .setMessage("${weatherLocation.summary}\n$liveText\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.")
+            .setPositiveButton("Fechar", null).show()
     }
 
     private fun moonWidgetOptions() {
         AlertDialog.Builder(this).setTitle("Clima • automático por padrão")
             .setItems(arrayOf("Localização e clima", "Personalizar arte (opcional)",
-                "Restaurar comportamento automático", "Redimensionar com alças", "Ocultar widget", "Sobre as artes")) { _, which ->
+                "Restaurar comportamento automático", "Redimensionar com alças", "Ocultar widget", "Sobre as artes", "Ver previsão real")) { _, which ->
                 when (which) {
                     0 -> gothicWeatherSettings()
                     1 -> AlertDialog.Builder(this).setTitle("Escolher uma das ${WeatherArtworkCatalog.all.size} artes")
@@ -1752,6 +1729,7 @@ class MainActivity : Activity(), SensorEventListener {
                         weatherLocation.stop()
                         showHome()
                     }
+                    6 -> weatherDetails()
                     5 -> AlertDialog.Builder(this).setTitle("Artes originais")
                         .setMessage("As ${WeatherArtworkCatalog.all.size} artes permanecem completas, incluindo personagens, relógios, textos, cores e molduras. A previsão real permanece separada dos valores ilustrativos. Dados: MET Norway, CC BY 4.0.")
                         .setPositiveButton("Fechar", null).show()
@@ -1769,6 +1747,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val grid = GridLayout(this).apply {
+            tag = "workspace_grid_$index"
             columnCount = horizontalIconColumns()
             setPadding(dp(1), 0, dp(1), dp(5))
         }
@@ -2197,7 +2176,16 @@ class MainActivity : Activity(), SensorEventListener {
             clipToPadding = false
             addView(content)
         }
-        val alphabet = LinearLayout(this).apply {
+        val alphabet = object : LinearLayout(this) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                if (childCount > 0) {
+                    val available = View.MeasureSpec.getSize(heightMeasureSpec)
+                    val letterHeight = minOf(dp(18), (available / childCount).coerceAtLeast(1))
+                    for (i in 0 until childCount) getChildAt(i).layoutParams.height = letterHeight
+                }
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+            }
+        }.apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
@@ -2205,7 +2193,8 @@ class MainActivity : Activity(), SensorEventListener {
             orientation = LinearLayout.HORIZONTAL
         }
         main.addView(scroll, LinearLayout.LayoutParams(0, -1, 1f))
-        main.addView(alphabet, LinearLayout.LayoutParams(dp(22), -1))
+        main.addView(alphabet, LinearLayout.LayoutParams(dp(32), -1))
+        alphabet.tag = "drawer_alphabet"
         root.addView(main, LinearLayout.LayoutParams(-1, 0, 1f))
 
         fun render() {
@@ -2235,15 +2224,18 @@ class MainActivity : Activity(), SensorEventListener {
                     textSize = 10f
                     gravity = Gravity.CENTER
                     setTextColor(lilac)
-                }, LinearLayout.LayoutParams(-1, 0, 1f))
+                }, LinearLayout.LayoutParams(-1, dp(18)))
             }
             // Deslizar sobre o índice percorre a lista sem exigir toques individuais.
             alphabet.setOnTouchListener { view, event ->
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
                         if (letters.isNotEmpty() && view.height > 0) {
-                            val index = ((event.y.coerceIn(0f, view.height.toFloat() - 1f) /
-                                view.height) * letters.size).toInt().coerceIn(0, letters.lastIndex)
+                            val first = alphabet.getChildAt(0)
+                            val last = alphabet.getChildAt(alphabet.childCount - 1)
+                            val bandHeight = (last.bottom - first.top).coerceAtLeast(1)
+                            val index = (((event.y - first.top) / bandHeight) * letters.size)
+                                .toInt().coerceIn(0, letters.lastIndex)
                             val target = content.findViewWithTag<View>("section_${letters[index]}")
                             if (target != null) scroll.scrollTo(0, target.top)
                         }

@@ -49,14 +49,15 @@ class WorkspaceItemsTest {
         assertEquals("folder:test", moved.pages[2][2])
         assertNull(WorkspaceEdits.rename(moved, "folder:test", " "))
     }
-    @Test fun addRemoveAndReorderPreserveOtherMembersAndAllowEmptyFolder() {
+    @Test fun addRemoveAndReorderPreserveOtherMembersAndPruneEmptyFolder() {
         val added = WorkspaceEdits.intoFolder(grouped(), c, "folder:test")!!
         val reordered = WorkspaceEdits.intoFolder(added, c, "folder:test", 0)!!
         assertEquals(listOf(c, b, a), reordered.folders.getValue("folder:test").apps)
         val removed = WorkspaceEdits.removeApp(reordered, "folder:test", b)!!
         assertEquals(listOf(c, a), removed.folders.getValue("folder:test").apps)
         val empty = listOf(c, a).fold(removed) { s, key -> WorkspaceEdits.removeApp(s, "folder:test", key)!! }
-        assertTrue(empty.valid()); assertTrue(empty.folders.getValue("folder:test").apps.isEmpty())
+        assertTrue(empty.valid()); assertFalse("folder:test" in empty.folders)
+        assertFalse("folder:test" in empty.pages.flatten())
     }
     @Test fun extractingFindsFreeCellWithoutRearrangingOthers() {
         val s = grouped()
@@ -120,4 +121,23 @@ class WorkspaceItemsTest {
             assertTrue(s.valid())
         }
     }
+    @Test fun lastMemberExtractionAndTransferRemoveOnlyEmptiedFolder() {
+        val s = WorkspaceEdits.removeApp(grouped(), "folder:test", b)!!
+        val extracted = WorkspaceEdits.extract(s, "folder:test", a, 2)!!
+        assertTrue(extracted.folders.isEmpty()); assertEquals(a, extracted.pages[2][0])
+        assertFalse("folder:test" in extracted.pages.flatten())
+        val other = s.copy(pages = s.pages.mapIndexed { i, cells -> if (i == 1) listOf("folder:other") + cells.drop(1) else cells },
+            folders = s.folders + ("folder:other" to WorkspaceFolder("Outra", listOf(c))))
+        val moved = WorkspaceEdits.intoFolder(other, a, "folder:other")!!
+        assertFalse("folder:test" in moved.folders); assertEquals(listOf(c, a), moved.folders.getValue("folder:other").apps)
+        assertEquals(apps(other).sorted(), apps(moved).sorted())
+    }
+    @Test fun singleMemberReorderAndSwapDoNotPrematurelyDeleteFolder() {
+        val s = WorkspaceEdits.removeApp(grouped(), "folder:test", b)!!.copy(dock = listOf(c, "", "", ""))
+        assertEquals(s, WorkspaceEdits.intoFolder(s, a, "folder:test", 0))
+        val swapped = WorkspaceEdits.dock(s, a, 0)!!
+        assertEquals(listOf(c), swapped.folders.getValue("folder:test").apps)
+        assertEquals(a, swapped.dock[0]); assertEquals(apps(s).sorted(), apps(swapped).sorted())
+    }
+
 }

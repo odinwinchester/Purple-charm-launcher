@@ -168,4 +168,20 @@ class AdditionalWeatherAndroidTest {
         controller.pause().stop().destroy()
     }
 
+    @Test fun homeHasOnlyArtworkAndDetailsRetainLiveForecastLocationAndAttribution() {
+        val p = seed(); cached("rain_day", 20)
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get(); settle(a)
+        val panel = MainActivity::class.java.getDeclaredField("celestialView").apply { isAccessible = true }.get(a) as View
+        assertFalse(views(panel).filterIsInstance<android.widget.TextView>().any { it.text.toString().contains("MET Norway") || it.text.toString().contains("ilustrativos") || it.text.toString().contains("°C") })
+        assertNotNull(art(a, "sol_dia_chuvoso"))
+        val location = p.getString("gothic_weather_lat", null)
+        menu(a); click(ShadowAlertDialog.getLatestAlertDialog(), 6)
+        val details = ShadowAlertDialog.getLatestAlertDialog()
+        val message = details.findViewById<android.widget.TextView>(android.R.id.message).text.toString()
+        assertTrue(message.contains("20°C")); assertTrue(message.contains("MET Norway"))
+        assertTrue(message.contains("ilustrativos")); assertEquals(location, p.getString("gothic_weather_lat", null))
+        details.dismiss(); controller.pause().stop().destroy()
+    }
+
 }
