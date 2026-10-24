@@ -140,4 +140,14 @@ class WorkspaceItemsTest {
         assertEquals(a, swapped.dock[0]); assertEquals(apps(s).sorted(), apps(swapped).sorted())
     }
 
+    @Test fun pruningDoesNotRemoveUnrelatedLegacyEmptyFolder() {
+        val s = WorkspaceEdits.removeApp(grouped(), "folder:test", b)!!
+        val withLegacy = s.copy(pages = s.pages.mapIndexed { i, cells -> if (i == 1) listOf("folder:legacy") + cells.drop(1) else cells },
+            folders = s.folders + ("folder:legacy" to WorkspaceFolder("Existente", emptyList())))
+        val after = WorkspaceEdits.removeApp(withLegacy, "folder:test", a)!!
+        assertFalse("folder:test" in after.folders)
+        assertEquals(withLegacy.folders["folder:legacy"], after.folders["folder:legacy"])
+        assertEquals(withLegacy.pages[1], after.pages[1])
+    }
+
 }

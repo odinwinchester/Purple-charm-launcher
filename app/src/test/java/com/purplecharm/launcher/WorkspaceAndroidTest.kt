@@ -292,4 +292,37 @@ class WorkspaceAndroidTest {
         controller.pause().stop().destroy()
     }
 
+    @Test fun heldEdgeRepeatsWithinBoundsAndReversesWithoutRebuildingWorkspace() {
+        val p = seed(); val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get(); layout(a)
+        val surface = a.window.decorView.findViewWithTag<WorkspaceDragLayout>("workspace_drag_surface")!!
+        val session = WorkspaceDragSession(id, current(a)); val before = p.all.toMap()
+        set(a, "dragSession", session); set(a, "dragging", true)
+        surface.dispatchDragEvent(event(DragEvent.ACTION_DRAG_STARTED, session))
+        surface.dispatchDragEvent(event(DragEvent.ACTION_DRAG_LOCATION, session, x = surface.width - 1f))
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(2000))
+        val field = MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }
+        assertEquals(2, field.getInt(a))
+        surface.dispatchDragEvent(event(DragEvent.ACTION_DRAG_LOCATION, session, x = 1f))
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1000))
+        assertEquals(0, field.getInt(a)); assertEquals(before, p.all)
+        assertSame(surface, a.window.decorView.findViewWithTag<WorkspaceDragLayout>("workspace_drag_surface"))
+        surface.dispatchDragEvent(event(DragEvent.ACTION_DRAG_ENDED, session))
+        shadowOf(Looper.getMainLooper()).idle()
+        controller.pause().stop().destroy()
+    }
+    @Test fun widgetRegionAndForeignSurfaceDropsCannotMoveWorkspaceItems() {
+        val p = seed(); val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get(); layout(a)
+        val surface = a.window.decorView.findViewWithTag<WorkspaceDragLayout>("workspace_drag_surface")!!
+        val session = WorkspaceDragSession(id, current(a)); val before = p.all.toMap()
+        set(a, "dragSession", session); set(a, "dragging", true)
+        assertFalse(surface.dispatchDragEvent(event(DragEvent.ACTION_DRAG_STARTED, null)))
+        surface.dispatchDragEvent(event(DragEvent.ACTION_DRAG_STARTED, session))
+        assertFalse(surface.dispatchDragEvent(event(DragEvent.ACTION_DROP, session, x = surface.width / 2f, y = 1f)))
+        surface.dispatchDragEvent(event(DragEvent.ACTION_DRAG_ENDED, session))
+        shadowOf(Looper.getMainLooper()).idle(); assertEquals(before, p.all)
+        controller.pause().stop().destroy()
+    }
+
 }
