@@ -49,6 +49,7 @@ internal object WorkspaceEdits {
         return null
     }
     private class Edit(s: WorkspaceItems) {
+        private val populatedAtStart = s.folders.filterValues { it.apps.isNotEmpty() }.keys
         val pages = s.pages.map { it.toMutableList() }.toMutableList()
         val dock = s.dock.toMutableList()
         val folders = s.folders.toMutableMap()
@@ -68,7 +69,14 @@ internal object WorkspaceEdits {
                 }
             }
         }
-        fun done(): WorkspaceItems? = WorkspaceItems(pages.map { it.toList() }, dock.toList(), folders.toMap()).takeIf { it.valid() }
+        fun done(): WorkspaceItems? {
+            // Prune only after the transaction: swaps/reorders may refill a temporarily empty folder.
+            folders.filter { (id, folder) -> id in populatedAtStart && folder.apps.isEmpty() }.keys.toList().forEach { id ->
+                remove(id)
+                folders.remove(id)
+            }
+            return WorkspaceItems(pages.map { it.toList() }, dock.toList(), folders.toMap()).takeIf { it.valid() }
+        }
     }
     fun page(s: WorkspaceItems, key: String, page: Int, cell: Int, group: Boolean = false,
              folderId: String = "folder:${java.util.UUID.randomUUID()}"): WorkspaceItems? {
@@ -129,7 +137,9 @@ internal object WorkspaceEdits {
     }
     fun removeApp(s: WorkspaceItems, id: String, key: String): WorkspaceItems? {
         if (!s.valid() || key !in (s.folders[id]?.apps ?: emptyList())) return null
-        return s.copy(folders = s.folders + (id to s.folders.getValue(id).copy(apps = s.folders.getValue(id).apps.filterNot { it == key })))
+        val e = Edit(s)
+        e.folders[id] = s.folders.getValue(id).copy(apps = s.folders.getValue(id).apps.filterNot { it == key })
+        return e.done()
     }
     fun extract(s: WorkspaceItems, id: String, key: String, preferredPage: Int): WorkspaceItems? {
         if (key !in (s.folders[id]?.apps ?: emptyList())) return null
