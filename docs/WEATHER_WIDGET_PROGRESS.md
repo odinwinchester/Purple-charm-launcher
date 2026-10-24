@@ -14,7 +14,10 @@ Base: `c07c643ce2edbdfbfa580d2461e771b96aa2f13c` (`main`).
 ## Validação
 - Conferência local de 20 hashes: passou.
 - `git diff --check`: passou antes do envio.
-- Testes unitários e compilação: consultar execução do GitHub Actions associada ao commit. Não considerar validados antes de resultado success.
+- Testes unitários e compilação: passaram para `ce8f9b3bf3e1daa077476126a40fa0ce8a4034de`.
+- Actions: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40051701832 — todas as etapas concluídas com success.
+- APK debug gerado, ZIP íntegro, alinhamento e assinatura v2 verificados no Actions. SHA-256: `458ec810104329c6bac0379fbdfa4c75ab075f317f41843288c84196d3c96b28`.
+- Consulta direta ao MET Norway: HTTP 200, série com 93 instantes e resumos 1h/6h/12h. Isso valida a disponibilidade e o formato da API, não a execução em aparelho.
 - Aparelho Android/POCO: ainda não testado.
 
 ## Pendências explícitas
