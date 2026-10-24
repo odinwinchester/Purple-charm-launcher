@@ -247,9 +247,10 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun pageCells(index: Int): MutableList<String> {
         val keys = savedPage(index).distinct()
-        val cells = MutableList(homeCapacity()) { "" }
-        prefs.getString("layout_page_cells_$index", null)?.split("|")
-            ?.take(cells.size)?.forEachIndexed { slot, key ->
+        val stored = prefs.getString("layout_page_cells_$index", null)?.split("|")
+        // A narrower grid must not truncate persisted shortcuts or folder references.
+        val cells = MutableList(maxOf(homeCapacity(), stored?.size ?: 0, keys.size)) { "" }
+        stored?.forEachIndexed { slot, key ->
                 if (key.isNotEmpty() && key in keys && key !in cells) cells[slot] = key
             }
         keys.forEach { key ->
@@ -718,16 +719,12 @@ class MainActivity : Activity(), SensorEventListener {
         }
         option("✦ Restaurar organização dos ícones") {
             AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Restaurar organização?")
-                .setMessage("As posições das páginas e do dock serão apagadas.")
+                .setMessage("As posições das páginas, pastas e dock serão restauradas. Aplicativos não serão desinstalados.")
                 .setPositiveButton("Restaurar") { _, _ ->
-                    val edit = prefs.edit()
-                    for (i in 0 until maxPages) {
-                        edit.remove("layout_page_$i")
-                        edit.remove("layout_page_cells_$i")
-                    }
-                    edit.remove("layout_page_count").remove("layout_dock")
-                        .remove("layout_dock_slots").apply()
-                    showHome()
+                    if (workspaceStore.reset()) {
+                        folderDialog?.dismiss()
+                        showHome()
+                    } else Toast.makeText(this, "Não foi possível restaurar; organização anterior mantida", Toast.LENGTH_SHORT).show()
                 }.setNegativeButton("Cancelar", null).show()
         }
         }
@@ -1816,7 +1813,7 @@ class MainActivity : Activity(), SensorEventListener {
                         val y = (event.y + scroll.scrollY - grid.top).coerceAtLeast(0f)
                         val column = (x.toInt() / cellWidth).coerceIn(0, columns - 1)
                         val row = (y.toInt() / cellHeight).coerceAtLeast(0)
-                        val position = (row * columns + column).coerceIn(0, homeCapacity() - 1)
+                        val position = (row * columns + column).coerceIn(0, pageCells(index).lastIndex)
                         placeOnPage(key, index, position)
                     } else false
                 }

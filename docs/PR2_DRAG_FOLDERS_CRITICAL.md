@@ -52,3 +52,8 @@ Base: `9536cc2fa48f6cca1f2c9cf3e293b652ec3d0303`, branch `codex/weather-widgets`
 
 - Segunda execução: código `4be70c5a077c6209224376c1f99d085eb675d56d`, https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40066446490 , passou em testes, integridade e compilação/verificação do APK.
 - Ajuste final: fechar/cancelar o diálogo de pasta também cancela uma sessão nativa ativa. Um teste Android adicional verifica que isso não remove o membro nem modifica preferências; mínimo esperado atualizado para 37 testes. Aguardar a execução correspondente antes de declarar essa revisão validada.
+
+## Compatibilidade com funções existentes
+- Reduzir as colunas da grade preserva também células salvas que excedam a capacidade nominal de cinco linhas; elas continuam acessíveis por rolagem. Isso evita truncar uma pasta e deixar seus metadados sem referência após mudar/restaurar a grade.
+- A ação explícita “Restaurar organização” agora inclui as pastas em sua confirmação e remove referências/metadados na mesma gravação. Wallpaper e widgets não entram nessa restauração. Não é executada automaticamente.
+- Dois testes Android adicionais cobrem esses caminhos, elevando o mínimo a 39 testes. Resultado final deve corresponder ao commit que contém essas integrações.

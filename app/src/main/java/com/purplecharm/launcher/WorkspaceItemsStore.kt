@@ -5,6 +5,18 @@ import android.content.SharedPreferences
 /** Reuses legacy page/cell/dock keys; folder metadata joins the same atomic editor. */
 internal class WorkspaceItemsStore(private val prefs: SharedPreferences) {
     fun folders(): Map<String, WorkspaceFolder> = WorkspaceItems.decodeFolders(prefs.getString("workspace_folders_v1", null))
+    /** Called only by the existing explicit, confirmed organization-reset action. */
+    fun reset(): Boolean {
+        val safety = WorkspaceLayoutSafety(prefs)
+        val before = safety.capture()
+        val edit = prefs.edit()
+        for (index in 0 until 8) edit.remove("layout_page_$index").remove("layout_page_cells_$index")
+        edit.remove("layout_page_count").remove("layout_dock").remove("layout_dock_slots")
+            .remove("workspace_folders_v1")
+        if (edit.commit()) return true
+        safety.restore(before)
+        return false
+    }
     fun save(state: WorkspaceItems): Boolean {
         if (!state.valid()) return false
         val safety = WorkspaceLayoutSafety(prefs)

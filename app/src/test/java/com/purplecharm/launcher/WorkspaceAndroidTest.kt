@@ -158,4 +158,31 @@ class WorkspaceAndroidTest {
         controller.pause().stop().destroy()
     }
 
+    @Test fun reducingColumnsDoesNotTruncateFolderOrPreventFuturePersistence() {
+        val p = seed()
+        val s = state().copy(pages = listOf(List(29) { "" } + id, List(30) { "" }, List(30) { "" }))
+        assertTrue(WorkspaceItemsStore(p).save(s))
+        p.edit().putString("pc_columns", "6").commit()
+        var controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        controller.pause().stop().destroy()
+        p.edit().putString("pc_columns", "4").commit()
+        controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        val reloaded = current(activity)
+        assertEquals(id, reloaded.pages[0][29]); assertTrue(reloaded.valid())
+        assertNotNull(activity.window.decorView.findViewWithTag<View>("workspace_cell_0_29"))
+        assertTrue(WorkspaceItemsStore(p).save(WorkspaceEdits.rename(reloaded, id, "Ainda aqui")!!))
+        assertEquals("Ainda aqui", WorkspaceItemsStore(p).folders().getValue(id).name)
+        controller.pause().stop().destroy()
+    }
+    @Test fun explicitOrganizationResetDoesNotLeaveOrphanFoldersOrChangeWallpaper() {
+        val p = seed()
+        p.edit().putString("pc_wallpaper_choice", "gallery").putBoolean("gothic_moon_visible", true).commit()
+        assertTrue(WorkspaceItemsStore(p).reset())
+        assertTrue(WorkspaceItemsStore(p).folders().isEmpty())
+        assertFalse(p.contains("layout_page_cells_0")); assertFalse(p.contains("layout_dock_slots"))
+        assertEquals("gallery", p.getString("pc_wallpaper_choice", null))
+        assertTrue(p.getBoolean("gothic_moon_visible", false))
+    }
+
 }
