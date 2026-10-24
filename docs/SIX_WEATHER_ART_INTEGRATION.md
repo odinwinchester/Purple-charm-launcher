@@ -59,3 +59,15 @@ Inventário estruturado e identificação dos blobs de origem: `weather-addition
 - Actions https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40075438536 : o código compilou e 49 dos 50 testes passaram; a integridade dos 26 PNGs passou.
 - O teste de eventos reais simulados da alça detectou `esperado 3, obtido 1`: na revisão anterior, `ACTION_UP` consultava `width/height` do TextView da alça (24 dp), não do contêiner. Isso fazia a preferência diminuir à menor largura.
 - Correção pontual: qualificar `this@WeatherResizeLayout.width/height`. O mecanismo existente não foi reimplementado. Teste adicional exercita também uma arte original; mínimo atualizado para 51 testes. Aguardar resultado da revisão correspondente.
+
+## Validação final efetivamente concluída
+- Código validado: `f28ad9ef8b95fd28799a7a60054d6bd669373694`, branch `codex/integrate-six-weather-art`.
+- PR de integração: https://github.com/odinwinchester/Purple-charm-launcher/pull/3 , base `codex/weather-widgets` (PR #2), sem merge.
+- Actions: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40075684565 — todas as etapas com sucesso.
+- **51 testes executados, sem falhas, erros ou testes ignorados**, incluindo os 39 anteriores e 12 novos. Menu manual das seis artes, restauração do automático, seleção solar por cache MET, exclusão de eclipses automáticos, mapeamentos lunares, persistência, posições/pastas/dock/wallpaper e alças simuladas foram exercitados.
+- Os 26 recursos foram reconhecidos pelo decodificador Android simulado com as dimensões originais. Verificador SHA-256, dimensões, bytes, blobs Git e catálogo aprovado; comparação direta confirmou os 20 arquivos iguais à PR #2 e os seis novos iguais à branch do proprietário.
+- Compilação Android, integridade ZIP, alinhamento e assinatura do APK aprovados.
+- APK de teste: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40075684565/artifacts/12553281513 . SHA-256: `062fd3834a9b9c77e187129914f41593536961c8d853ac411662f3f85337bd7c`.
+- Relatórios: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40075684565/artifacts/12553067151 .
+- Main (`c07c643ce2edbdfbfa580d2461e771b96aa2f13c`), PR #2 (`3b2bcf8e0ca4b546d472fa7232fee951a951e9b2`) e origem das imagens (`5b1474c03b59a0ccaf0486a1ad42576d2048e9ff`) conferidas sem alteração.
+- Testes no aparelho físico continuam pendentes. A integração não é declarada estável no Android real. Automação de eclipses permanece intencionalmente indisponível até existir confirmação confiável de evento e visibilidade local. O commit de registro final altera somente este documento, não o código validado acima.
