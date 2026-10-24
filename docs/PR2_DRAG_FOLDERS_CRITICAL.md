@@ -57,3 +57,14 @@ Base: `9536cc2fa48f6cca1f2c9cf3e293b652ec3d0303`, branch `codex/weather-widgets`
 - Reduzir as colunas da grade preserva também células salvas que excedam a capacidade nominal de cinco linhas; elas continuam acessíveis por rolagem. Isso evita truncar uma pasta e deixar seus metadados sem referência após mudar/restaurar a grade.
 - A ação explícita “Restaurar organização” agora inclui as pastas em sua confirmação e remove referências/metadados na mesma gravação. Wallpaper e widgets não entram nessa restauração. Não é executada automaticamente.
 - Dois testes Android adicionais cobrem esses caminhos, elevando o mínimo a 39 testes. Resultado final deve corresponder ao commit que contém essas integrações.
+
+## Validação final efetivamente concluída
+- Código validado: `ca60ce67ed3d16a0099ab371e644a2936025c745`.
+- Actions: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40066766730 — todas as etapas concluídas com sucesso.
+- **39 testes executados, zero falhas, erros ou testes ignorados**, incluindo 8 testes Android simulados. Esses testes exercitam persistência/rollback, células reais com eventos de drop, rejeição de payload externo, cancelamento, toque prolongado, Voltar, fechamento da pasta, recriação e mudança de grade.
+- Integridade dos 20 PNGs/inventário/catálogo aprovada; recursos visuais e classes de redimensionamento comparados à base sem alteração.
+- Compilação, integridade ZIP, alinhamento e assinatura do APK aprovados.
+- APK: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40066766730/artifacts/12549477034 . SHA-256: `5b2e31769a3cacb711ac212498c822e3691059a625d078702dcd0359ac8ec5f6`.
+- Relatórios de testes: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40066766730/artifacts/12549910436 .
+- Main conferida sem alteração em `c07c643ce2edbdfbfa580d2461e771b96aa2f13c`. Sem merge.
+- Aceite físico do arraste nativo no aparelho ainda pendente, conforme lista acima. Não retomar ajustes de widgets como se essa confirmação já existisse. Registro posterior altera apenas este documento, não o código validado.
