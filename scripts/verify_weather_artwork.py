@@ -19,3 +19,12 @@ for name in expected:
     image = Path(name)
     assert struct.unpack('>II', image.read_bytes()[16:24]) == fixtures[image.stem], name
 print('20/20 geometry test fixtures match the actual PNG dimensions.')
+
+inventory = json.loads(Path('docs/weather-artwork-inventory.json').read_text())
+assert len(inventory) == 20 and {r['path'] for r in inventory} == set(expected)
+for item in inventory:
+    image = Path(item['path'])
+    assert item['sha256'] == expected[str(image)]
+    assert (item['width'], item['height']) == struct.unpack('>II', image.read_bytes()[16:24])
+    assert item['association']
+print('20/20 inventory entries agree with original hashes, dimensions and associations.')
