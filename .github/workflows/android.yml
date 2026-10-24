@@ -33,6 +33,18 @@ jobs:
       - name: Testar previsão, localização e proporções
         run: gradle :app:testDebugUnitTest --stacktrace
 
+      - name: Conferir resultados dos testes
+        run: |
+          python3 - <<'PYTEST'
+          import glob
+          import xml.etree.ElementTree as ET
+          suites = [ET.parse(path).getroot() for path in glob.glob('app/build/test-results/testDebugUnitTest/TEST-*.xml')]
+          total = sum(int(s.get('tests', 0)) for s in suites)
+          failures = sum(int(s.get('failures', 0)) + int(s.get('errors', 0)) + int(s.get('skipped', 0)) for s in suites)
+          assert total >= 10 and failures == 0, (total, failures)
+          print(f'{total} testes executados, sem falhas, erros ou testes ignorados.')
+          PYTEST
+
       - name: Compilar APK
         run: gradle :app:assembleDebug --stacktrace
 

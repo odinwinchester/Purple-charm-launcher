@@ -45,7 +45,8 @@ Base desta etapa: `255db5016d72a21835e0af4518a44ef52b7bb332` na branch `codex/we
 - 20/20 SHA-256 originais preservados.
 - Dimensões dos 20 fixtures de teste conferidas contra o cabeçalho real de cada PNG.
 - `git diff --check`: sem erros.
-- Testes JVM e compilação desta etapa: aguardando Actions; não confundir com a validação anterior de ce8f9b3.
+- Primeira validação desta etapa: `5ac45ee2dee4da41bcd956f3f3d183d766eefff9` passou em todas as etapas: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40057755982 .
+- Ajuste posterior: busca tem timeout de 20 segundos, ignora respostas tardias e fecha ao pausar. Permissão concedida enquanto pausado só registra acompanhamento ao retomar. Revalidação deste ajuste: aguardando Actions.
 
 ## Testes ainda necessários no aparelho
 - Conceder/negar/revogar permissão, permissão temporária, retorno das configurações e localização desativada.

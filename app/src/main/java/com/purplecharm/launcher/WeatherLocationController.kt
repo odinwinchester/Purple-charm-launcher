@@ -35,6 +35,9 @@ internal class WeatherLocationController(
     private var generation = 0
     private var fixVersion = 0
     private var needsFirstFix = false
+    private var searchDialog: AlertDialog? = null
+    private val ui = android.os.Handler(Looper.getMainLooper())
+    private var searchVersion = 0
     var status: String = ""
         private set
     val summary: String get() = when (prefs.getString("gothic_weather_location_mode", null)) {
@@ -82,6 +85,10 @@ internal class WeatherLocationController(
         foreground = false
         generation++
         fixVersion++
+        searchVersion++
+        searchDialog?.dismiss()
+        searchDialog = null
+        ui.removeCallbacksAndMessages(null)
         try { manager.removeUpdates(listener) } catch (_: SecurityException) { }
         registered = false
     }
@@ -153,9 +160,9 @@ internal class WeatherLocationController(
     fun onPermissionResult(requestCode: Int): Boolean {
         if (requestCode != PERMISSION_REQUEST) return false
         if (!automatic()) return true
-        foreground = true
-        if (allowed()) start()
-        else {
+        if (allowed()) {
+            if (foreground) start()
+        } else {
             notifyStatus("Permissão não concedida • busque uma cidade")
             AlertDialog.Builder(activity).setTitle("Localização não autorizada")
                 .setMessage("Você pode buscar uma cidade sem conceder localização. Para alterar a permissão, abra as configurações do aplicativo.")
@@ -181,9 +188,19 @@ internal class WeatherLocationController(
                 val query = input.text.toString().trim()
                 if (query.length < 2) { input.error = "Informe o nome da cidade"; return@setOnClickListener }
                 val token = generation
+                val request = ++searchVersion
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                val timeout = Runnable {
+                    if (dialog.isShowing && request == searchVersion) {
+                        searchVersion++
+                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                        input.error = "A busca demorou. Verifique a conexão e tente novamente."
+                    }
+                }
+                ui.postDelayed(timeout, 20_000L)
                 geocode(reverse = null, query = query) { results, error ->
-                    if (!dialog.isShowing || token != generation) return@geocode
+                    if (!dialog.isShowing || token != generation || request != searchVersion) return@geocode
+                    ui.removeCallbacks(timeout)
                     dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
                     val candidates = results.filter { it.hasLatitude() && it.hasLongitude() }
                         .distinctBy { "${cityLabel(it)}:${it.latitude}:${it.longitude}" }
@@ -205,6 +222,12 @@ internal class WeatherLocationController(
                     }
                 }
             }
+        }
+        searchDialog = dialog
+        dialog.setOnDismissListener {
+            searchVersion++
+            ui.removeCallbacksAndMessages(null)
+            if (searchDialog === dialog) searchDialog = null
         }
         dialog.show()
     }
