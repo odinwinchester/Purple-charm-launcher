@@ -66,6 +66,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var dragDropCommitted = false
     private var dragOrigin: Pair<Int, List<String>>? = null
     private var dragSession: WorkspaceDragSession? = null
+    private var dragSource: View? = null
     private val workspaceStore by lazy { WorkspaceItemsStore(prefs) }
     private val workspaceMime = "application/vnd.purplecharm.workspace-item"
     private var folderDialog: Dialog? = null
@@ -149,6 +150,7 @@ class MainActivity : Activity(), SensorEventListener {
         sensorManager.unregisterListener(this)
         weatherHandler.removeCallbacks(weatherTick)
         weatherLocation.stop()
+        if (dragging) cancelWorkspaceDrag()
         widgetEditor?.endEditing()
     }
     override fun onResume() {
@@ -292,6 +294,7 @@ class MainActivity : Activity(), SensorEventListener {
         widgetEditor?.endEditing()
         val session = WorkspaceDragSession(key, state)
         dragSession = session
+        dragSource = view
         dragDropCommitted = false
         dragFinishScheduled = false
         dragOrigin = pageIndex to savedPage(pageIndex).toList()
@@ -303,6 +306,7 @@ class MainActivity : Activity(), SensorEventListener {
         if (!started) {
             session.cancel(); dragSession = null; dragging = false; dragOrigin = null
             view.parent?.requestDisallowInterceptTouchEvent(false)
+            dragSource = null
         } else view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
         return started
     }
@@ -354,12 +358,19 @@ class MainActivity : Activity(), SensorEventListener {
         }
     }
 
+    private fun cancelWorkspaceDrag() {
+        dragSession?.cancel()
+        runCatching { dragSource?.cancelDragAndDrop() }
+        finishWorkspaceDrag()
+    }
+
     private fun completeWorkspaceDrag() {
         dragSession?.cancel()
         dragSession = null
         dragging = false
         dragOrigin = null
-        window.decorView.parent?.requestDisallowInterceptTouchEvent(false)
+        dragSource?.parent?.requestDisallowInterceptTouchEvent(false)
+        dragSource = null
         if (pendingWorkspaceRefresh && !workspaceRefreshScheduled) {
             workspaceRefreshScheduled = true
             // Atualiza apenas após o ciclo atual de DragEvent terminar.
@@ -466,7 +477,10 @@ class MainActivity : Activity(), SensorEventListener {
             maxLines = 2; minLines = 2; setPadding(0, dp(6), 0, 0)
         })
         tile.setOnClickListener { showFolder(id) }
-        tile.setOnLongClickListener { startItemDrag(tile, id) }
+        tile.setOnLongClickListener {
+            if (!startItemDrag(tile, id)) Toast.makeText(this, "Não foi possível iniciar o arraste. Tente novamente.", Toast.LENGTH_SHORT).show()
+            true
+        }
         return tile
     }
 
@@ -2316,6 +2330,15 @@ class MainActivity : Activity(), SensorEventListener {
             )
         )
 
+        if (allowFavorite && !compact) iconFrame.addView(TextView(this).apply {
+            text = "⋮"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setTextColor(lilac)
+            contentDescription = "Ações de ${app.loadLabel(packageManager)}"
+            setOnClickListener { drawerAppActions(app) }
+        }, FrameLayout.LayoutParams(dp(22), dp(24), Gravity.TOP or Gravity.END))
+
         tile.addView(
             iconFrame,
             LinearLayout.LayoutParams(
@@ -2361,12 +2384,12 @@ class MainActivity : Activity(), SensorEventListener {
 
         tile.setOnLongClickListener {
             if (drawerOpen) {
-                val shadow = View.DragShadowBuilder(tile)
+                val sourceTile = tile
                 pendingDrawerDrag = true
                 showHome()
                 window.decorView.post {
                     pendingDrawerDrag = false
-                    if (!startItemDrag(pages, appKey(app), shadow)) {
+                    if (!startItemDrag(pages, appKey(app), View.DragShadowBuilder(sourceTile))) {
                         Toast.makeText(this, "Não foi possível iniciar o arraste. Tente novamente.", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -2375,7 +2398,8 @@ class MainActivity : Activity(), SensorEventListener {
                 // O primeiro toque longo inicia o arraste com o mesmo dedo.
                 // Não reconstruir a tela com enterEditMode() enquanto o dedo
                 // está pressionado: isso cancelaria o gesto em andamento.
-                startAppDrag(tile, app)
+                if (!startAppDrag(tile, app)) Toast.makeText(this, "Não foi possível iniciar o arraste. Tente novamente.", Toast.LENGTH_SHORT).show()
+                true
             }
         }
 
@@ -2486,6 +2510,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (dragging) { cancelWorkspaceDrag(); return }
         if (widgetResizeActive) { widgetEditor?.endEditing(); return }
         if (editMode) {
             leaveEditMode()

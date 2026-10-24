@@ -67,9 +67,23 @@ class WorkspaceAndroidTest {
         .apply { isAccessible = true }.invoke(activity) as WorkspaceItems
     private fun event(action: Int, session: Any?, key: String = id, mime: String = "application/vnd.purplecharm.workspace-item"): DragEvent {
         val data = ClipData("test", arrayOf(mime), ClipData.Item(key))
-        val method = DragEvent::class.java.declaredMethods.first { it.name == "obtain" && it.parameterTypes.size == 7 }
+        val method = DragEvent::class.java.declaredMethods.first {
+            it.name == "obtain" && it.parameterTypes.firstOrNull() == Int::class.javaPrimitiveType &&
+                it.parameterTypes.contains(ClipData::class.java)
+        }
         method.isAccessible = true
-        return method.invoke(null, action, 1f, 1f, session, data.description, data, false) as DragEvent
+        val arguments = method.parameterTypes.map { type ->
+            when (type) {
+                Int::class.javaPrimitiveType -> action
+                Float::class.javaPrimitiveType -> 1f
+                Boolean::class.javaPrimitiveType -> false
+                ClipData::class.java -> data
+                ClipDescription::class.java -> data.description
+                Any::class.java -> session
+                else -> null // platform drag-permission binder, unused for an in-app drag
+            }
+        }.toTypedArray()
+        return method.invoke(null, *arguments) as DragEvent
     }
     @Test fun actualCellDropMovesFolderOnceAndRejectsForeignPayload() {
         val p = seed()
@@ -108,4 +122,21 @@ class WorkspaceAndroidTest {
         assertTrue(folder.performClick())
         controller.pause().stop().destroy()
     }
+    @Test fun actualLongPressConsumesGestureAndBackCancelDoesNotWriteOrFinishActivity() {
+        val p = seed()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        val tile = activity.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
+        val before = p.all.toMap()
+        assertTrue(tile.performLongClick())
+        assertEquals(before, p.all)
+        val session = WorkspaceDragSession(id, current(activity))
+        set(activity, "dragSession", session); set(activity, "dragging", true); set(activity, "dragSource", tile)
+        activity.onBackPressed()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(session.finished); assertEquals(before, p.all)
+        assertFalse(activity.isFinishing)
+        controller.pause().stop().destroy()
+    }
+
 }

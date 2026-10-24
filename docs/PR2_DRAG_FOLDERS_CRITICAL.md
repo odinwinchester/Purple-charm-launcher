@@ -13,7 +13,7 @@ Base: `9536cc2fa48f6cca1f2c9cf3e293b652ec3d0303`, branch `codex/weather-widgets`
 - Não havia modelo, armazenamento nem interface de pastas. Soltar em outro aplicativo apenas trocava/deslocava atalhos.
 - Alvos aceitavam MIME genérico de texto, sem sessão local validada; várias rotas retornavam sucesso mesmo sem salvar. Células sem aplicativo não tinham alvo próprio.
 - A movimentação para uma página cheia era recusada antes de considerar troca com a posição de origem. O dock não tinha a mesma proteção de confirmação única em todos os caminhos.
-- A gaveta abria ações no toque prolongado em vez de iniciar arraste.
+- A gaveta abria ações no toque prolongado em vez de iniciar arraste. Essas ações continuam acessíveis pelo botão ⋮ da gaveta.
 - A causa física do relato “não arrasta” ainda requer reprodução no aparelho. Não atribuir sua resolução somente à compilação ou aos testes simulados.
 
 ## Implementação
@@ -44,3 +44,8 @@ Base: `9536cc2fa48f6cca1f2c9cf3e293b652ec3d0303`, branch `codex/weather-widgets`
 - Cancelar fora de alvos, pressionar Voltar, pausar o app, iniciar gesto que falha e soltar repetidamente; confirmar ausência de perda/duplicação e recuperação da interface.
 - Testar limites de páginas, pasta vazia e aplicativo removido do Android. Simulação não substitui esse aceite físico.
 - Main deve permanecer em `c07c643ce2edbdfbfa580d2461e771b96aa2f13c`. Não fazer merge sem autorização.
+
+## Primeira execução do Actions
+- A primeira execução compilou o código e executou 35 testes; 33 passaram. Dois testes de eventos Android falharam no construtor de eventos do próprio teste, que pressupunha uma assinatura interna de 7 parâmetros; o Android simulado inclui também o binder de permissões de drag.
+- O helper foi ajustado para os parâmetros reais da API simulada, sem enfraquecer as asserções. Também foi acrescentado teste de toque prolongado e cancelamento por Voltar, elevando o mínimo esperado a 36.
+- Cancelamento por Voltar/pausa usa a API nativa e restaura interceptação no pai da view de origem. Nenhuma posição é gravada ao cancelar.
