@@ -1347,7 +1347,11 @@ class MainActivity : Activity(), SensorEventListener {
         }
 
         // Área de trabalho com bordas sensíveis ao arraste entre páginas.
-        val workspace = FrameLayout(this)
+        val workspace = FrameLayout(this).apply {
+            clipChildren = true
+            clipToPadding = true
+            minimumHeight = 0
+        }
         workspace.addView(pages, FrameLayout.LayoutParams(-1, -1))
         for (direction in listOf(-1, 1)) {
             val edge = View(this)
@@ -1546,8 +1550,9 @@ class MainActivity : Activity(), SensorEventListener {
         }
         // Original PNGs remain byte-for-byte intact, including their sample lettering.
         // Real forecast is explicitly separated so sample values cannot be mistaken for live data.
-        panel.addView(WeatherArtworkFrame(this, artwork, size), LinearLayout.LayoutParams(-2, -2))
-        panel.addView(label("Arte original • valores impressos ilustrativos", 10f))
+        panel.addView(WeatherArtworkFrame(this, artwork, size), LinearLayout.LayoutParams(-1, 0, 2f))
+        val readout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        readout.addView(label("Arte original • valores impressos ilustrativos", 10f))
         val liveText = when {
             !weatherActive -> "Escolha localização automática ou busque uma cidade"
             forecast == null -> "Previsão indisponível • tentando atualizar"
@@ -1563,16 +1568,20 @@ class MainActivity : Activity(), SensorEventListener {
             }
         }
         val locationText = weatherLocation.summary
-        panel.addView(label("$locationText\n$liveText", 11f).apply {
+        readout.addView(label("$locationText\n$liveText", 11f).apply {
             contentDescription = "$locationText. $liveText"
         })
+        val readoutScroll = ScrollView(this).apply {
+            clipChildren = true
+            clipToPadding = true
+            addView(readout)
+        }
+        panel.addView(readoutScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         panel.setOnClickListener { moonWidgetOptions() }
         panel.setOnLongClickListener { moonWidgetOptions(); true }
         celestialView = panel
         return panel.apply {
-            layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
-                setMargins(0, dp(2), 0, 0)
-            }
+            layoutParams = ViewGroup.LayoutParams(-1, -1)
         }
     }
 
@@ -1632,19 +1641,11 @@ class MainActivity : Activity(), SensorEventListener {
     private fun homePage(index: Int): View {
         val scroll = ScrollView(this).apply {
             isFillViewport = true
-            clipToPadding = false
+            clipToPadding = true
+            clipChildren = true
             setPadding(0, 0, 0, dp(3))
         }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        // Reserva visual para widgets futuros. Não interfere na gaveta de apps.
-        // Altura personalizável por página; 180dp na tela principal por padrão.
-        val widgetSpace = setting("widget_space_dp", "180")
-            .toIntOrNull()?.coerceIn(0, 360) ?: 180
-        if (index == 0 && prefs.getBoolean("gothic_moon_visible", true)) {
-            content.addView(gothicMoonWidget())
-        } else if (index == 0 && widgetSpace > 0) {
-            content.addView(View(this), LinearLayout.LayoutParams(-1, dp(widgetSpace)))
-        }
         val grid = GridLayout(this).apply {
             columnCount = horizontalIconColumns()
             setPadding(dp(1), 0, dp(1), dp(5))
@@ -1696,7 +1697,10 @@ class MainActivity : Activity(), SensorEventListener {
                 else -> true
             }
         }
-        return scroll
+        if (index != 0) return scroll
+        val widget = if (prefs.getBoolean("gothic_moon_visible", true)) gothicMoonWidget()
+            else FrameLayout(this).also { celestialView = null }
+        return HomeWorkspaceLayout(this, widget, scroll)
     }
 
     private fun editWorkspaceMenu() {

@@ -13,6 +13,19 @@ internal object WeatherGeometry {
         return ArtworkSize(width, (imageWidth.toDouble() * sourceHeight / sourceWidth)
             .roundToInt().coerceAtLeast(1) + 2 * border)
     }
+    fun fitWithin(availableWidth: Int, availableHeight: Int, preferredWidth: Int,
+                  sourceWidth: Int, sourceHeight: Int, border: Int): ArtworkSize {
+        require(sourceWidth > 0 && sourceHeight > 0 && border >= 0)
+        if (availableWidth <= 2 * border || availableHeight <= 2 * border)
+            return ArtworkSize(0, 0)
+        val maxInnerWidth = minOf(availableWidth, preferredWidth) - 2 * border
+        val maxInnerHeight = availableHeight - 2 * border
+        val width = minOf(maxInnerWidth, floor(maxInnerHeight.toDouble() * sourceWidth / sourceHeight).toInt())
+        if (width <= 0) return ArtworkSize(0, 0)
+        return ArtworkSize(width + 2 * border,
+            (width.toDouble() * sourceHeight / sourceWidth).roundToInt().coerceAtLeast(1) + 2 * border)
+    }
+
 }
 
 internal object WeatherLocationPolicy {

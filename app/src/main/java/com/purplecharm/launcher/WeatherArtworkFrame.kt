@@ -20,14 +20,16 @@ internal class WeatherArtworkFrame(context: Context, image: ImageView, size: Int
             setColor(Color.TRANSPARENT)
             setStroke(border, Color.argb(85, 153, 95, 205))
         }
-        clipChildren = false
-        clipToPadding = false
+        clipChildren = true
+        clipToPadding = true
         addView(image, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val available = if (MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED)
             preferredWidth else MeasureSpec.getSize(widthMeasureSpec)
-        val target = WeatherGeometry.artworkSize(available, preferredWidth, sourceWidth, sourceHeight, border)
+        val maxHeight = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED)
+            Int.MAX_VALUE else MeasureSpec.getSize(heightMeasureSpec)
+        val target = WeatherGeometry.fitWithin(available, maxHeight, preferredWidth, sourceWidth, sourceHeight, border)
         super.onMeasure(MeasureSpec.makeMeasureSpec(target.width, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(target.height, MeasureSpec.EXACTLY))
     }
