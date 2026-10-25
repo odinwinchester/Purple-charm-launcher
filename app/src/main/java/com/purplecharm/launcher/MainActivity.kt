@@ -123,10 +123,46 @@ class MainActivity : Activity(), SensorEventListener {
     private var accelerometer: Sensor? = null
 
     private fun enterEditMode() {
-        if (editMode || drawerOpen) return
+        if (editMode || drawerOpen || dragging) return
         editMode = true
-        // Organização por agitação desativada: não alterar atalhos involuntariamente.
-        showHome()
+        val dialog = SmokeDialogBuilder(this).setTitle("✦ Editar tela inicial")
+            .setItems(arrayOf("Wallpapers", "Ícones e organização", "Widgets", "Configurar dock", "Configurações", "Concluir")) { _, choice ->
+                when (choice) {
+                    0 -> wallpaperMenu()
+                    1 -> shortcutEditor()
+                    2 -> widgetCenter()
+                    3 -> dockConfiguration()
+                    4 -> settingsMenu()
+                }
+            }.create()
+        dialog.setOnDismissListener { editMode = false }
+        dialog.show()
+    }
+    private fun shortcutEditor() {
+        val keys = pageCells(pageIndex).filter { it.isNotEmpty() }
+        SmokeDialogBuilder(this).setTitle("Ícones • Página ${pageIndex + 1}")
+            .setItems(arrayOf("Mover ou remover um atalho", "Arrastar entre páginas / criar pastas", "Gerenciar páginas")) { _, action ->
+                when (action) {
+                    0 -> SmokeDialogBuilder(this).setTitle("Selecionar atalho")
+                        .setItems(keys.map { key -> resolveKey(key)?.let { appLabel(it) } ?: workspaceStore.folders()[key]?.name ?: key }.toTypedArray()) { _, index ->
+                            val key = keys[index]
+                            SmokeDialogBuilder(this).setTitle("Atalho selecionado")
+                                .setItems(arrayOf("Mover para outra página", "Remover apenas este atalho")) { _, op ->
+                                    if (op == 1) {
+                                        if (WorkspaceItems.isFolder(key)) showFolder(key)
+                                        else {
+                                            val state = workspaceItems()
+                                            val next = state.copy(pages = state.pages.mapIndexed { p, cells -> if (p == pageIndex) cells.map { if (it == key) "" else it } else cells })
+                                            saveWorkspaceEdit(next)
+                                        }
+                                    } else SmokeDialogBuilder(this).setTitle("Página de destino")
+                                        .setItems((1..pageCount()).map { "Página $it" }.toTypedArray()) { _, page -> placeOnPage(key, page) }.show()
+                                }.show()
+                        }.show()
+                    1 -> Toast.makeText(this, "Segure um ícone para arrastar; solte no centro de outro para criar pasta. Voltar cancela.", Toast.LENGTH_LONG).show()
+                    2 -> managePages()
+                }
+            }.show()
     }
 
     private fun leaveEditMode() {
@@ -1254,6 +1290,7 @@ class MainActivity : Activity(), SensorEventListener {
             requestCode, resultCode, data
         )
 
+        if (androidWidgets.onResult(requestCode, resultCode, data)) return
         if (
             requestCode != wallpaperRequest ||
             resultCode != RESULT_OK
@@ -1645,6 +1682,49 @@ class MainActivity : Activity(), SensorEventListener {
         weatherLocation.onPermissionResult(requestCode)
     }
 
+    private val androidWidgets by lazy { AndroidWidgetController(this, prefs, { pageCount() }, { horizontalIconColumns() }, { refreshWorkspaceSafely() }) }
+    override fun onStart() { super.onStart(); androidWidgets.start() }
+    override fun onStop() { androidWidgets.stop(); super.onStop() }
+    private fun widgetCenter() {
+        SmokeDialogBuilder(this).setTitle("✦ Central de widgets")
+            .setItems(arrayOf("Purple Charm • clima gótico", "Adicionar widget Android", "Gerenciar widgets adicionados")) { _, choice ->
+                when (choice) {
+                    0 -> { if (!prefs.getBoolean("gothic_moon_visible", true)) { prefs.edit().putBoolean("gothic_moon_visible", true).apply(); refreshWorkspaceSafely() }; moonWidgetOptions() }
+                    1 -> androidWidgets.choose()
+                    2 -> androidWidgets.manage()
+                }
+            }.show()
+    }
+    private fun dockConfiguration() {
+        SmokeDialogBuilder(this).setTitle("✦ Dock • quatro atalhos e gaveta central")
+            .setItems((0..3).map { i -> "Posição ${i + 1}: " + dockSlots()[i].let { key -> resolveKey(key)?.let { appLabel(it) } ?: workspaceStore.folders()[key]?.name ?: "Vazia" } }.toTypedArray()) { _, i -> dockSlotOptions(i) }
+            .setMessage("Configure manualmente a mesma ordem do POCO. O Android não oferece acesso público à organização privada do outro launcher.").show()
+    }
+    private fun dockChooseApp(slot: Int) {
+        loadApps()
+        SmokeDialogBuilder(this).setTitle("Aplicativo para posição ${slot + 1}")
+            .setItems(apps.map { appLabel(it) }.toTypedArray()) { _, i ->
+                val state = workspaceItems()
+                saveWorkspaceEdit(WorkspaceEdits.configureDock(state, appKey(apps[i]), slot))
+            }.show()
+    }
+    private fun dockSlotOptions(slot: Int) {
+        SmokeDialogBuilder(this).setTitle("Dock • posição ${slot + 1}")
+            .setItems(arrayOf("Adicionar / substituir aplicativo", "Remover do dock", "Mover à esquerda", "Mover à direita")) { _, action ->
+                val state = workspaceItems(); val key = state.dock[slot]
+                when (action) {
+                    0 -> dockChooseApp(slot)
+                    1 -> if (WorkspaceItems.isFolder(key)) {
+                        val p = state.pages.indices.firstOrNull { state.pages[it].any(String::isEmpty) }
+                        if (p != null) saveWorkspaceEdit(WorkspaceEdits.page(state, key, p, state.pages[p].indexOf("")))
+                    } else saveWorkspaceEdit(state.copy(dock = state.dock.toMutableList().apply { set(slot, "") }))
+                    else -> {
+                        val target = slot + if (action == 2) -1 else 1
+                        if (key.isNotEmpty() && target in 0..3) saveWorkspaceEdit(WorkspaceEdits.dock(state, key, target))
+                    }
+                }
+            }.show()
+    }
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
@@ -1656,6 +1736,7 @@ class MainActivity : Activity(), SensorEventListener {
     override fun onDestroy() {
         weatherHandler.removeCallbacks(weatherTick)
         weatherLocation.close()
+        androidWidgets.close()
         graphicCache.clear(); iconCache.evictAll(); labelCache.evictAll()
         optionsDialog?.dismiss()
         folderDialog?.dismiss()
@@ -1680,6 +1761,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun refreshCelestialView() {
         if (isFinishing || isDestroyed || dragging || widgetResizeActive || drawerOpen) return
         val old = celestialView ?: return
+        if (!old.isAttachedToWindow) return
         val parent = old.parent as? ViewGroup ?: return
         val index = parent.indexOfChild(old)
         val updated = gothicMoonWidget(reuseUnchanged = true)
@@ -1716,10 +1798,12 @@ class MainActivity : Activity(), SensorEventListener {
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
         val mode = prefs.getInt("gothic_celestial_mode", 0) // 0 auto, 1 sol, 2 lua
         val forecast = weatherClient.current()
+        val daylight = SolarDaylight.isDay(now, prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull(),
+            prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull()) ?: forecast?.isDay
         val isSun = when (mode) {
             1 -> true
             2 -> false
-            else -> forecast?.isDay ?: (hour in 6..17)
+            else -> daylight ?: false
         }
         val sunStyle = prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
         val weatherActive = prefs.contains("gothic_weather_lat")
@@ -1800,14 +1884,14 @@ class MainActivity : Activity(), SensorEventListener {
             }
         }
         SmokeDialogBuilder(this).setTitle("Previsão real • MET Norway")
-            .setMessage("${weatherLocation.summary}\n$liveText\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.")
+            .setMessage("${weatherLocation.summary}\nCoordenadas: ${prefs.getString("gothic_weather_lat", "—")}, ${prefs.getString("gothic_weather_lon", "—")}\n$liveText\nHorário da previsão no fuso do aparelho (${java.time.ZoneId.systemDefault()}). Temperatura instantânea prevista, não mínima/máxima nem observação de estação.\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.")
             .setPositiveButton("Fechar", null).show()
     }
 
     private fun moonWidgetOptions() {
         SmokeDialogBuilder(this).setTitle("Clima • automático por padrão")
             .setItems(arrayOf("Localização e clima", "Personalizar arte (opcional)",
-                "Restaurar comportamento automático", "Redimensionar com alças", "Ocultar widget", "Sobre as artes", "Ver previsão real")) { _, which ->
+                "Restaurar comportamento automático", "Redimensionar com alças", "Ocultar widget", "Sobre as artes", "Ver previsão real", "Atualizar previsão", "Mover widget para página", "Ampliar arte inteira")) { _, which ->
                 when (which) {
                     0 -> gothicWeatherSettings()
                     1 -> SmokeDialogBuilder(this).setTitle("Escolher uma das ${WeatherArtworkCatalog.all.size} artes")
@@ -1826,6 +1910,20 @@ class MainActivity : Activity(), SensorEventListener {
                         prefs.edit().putBoolean("gothic_moon_visible", false).apply()
                         weatherLocation.stop()
                         showHome()
+                    }
+                    7 -> weatherClient.refresh(force = true) { runOnUiThread { refreshCelestialView(); weatherDetails() } }
+                    8 -> SmokeDialogBuilder(this).setTitle("Página do clima")
+                        .setItems((1..pageCount()).map { "Página $it" }.toTypedArray()) { _, p ->
+                            prefs.edit().putInt("weather_widget_page", p).apply(); refreshWorkspaceSafely()
+                        }.show()
+                    9 -> {
+                        val panel = celestialView ?: return@setItems
+                        val image = (widgetEditor?.getChildAt(0) as? ViewGroup)?.getChildAt(0) as? ImageView
+                        if (image != null) {
+                            val full = Dialog(this)
+                            full.setContentView(ImageView(this).apply { setImageDrawable(image.drawable.constantState?.newDrawable(resources)); scaleType = ImageView.ScaleType.FIT_CENTER; setBackgroundColor(Color.BLACK); setOnClickListener { full.dismiss() } })
+                            full.show(); full.window?.setLayout(-1, -1)
+                        }
                     }
                     6 -> weatherDetails()
                     5 -> SmokeDialogBuilder(this).setTitle("Artes originais")
@@ -1854,7 +1952,7 @@ class MainActivity : Activity(), SensorEventListener {
             val tile = when {
                 WorkspaceItems.isFolder(key) -> folderTile(key, false)
                 app != null -> appTile(app, false, false)
-                else -> View(this)
+                else -> View(this).apply { setOnLongClickListener { enterEditMode(); true } }
             }
             tile.tag = "workspace_cell_${index}_$position"
             acceptDropAt(tile) { dropped, event ->
@@ -1904,10 +2002,15 @@ class MainActivity : Activity(), SensorEventListener {
                 else -> true
             }
         }
-        if (index != 0) return scroll
-        val widget = if (prefs.getBoolean("gothic_moon_visible", true)) gothicMoonWidget()
-            else FrameLayout(this).also { celestialView = null }
-        return HomeWorkspaceLayout(this, widget, scroll)
+        val weatherPage = prefs.getInt("weather_widget_page", 0).coerceIn(0, pageCount() - 1)
+        val showWeather = index == weatherPage && prefs.getBoolean("gothic_moon_visible", true)
+        val external = androidWidgets.pageView(index)
+        if (!showWeather && external == null && index != 0) return scroll
+        val widget: View = if (showWeather) gothicMoonWidget()
+            else external ?: FrameLayout(this).apply { setOnLongClickListener { enterEditMode(); true } }
+        // Keep weather's entire viewport. External widgets on the same page are exposed in their own scrollable zone via the center.
+        return HomeWorkspaceLayout(this, if (showWeather && external != null)
+            androidWidgets.combineWithWeather(widget, external) else widget, scroll)
     }
 
     private fun editWorkspaceMenu() {
@@ -1965,10 +2068,7 @@ class MainActivity : Activity(), SensorEventListener {
                     setPadding(dp(10), dp(10), dp(10), dp(10))
                     scaleType = ImageView.ScaleType.FIT_CENTER
                     setOnClickListener {
-                        if (pageIndex != 0 || drawerOpen) {
-                            pageIndex = 0
-                            showHome()
-                        }
+                        showDrawer()
                     }
                     // Toque longo reservado: personalização permanece no gesto de deslizar para cima.
                 }
@@ -1979,10 +2079,18 @@ class MainActivity : Activity(), SensorEventListener {
                 val view = when {
                     WorkspaceItems.isFolder(item) -> folderTile(item, true)
                     app != null -> appTile(app, false, true)
-                    else -> label("+", 22f).apply { setTextColor(lilac) }
+                    else -> label("+", 22f).apply { setTextColor(lilac); setOnClickListener { dockChooseApp(dockIndex) } }
                 }
-                acceptDrop(view) { key -> placeInDock(key, dockIndex) }
-                view
+                val holder = FrameLayout(this).apply {
+                    tag = "dock_slot_$dockIndex"
+                    addView(view, FrameLayout.LayoutParams(-1, -1))
+                    addView(label("⋮", 16f).apply {
+                        contentDescription = "Configurar posição ${dockIndex + 1} do dock"
+                        setOnClickListener { dockSlotOptions(dockIndex) }
+                    }, FrameLayout.LayoutParams(dp(24), dp(26), Gravity.TOP or Gravity.END))
+                }
+                acceptDrop(holder) { key -> placeInDock(key, dockIndex) }
+                holder
             }
             outer.addView(child, LinearLayout.LayoutParams(0, dp(61), 1f).apply {
                 setMargins(dp(2), 0, dp(2), 0)
@@ -2271,16 +2379,7 @@ class MainActivity : Activity(), SensorEventListener {
             clipToPadding = false
             addView(content)
         }
-        val alphabet = object : LinearLayout(this) {
-            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-                if (childCount > 0) {
-                    val available = View.MeasureSpec.getSize(heightMeasureSpec)
-                    val letterHeight = minOf(dp(18), (available / childCount).coerceAtLeast(1))
-                    for (i in 0 until childCount) getChildAt(i).layoutParams.height = letterHeight
-                }
-                super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-            }
-        }.apply {
+        val alphabet = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
@@ -2314,7 +2413,7 @@ class MainActivity : Activity(), SensorEventListener {
                     textSize = 10f
                     gravity = Gravity.CENTER
                     setTextColor(lilac)
-                }, LinearLayout.LayoutParams(-1, dp(18)))
+                }, LinearLayout.LayoutParams(-1, 0, 1f))
             }
             // Deslizar sobre o índice percorre a lista sem exigir toques individuais.
             alphabet.setOnTouchListener { view, event ->

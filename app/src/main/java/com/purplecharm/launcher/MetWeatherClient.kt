@@ -65,14 +65,14 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
     }
 
     fun current(now: Long = System.currentTimeMillis()): WeatherForecast? {
-        if (location() != prefs.getString("met_forecast_location", null)) return null
+        if (location() == null || location() != prefs.getString("met_forecast_location", null)) return null
         return cachedBody?.let { parse(it, now) }
     }
 
-    fun refresh(onChanged: () -> Unit) {
+    fun refresh(force: Boolean = false, onChanged: () -> Unit) {
         val key = location() ?: return
         val now = System.currentTimeMillis()
-        if (now < retryAfter || (key == prefs.getString("met_forecast_location", null) &&
+        if (now < retryAfter || (!force && key == prefs.getString("met_forecast_location", null) &&
                 now < prefs.getLong("gothic_weather_expires", 0L))) return
         if (!loading.compareAndSet(false, true)) return
         Thread {
@@ -82,7 +82,7 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                     .openConnection() as HttpURLConnection
                 connection.connectTimeout = 8000
                 connection.readTimeout = 8000
-                connection.setRequestProperty("User-Agent", "PurpleCharmLauncher/0.7.0 (github.com/odinwinchester/Purple-charm-launcher)")
+                connection.setRequestProperty("User-Agent", "PurpleCharmLauncher/0.7.2 (github.com/odinwinchester/Purple-charm-launcher)")
                 connection.setRequestProperty("Accept", "application/json")
                 if (key == prefs.getString("met_forecast_location", null) && cachedBody != null) {
                     prefs.getString("gothic_weather_last_modified", null)?.let {
@@ -104,6 +104,7 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                         if (location() == key) {
                             cachedBody = body
                             val editor = prefs.edit().putString("met_forecast_json", body)
+                                .putLong("met_forecast_received", System.currentTimeMillis())
                                 .putString("met_forecast_location", key)
                                 .putLong("gothic_weather_expires", expires)
                                 .remove("gothic_weather_last_modified")
@@ -129,7 +130,10 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
 
     companion object {
         internal fun parse(body: String, now: Long): WeatherForecast? = try {
-            val series = JSONObject(body).getJSONObject("properties").getJSONArray("timeseries")
+            val properties = JSONObject(body).getJSONObject("properties")
+            val unit = properties.optJSONObject("meta")?.optJSONObject("units")?.optString("air_temperature")
+            require(unit.isNullOrEmpty() || unit == "celsius")
+            val series = properties.getJSONArray("timeseries")
             var selected: JSONObject? = null
             for (i in 0 until series.length()) {
                 val point = series.getJSONObject(i)
@@ -137,6 +141,9 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                 if (time <= now) selected = point else break
             }
             selected?.let { point ->
+                val timestamp = Instant.parse(point.getString("time")).toEpochMilli()
+                // Do not label an old last point as current after an offline cache has expired.
+                require(now - timestamp in 0..(2 * 60 * 60_000L))
                 val data = point.getJSONObject("data")
                 val instant = data.getJSONObject("instant").getJSONObject("details")
                 val symbol = listOf("next_1_hours", "next_6_hours", "next_12_hours")

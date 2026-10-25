@@ -121,6 +121,17 @@ internal object WorkspaceEdits {
         e.dock[slot] = key
         return e.done()
     }
+    fun configureDock(s: WorkspaceItems, key: String, slot: Int): WorkspaceItems? {
+        dock(s, key, slot)?.let { return it }
+        if (!s.valid() || slot !in 0..3 || origin(s, key) != null) return null
+        val previous = s.dock[slot]
+        if (previous.isEmpty()) return null
+        for (p in s.pages.indices) {
+            val cell = s.pages[p].indexOf("")
+            if (cell >= 0) return page(s, previous, p, cell)?.let { dock(it, key, slot) }
+        }
+        return null
+    }
     fun intoFolder(s: WorkspaceItems, key: String, id: String, index: Int? = null): WorkspaceItems? {
         if (!s.valid() || key.isBlank() || WorkspaceItems.isFolder(key) || id !in s.folders) return null
         val old = s.folders.getValue(id)
