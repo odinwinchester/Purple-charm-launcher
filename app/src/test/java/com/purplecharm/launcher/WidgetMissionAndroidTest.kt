@@ -113,4 +113,49 @@ class WidgetMissionAndroidTest {
             assertTrue(art.slug, frame.width > 0 && frame.height > 0)
         }
     }
+    @Test fun providerResizeFlagsAreRespectedAndSizePersists() {
+        val c = Robolectric.buildActivity(Activity::class.java).setup(); val a = c.get()
+        val p = prefs("resizeHost"); p.edit().clear().commit()
+        val manager = AppWidgetManager.getInstance(a); val info = provider()
+        shadowOf(manager).addInstalledProvider(info); shadowOf(manager).setAllowedToBindAppWidgets(true)
+        val controller = AndroidWidgetController(a, p, { 3 }, { 5 }, {})
+        val host = AndroidWidgetController::class.java.getDeclaredField("host").apply { isAccessible = true }.get(controller) as android.appwidget.AppWidgetHost
+        shadowOf(host).setAppWidgetIdToAllocate(103); controller.add(info)
+        val original = HostedWidgetStore(p).read().single()
+        val resize = AndroidWidgetController::class.java.getDeclaredMethod("resize", HostedWidget::class.java).apply { isAccessible = true }
+        resize.invoke(controller, original)
+        assertEquals(original, HostedWidgetStore(p).read().single())
+        info.resizeMode = AppWidgetProviderInfo.RESIZE_HORIZONTAL
+        resize.invoke(controller, original)
+        val options = ShadowAlertDialog.getLatestAlertDialog()
+        for (i in 0 until options.listView.adapter.count) assertTrue(options.listView.adapter.getItem(i).toString().startsWith("Largura:"))
+        val last = options.listView.adapter.count - 1
+        options.listView.performItemClick(null, last, last.toLong())
+        val updated = HostedWidgetStore(p).read().single()
+        assertEquals(5, updated.span); assertEquals(original.heightDp, updated.heightDp)
+        assertNotNull(controller.pageView(1))
+        controller.close(); c.pause().stop().destroy()
+    }
+    @Test fun failedHostedStoreCommitRestoresPreviousWidgetLayout() {
+        val p = prefs("hostDiskFailure"); p.edit().clear().commit()
+        val store = HostedWidgetStore(p)
+        val original = listOf(HostedWidget(7, "clock/Provider", 1, 2, 120, 0))
+        assertTrue(store.save(original)); val before = p.all.toMap()
+        var fail = true
+        val proxy = java.lang.reflect.Proxy.newProxyInstance(android.content.SharedPreferences::class.java.classLoader, arrayOf(android.content.SharedPreferences::class.java)) { _, method, args ->
+            val value = method.invoke(p, *(args ?: emptyArray()))
+            if (method.name != "edit") value else {
+                val editor = value as android.content.SharedPreferences.Editor
+                var wrapper: Any? = null
+                wrapper = java.lang.reflect.Proxy.newProxyInstance(android.content.SharedPreferences.Editor::class.java.classLoader, arrayOf(android.content.SharedPreferences.Editor::class.java)) { _, m, a ->
+                    val result = m.invoke(editor, *(a ?: emptyArray()))
+                    if (m.name == "commit" && fail) { fail = false; false } else if (result is android.content.SharedPreferences.Editor) wrapper else result
+                }
+                wrapper
+            }
+        } as android.content.SharedPreferences
+        assertFalse(HostedWidgetStore(proxy).save(original.map { it.copy(page = 2) }))
+        assertEquals(before, p.all)
+    }
+
 }

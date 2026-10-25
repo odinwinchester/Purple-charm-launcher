@@ -64,8 +64,10 @@ internal class AndroidWidgetController(private val activity: Activity, private v
     private fun bindPending() {
         val id = prefs.getInt("widget_pending_id", 0)
         val provider = ComponentName.unflattenFromString(prefs.getString("widget_pending_provider", "") ?: "") ?: return cancelPending()
+        // Resume a previously authorized ID; a false bind result must still ask the user.
+        if (runCatching { manager.getAppWidgetInfo(id) }.getOrNull() != null) { configurePending(); return }
         val bound = runCatching { manager.bindAppWidgetIdIfAllowed(id, provider, Bundle().apply { putInt(AppWidgetManager.OPTION_APPWIDGET_HOST_CATEGORY, AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN) }) }.getOrDefault(false)
-        if (bound || runCatching { manager.getAppWidgetInfo(id) }.getOrNull() != null) configurePending()
+        if (bound) configurePending()
         else try {
             activity.startActivityForResult(Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id).putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider), BIND_REQUEST)
@@ -156,7 +158,7 @@ internal class AndroidWidgetController(private val activity: Activity, private v
         if (prefs.getInt("widget_pending_id", 0) > 0) { pendingOptions(); return }
         if (list.isEmpty()) { message("Nenhum widget Android adicionado"); return }
         SmokeDialogBuilder(activity).setTitle("Widgets adicionados")
-            .setItems(list.map { "${it.provider.substringBefore('/')} • Página ${it.page + 1}" }.toTypedArray()) { _, i -> options(list[i].id) }.show()
+            .setItems(list.map { "${it.provider.substringBefore('/')} #${it.id} • Página ${it.page + 1}" }.toTypedArray()) { _, i -> options(list[i].id) }.show()
     }
     private fun options(id: Int) {
         val widget = values()?.firstOrNull { it.id == id } ?: return
