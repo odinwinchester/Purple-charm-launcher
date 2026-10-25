@@ -1731,6 +1731,7 @@ class MainActivity : Activity(), SensorEventListener {
             level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
             level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
             graphicCache.clear(); iconCache.evictAll(); labelCache.evictAll()
+            androidWidgets.releaseHiddenViews()
         }
     }
     override fun onDestroy() {

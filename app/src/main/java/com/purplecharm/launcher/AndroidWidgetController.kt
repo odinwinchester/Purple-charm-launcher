@@ -25,13 +25,25 @@ internal class AndroidWidgetController(private val activity: Activity, private v
     private val store = HostedWidgetStore(prefs)
     private val views = mutableMapOf<Int, AppWidgetHostView>()
     private val sizedViews = mutableSetOf<Int>()
+    private var listening = false
+    private var rebuildOnStart = false
     private fun dp(value: Int) = (value * activity.resources.displayMetrics.density).toInt()
     private fun message(value: String) = Toast.makeText(activity, value, Toast.LENGTH_LONG).show()
     private fun values(): List<HostedWidget>? = runCatching { store.read() }.getOrElse { message("Organização de widgets ilegível; dados preservados"); null }
     private fun save(list: List<HostedWidget>): Boolean = runCatching { store.save(list) }.getOrDefault(false).also { if (it) changed() else message("Não foi possível salvar; organização preservada") }
-    fun start() { runCatching { host.startListening() }; cleanup() }
-    fun stop() { runCatching { host.stopListening() } }
-    fun close() { stop(); views.clear(); sizedViews.clear() }
+    fun start() {
+        listening = runCatching { host.startListening(); true }.getOrDefault(false)
+        cleanup()
+        if (rebuildOnStart) { rebuildOnStart = false; changed() }
+    }
+    fun stop() { runCatching { host.stopListening() }; listening = false }
+    fun releaseHiddenViews() {
+        if (listening || views.isEmpty()) return
+        views.values.forEach { view -> (view.parent as? ViewGroup)?.removeView(view) }
+        runCatching { host.clearViews() }
+        views.clear(); sizedViews.clear(); rebuildOnStart = true
+    }
+    fun close() { stop(); runCatching { host.clearViews() }; views.clear(); sizedViews.clear() }
     fun hasWidgets(page: Int) = values()?.any { it.page.coerceAtMost(pageCount() - 1) == page } == true
     private fun providerLabel(info: AppWidgetProviderInfo): String {
         val origin = runCatching { activity.packageManager.getApplicationLabel(activity.packageManager.getApplicationInfo(info.provider.packageName, 0)).toString() }.getOrDefault(info.provider.packageName)

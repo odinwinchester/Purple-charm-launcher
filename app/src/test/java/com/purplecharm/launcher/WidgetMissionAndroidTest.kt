@@ -178,6 +178,9 @@ class WidgetMissionAndroidTest {
         assertSame(hosted, views(secondPage).filterIsInstance<android.appwidget.AppWidgetHostView>().single())
         controller.start(); assertTrue(shadowOf(host).isListening)
         controller.stop(); assertFalse(shadowOf(host).isListening)
+        controller.releaseHiddenViews(); assertNull(hosted.parent)
+        assertEquals(104, HostedWidgetStore(p).read().single().id)
+        controller.start(); assertEquals(104, HostedWidgetStore(p).read().single().id)
         controller.close(); c.pause().stop().destroy()
     }
     @Test fun forecastIsNeverBorrowedFromAnotherCityOrKeptAfterItsLastPointExpires() {
