@@ -266,13 +266,13 @@ class WorkspaceAndroidTest {
         @Suppress("UNCHECKED_CAST")
         val apps = MainActivity::class.java.getDeclaredField("apps").apply { isAccessible = true }.get(a) as MutableList<android.content.pm.ResolveInfo>
         apps.clear()
-        for (letter in 'A'..'Z') apps.add(android.content.pm.ResolveInfo().apply {
-            nonLocalizedLabel = "$letter app"
+        for (letter in 'A'..'Z') repeat(10) { item -> apps.add(android.content.pm.ResolveInfo().apply {
+            nonLocalizedLabel = "$letter app $item"
             activityInfo = android.content.pm.ActivityInfo().apply {
-                packageName = "test.$letter"; name = "Main"
+                packageName = "test.$letter.$item"; name = "Main"
                 applicationInfo = android.content.pm.ApplicationInfo(a.applicationInfo).apply { packageName = "test.$letter" }
             }
-        })
+        }) }
         MainActivity::class.java.getDeclaredMethod("showDrawer").apply { isAccessible = true }.invoke(a)
         layout(a)
         val rail = a.window.decorView.findViewWithTag<android.widget.LinearLayout>("drawer_alphabet")!!

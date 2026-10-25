@@ -182,6 +182,7 @@ class ConsolidationAndroidTest {
         apps.add(fake(a, "pkg", "App0"))
         MainActivity::class.java.getDeclaredMethod("showFolder", String::class.java).apply { isAccessible = true }.invoke(a, "folder:test")
         val dialog = field(a, "folderDialog") as FolderSurface
+        layout(a) // Native DragShadowBuilder requires measured source bounds.
         val before = prefs().all.toMap()
         dialog.content.findViewWithTag<View>("folder_drag_home")!!.performClick()
         assertTrue(dialog.content.findViewWithTag<View>("folder_member_0")!!.performLongClick())
