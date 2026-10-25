@@ -1057,7 +1057,11 @@ class MainActivity : Activity(), SensorEventListener {
 
     // A escolha do wallpaper do launcher não altera o wallpaper do sistema.
     private fun applyWallpaper() {
+        // Cosmic Horror is shown in full, with proportional letterboxing when necessary.
+        backgroundImage.scaleType = if (prefs.getString("pc_wallpaper_choice", "floral") == "cosmic_azathoth")
+            ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
         when (prefs.getString("pc_wallpaper_choice", "floral")) {
+            "cosmic_azathoth" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.cosmic_horror_azathoth, wallpaper = true))
             "eye_crystal" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_eye_crystal, wallpaper = true))
             "eye_royal" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_eye_royal, wallpaper = true))
             "ghost_fire" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.wallpaper_ghost_fire, wallpaper = true))
@@ -1087,6 +1091,10 @@ class MainActivity : Activity(), SensorEventListener {
         Triple("Ghost Fire", "ghost_fire", R.drawable.wallpaper_ghost_fire)
     )
 
+    private val cosmicHorrorWallpapers = listOf(
+        Triple("Azathoth — O Caos Primordial", "cosmic_azathoth", R.drawable.cosmic_horror_azathoth)
+    )
+
     private fun wallpaperGlass(): GradientDrawable =
         GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
@@ -1109,15 +1117,19 @@ class MainActivity : Activity(), SensorEventListener {
         root.addView(header)
         root.addView(label("Toque para visualizar • segure para escolher onde aplicar", 12f))
         val scroll = ScrollView(this)
-        val grid = GridLayout(this).apply { columnCount = 2 }
-        wallpaperOptions.forEach { (name, key, res) ->
+        val collections = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        fun tiles(options: List<Triple<String, String, Int>>): GridLayout {
+            val grid = GridLayout(this).apply { columnCount = 2 }
+        options.forEach { (name, key, res) ->
             val tile = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(5), dp(9), dp(5), dp(9))
             }
             val picture = ImageView(this).apply {
                 setImageDrawable(packagedImage(res, wallpaper = true))
-                scaleType = ImageView.ScaleType.CENTER_CROP
+                scaleType = if (key == "cosmic_azathoth") ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
+                tag = "wallpaper_$key"
+                contentDescription = name
                 background = wallpaperGlass()
                 clipToOutline = true
                 setOnClickListener { wallpaperPreview(key, res, null) }
@@ -1130,6 +1142,13 @@ class MainActivity : Activity(), SensorEventListener {
                 columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
             })
         }
+            return grid
+        }
+        collections.addView(tiles(wallpaperOptions))
+        collections.addView(label("✦ Cosmic Horror", 18f, true).apply {
+            setPadding(0, dp(16), 0, dp(8))
+        })
+        collections.addView(tiles(cosmicHorrorWallpapers))
         val gallery = glassButton("＋ Escolher imagem do celular", 16f).apply {
             setOnClickListener {
                 val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -1146,11 +1165,8 @@ class MainActivity : Activity(), SensorEventListener {
                 }
             }
         }
-        grid.addView(gallery, GridLayout.LayoutParams().apply {
-            columnSpec = GridLayout.spec(0, 2)
-            width = -1
-        })
-        scroll.addView(grid)
+        collections.addView(gallery, LinearLayout.LayoutParams(-1, -2))
+        scroll.addView(collections)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         dialog.setContentView(root)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
