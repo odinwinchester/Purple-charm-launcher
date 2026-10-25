@@ -1,0 +1,24 @@
+name: Testes seguros da assinatura permanente
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safe-selftests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Instalar biblioteca criptográfica sem secrets
+        run: python3 -m pip install --disable-pip-version-check --no-warn-script-location "cryptography==50.0.2"
+      - name: Round-trip com chave descartável e uma senha
+        run: bash scripts/test_signing_crypto.sh
+      - name: Verificar políticas do bootstrap sem secrets
+        run: python3 scripts/test_signing_bootstrap_policy.py
