@@ -102,7 +102,11 @@ internal class AndroidWidgetController(private val activity: Activity, private v
         if (list.any { it.id == id }) { clearPending(); return }
         val density = activity.resources.displayMetrics.density
         val padding = AppWidgetHostView.getDefaultPaddingForWidget(activity, info.provider, null)
-        val height = ceil((info.minHeight + padding.top + padding.bottom) / density).toInt().coerceIn(80, 1200)
+        val minHeight = ceil((info.minHeight + padding.top + padding.bottom) / density).toInt().coerceAtLeast(40)
+        val maxHeight = if (Build.VERSION.SDK_INT >= 31 && info.maxResizeHeight > 0)
+            ((info.maxResizeHeight + padding.top + padding.bottom) / density).toInt().coerceAtMost(1200) else 1200
+        if (minHeight > maxHeight) { cancelPending(); message("Tamanho mínimo incompatível com os limites deste widget"); return }
+        val height = minHeight
         val weatherPage = prefs.getInt("weather_widget_page", 0)
         val target = (0 until pageCount()).firstOrNull { it != weatherPage } ?: 0
         val availableWidth = activity.resources.displayMetrics.widthPixels - dp(36)
@@ -189,8 +193,8 @@ internal class AndroidWidgetController(private val activity: Activity, private v
         val padding = AppWidgetHostView.getDefaultPaddingForWidget(activity, info.provider, null)
         val minW = ((if (info.minResizeWidth > 0) info.minResizeWidth else info.minWidth) + padding.left + padding.right + dp(8)) / density
         val minH = ceil(((if (info.minResizeHeight > 0) info.minResizeHeight else info.minHeight) + padding.top + padding.bottom) / density).toInt().coerceAtLeast(40)
-        val maxW = if (Build.VERSION.SDK_INT >= 31 && info.maxResizeWidth > 0) info.maxResizeWidth / density else availableDp
-        val maxH = if (Build.VERSION.SDK_INT >= 31 && info.maxResizeHeight > 0) (info.maxResizeHeight / density).toInt().coerceAtMost(1200) else 1200
+        val maxW = if (Build.VERSION.SDK_INT >= 31 && info.maxResizeWidth > 0) (info.maxResizeWidth + padding.left + padding.right + dp(8)) / density else availableDp
+        val maxH = if (Build.VERSION.SDK_INT >= 31 && info.maxResizeHeight > 0) ((info.maxResizeHeight + padding.top + padding.bottom) / density).toInt().coerceAtMost(1200) else 1200
         val options = mutableListOf<Pair<String, HostedWidget>>()
         if (horizontal) for (span in 1..columns()) {
             val width = availableDp * span / columns()
@@ -227,7 +231,11 @@ internal class AndroidWidgetController(private val activity: Activity, private v
                     }
                 }
             } else box.addView(TextView(activity).apply { text = "Aplicativo de origem indisponível • dados preservados"; setTextColor(android.graphics.Color.WHITE) })
-            content.addView(box, LinearLayout.LayoutParams(((activity.resources.displayMetrics.widthPixels - dp(36)) * w.span.coerceAtMost(columns()) / columns()).coerceAtLeast(dp(48)), -2).apply { gravity = Gravity.CENTER_HORIZONTAL; setMargins(0, dp(3), 0, dp(3)) })
+            val desiredWidth = ((activity.resources.displayMetrics.widthPixels - dp(36)) * w.span.coerceAtMost(columns()) / columns()).coerceAtLeast(dp(48))
+            val padding = info?.let { AppWidgetHostView.getDefaultPaddingForWidget(activity, it.provider, null) }
+            val maxWidth = if (Build.VERSION.SDK_INT >= 31 && info != null && info.maxResizeWidth > 0)
+                info.maxResizeWidth + (padding?.left ?: 0) + (padding?.right ?: 0) + dp(8) else desiredWidth
+            content.addView(box, LinearLayout.LayoutParams(minOf(desiredWidth, maxWidth), -2).apply { gravity = Gravity.CENTER_HORIZONTAL; setMargins(0, dp(3), 0, dp(3)) })
         }
         return ScrollView(activity).apply { tag = "external_widgets_scroll"; addView(content); isFillViewport = false }
     }

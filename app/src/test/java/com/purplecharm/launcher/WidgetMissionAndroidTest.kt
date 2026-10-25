@@ -64,6 +64,8 @@ class WidgetMissionAndroidTest {
         shadowOf(manager).addInstalledProvider(info)
         shadowOf(manager).setAllowedToBindAppWidgets(false)
         val controller = AndroidWidgetController(a, p, { 3 }, { 5 }, {})
+        val host = AndroidWidgetController::class.java.getDeclaredField("host").apply { isAccessible = true }.get(controller) as android.appwidget.AppWidgetHost
+        shadowOf(host).setAppWidgetIdToAllocate(101)
         controller.add(info)
         val pending = p.getInt("widget_pending_id", 0); assertTrue(pending > 0)
         val request = shadowOf(a).nextStartedActivity
@@ -81,6 +83,8 @@ class WidgetMissionAndroidTest {
         shadowOf(manager).addInstalledProvider(info); shadowOf(manager).setAllowedToBindAppWidgets(true)
         var changes = 0
         val controller = AndroidWidgetController(a, p, { 3 }, { 5 }, { changes++ })
+        val host = AndroidWidgetController::class.java.getDeclaredField("host").apply { isAccessible = true }.get(controller) as android.appwidget.AppWidgetHost
+        shadowOf(host).setAppWidgetIdToAllocate(102)
         controller.add(info)
         val saved = HostedWidgetStore(p).read(); assertEquals(1, saved.size); assertEquals(1, changes)
         assertEquals(1, saved[0].page); assertEquals(info.provider.flattenToString(), saved[0].provider)
