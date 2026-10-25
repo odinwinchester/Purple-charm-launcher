@@ -132,6 +132,8 @@ jobs:
 
   publish:
     needs: [validate, sign]
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
     if: ${{ inputs.publish_release == true && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     environment: android-release
@@ -158,6 +160,7 @@ jobs:
           name: Purple-Charm-Stable-APK
           path: dist
       - name: Conferir metadados e criar release oficial aprovada
+        id: create
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION_NAME: ${{ needs.validate.outputs.version_name }}
@@ -204,3 +207,16 @@ jobs:
             --title "Purple Charm Crystal Class v${VERSION_NAME}" \
             --notes-file dist/release-notes.md \
             --target "$COMMIT_SHA"
+          RELEASE_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.id')"
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+
+  announce:
+    needs: publish
+    if: ${{ inputs.publish_release == true && github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/anunciar-release-discord.yml
+    with:
+      release_id: ${{ needs.publish.outputs.release_id }}
+    secrets:
+      discord_webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
