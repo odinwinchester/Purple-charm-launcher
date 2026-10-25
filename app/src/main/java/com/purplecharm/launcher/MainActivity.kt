@@ -426,7 +426,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
     }
 
-    private fun dropOnVisiblePage(surface: View, event: DragEvent): Boolean {
+    private fun dropOnVisiblePage(surface: View, event: DragEvent, localX: Float = event.x, localY: Float = event.y): Boolean {
         val key = draggedKey(event) ?: return false
         if (dragDropCommitted) return false
         val visible = pages.currentView ?: return false
@@ -434,7 +434,7 @@ class MainActivity : Activity(), SensorEventListener {
         val scroll = visible.findViewWithTag<ScrollView>("home_icons_scroll") ?: return false
         val origin = IntArray(2); val gridOrigin = IntArray(2); val viewport = IntArray(2)
         surface.getLocationOnScreen(origin); grid.getLocationOnScreen(gridOrigin); scroll.getLocationOnScreen(viewport)
-        val screenX = origin[0] + event.x; val screenY = origin[1] + event.y
+        val screenX = origin[0] + localX; val screenY = origin[1] + localY
         if (screenY < viewport[1] || screenY >= viewport[1] + scroll.height || grid.childCount == 0) return false
         // Children retain their actual measured positions, padding and scroll offset.
         val x = screenX - gridOrigin[0]; val y = screenY - gridOrigin[1]
@@ -983,6 +983,16 @@ class MainActivity : Activity(), SensorEventListener {
                         if (folder != null && !folder.collapsed) {
                             val at = IntArray(2); getLocationOnScreen(at)
                             if (!folder.containsScreenPoint(at[0] + event.x.toInt(), at[1] + event.y.toInt())) folder.collapse()
+                        }
+                    }
+                    if (folderDialog?.collapsed == true && event.action in listOf(
+                            DragEvent.ACTION_DRAG_LOCATION, DragEvent.ACTION_DRAG_ENTERED,
+                            DragEvent.ACTION_DRAG_EXITED, DragEvent.ACTION_DROP)) {
+                        val workspace = findViewWithTag<WorkspaceDragLayout>("workspace_drag_surface")
+                        if (workspace != null) {
+                            val from = IntArray(2); val to = IntArray(2)
+                            getLocationOnScreen(from); workspace.getLocationOnScreen(to)
+                            return workspace.route(event, event.x + from[0] - to[0], event.y + from[1] - to[1])
                         }
                     }
                     if (event.action == DragEvent.ACTION_DRAG_ENDED) finishWorkspaceDrag()
@@ -1592,6 +1602,7 @@ class MainActivity : Activity(), SensorEventListener {
                 } else false
             }
             drop = { event -> dropOnVisiblePage(this, event) }
+            dropAt = { event, x, y -> dropOnVisiblePage(this, event, x, y) }
             ended = { finishWorkspaceDrag() }
         }
         workspace.addView(pages, FrameLayout.LayoutParams(-1, -1))
