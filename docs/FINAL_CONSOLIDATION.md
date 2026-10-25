@@ -48,3 +48,15 @@ Executar testes e build no Actions, conferir todas as artes da base e publicar A
 - Quatro animações solares: classe antiga de sobreposição não usada não é GIF aprovado; não ativada para evitar mudança visual não validada. Produção/integração das animações exatas continua pendente.
 - Eclipses continuam manuais; automatização depende de fonte/cálculo confiável e visibilidade local.
 - Aceite físico do POCO: menu fumê e três destinos, pasta transparente compacta, rolagem de pasta com mais de seis itens, reordenação, transferência para home/dock/páginas, cancelamento, última entrada, reinício, nomes/índice/categorias/pesquisa,26 artes e tamanhos. Verificar legibilidade com fonte/densidade do proprietário e atualização real/offline de MET/localização. Memória/FPS/vazamentos físicos ainda não medidos.
+
+## Resultado efetivamente validado
+
+- Código/testes: `71a3daf317c8288b8ef06e7b2781e58f1d17b57d`, branch `codex/final-consolidation`, PR https://github.com/odinwinchester/Purple-charm-launcher/pull/4 .
+- Actions https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40148632092 : **73 testes, sem falhas, erros ou testes ignorados**. São os63 anteriores e10 de consolidação.
+- Inclui abertura dos três comandos, navegação/categorias, pastas com1/3/6/9 membros, modo de transferência e cancelamento, rolagem/grade, cache limitado/limpeza, atualização parcial de widget; regressões anteriores de arraste entre páginas, persistência e26 artes continuam aprovadas. Execução Android simulada (Robolectric), não dispositivo físico.
+- Todos os80 recursos gráficos SHA-256 intactos;26 artes também verificadas por dimensões/catálogo/blobs de origem. Nenhum PNG/GIF convertido ou novo desenho adicionado.
+- Compilação debug, integridade ZIP, alinhamento e assinatura aprovados.
+- APK: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40148632092/artifacts/12582440714 . SHA-256 `9b367d344822ac100d6bdd966e1e736ecbcd1971bcf1794406cc18500e69a583`.
+- Relatórios: https://github.com/odinwinchester/Purple-charm-launcher/actions/runs/40148632092/artifacts/12582425714 .
+- Registro posterior altera apenas documentação; APK corresponde ao código/testes acima.
+- A autorização de atualizar main após conclusão e validação está registrada. **Main ainda não atualizada**: esta revisão visual/de interação exige o teste no POCO solicitado na etapa9, ainda não realizado. PR #4 permanece draft; PRs #2/#3 e todas as branches de origem foram preservados. Não declarar estabilidade física ou ganhos medidos de FPS/memória com base somente em testes simulados.
