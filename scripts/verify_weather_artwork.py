@@ -57,3 +57,9 @@ all_paths = set(expected) | new_paths
 assert {str(p) for p in Path('app/src/main/res/drawable-nodpi').glob('*.png')} == all_paths
 assert set(resources) == {Path(name).stem for name in all_paths}
 print('26/26 PNGs intact; six new files match owner source blobs, sizes and SHA-256.')
+
+# Consolidation protects every existing graphical resource, not only weather art.
+all_graphics = json.loads(Path("docs/graphic-resource-sha256.json").read_text())
+for path, digest in all_graphics.items():
+    assert hashlib.sha256(Path(path).read_bytes()).hexdigest() == digest, path
+print(f"{len(all_graphics)}/{len(all_graphics)} original graphical resources intact (SHA-256).")

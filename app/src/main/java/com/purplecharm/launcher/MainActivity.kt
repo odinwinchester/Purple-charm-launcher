@@ -72,6 +72,18 @@ class MainActivity : Activity(), SensorEventListener {
     private var folderDialog: Dialog? = null
     private var openFolderId: String? = null
     private var pendingDrawerDrag = false
+    private var folderHomeDragArmed = false
+    private val graphicCache by lazy { GraphicResourceCache(resources) }
+    private val iconCache = android.util.LruCache<String, Drawable.ConstantState>(64)
+    private val labelCache = android.util.LruCache<String, String>(128)
+    private var optionsDialog: Dialog? = null
+    private var lastCelestialKey: String? = null
+    private fun appLabel(app: ResolveInfo): String = labelCache.get(appKey(app)) ?:
+        app.loadLabel(packageManager).toString().also { labelCache.put(appKey(app), it) }
+    private fun packagedImage(id: Int, wallpaper: Boolean = false): Drawable = if (wallpaper)
+        graphicCache.load(id, resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
+        else graphicCache.load(id)
+
 
     private fun workspaceItems(): WorkspaceItems = WorkspaceItems(
         (0 until pageCount()).map { pageCells(it).toList() }, dockSlots().toList(), workspaceStore.folders())
@@ -490,7 +502,7 @@ class MainActivity : Activity(), SensorEventListener {
         val previewSize = if (compact) 45 else 53
         folder?.apps?.take(4)?.forEach { key ->
             preview.addView(ImageView(this).apply {
-                resolveKey(key)?.let { setImageDrawable(customIcon(it)) }
+                resolveKey(key)?.let { setImageDrawable(customIcon(it, includeFallbackFrame = true)) }
                 scaleType = ImageView.ScaleType.FIT_CENTER
             }, GridLayout.LayoutParams().apply {
                 width = dp((previewSize - 8) / 2); height = dp((previewSize - 8) / 2)
@@ -515,40 +527,46 @@ class MainActivity : Activity(), SensorEventListener {
             return
         }
         folderDialog?.dismiss()
+        folderHomeDragArmed = false
         val dialog = Dialog(this)
         folderDialog = dialog
         openFolderId = id
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(14), dp(14), dp(14))
-            background = glass(18, true)
+            background = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT); cornerRadius = dp(16).toFloat()
+                setStroke(dp(1).coerceAtLeast(1), Color.argb(130, 171, 107, 213))
+            }
+            tag = "folder_panel"
         }
         panel.addView(label(folder.name, 19f, true).apply { setOnClickListener { renameFolder(id) } })
-        panel.addView(label("Toque para abrir • segure e arraste para reorganizar", 11f))
-        val grid = GridLayout(this).apply { columnCount = 4 }
+        val grid = GridLayout(this).apply { columnCount = 3; tag = "folder_grid" }
         folder.apps.forEachIndexed { index, key ->
             val app = resolveKey(key)
             val tile = if (app != null) appTile(app, false, false) else label(key.substringAfterLast('/'), 10f)
             tile.tag = "folder_member_$index"
-            tile.setOnLongClickListener { startItemDrag(tile, key) }
+            tile.setOnLongClickListener { if (folderHomeDragArmed) startFolderHomeDrag(tile, key) else startItemDrag(tile, key) }
             acceptDrop(tile) { incoming ->
                 val state = runCatching { workspaceItems() }.getOrNull()
                 state != null && saveWorkspaceEdit(WorkspaceEdits.intoFolder(state, incoming, id, index))
             }
             grid.addView(tile, GridLayout.LayoutParams().apply {
-                width = 0; height = dp(92)
-                columnSpec = GridLayout.spec(index % 4, 1f); rowSpec = GridLayout.spec(index / 4)
+                width = 0; height = dp(84)
+                columnSpec = GridLayout.spec(index % 3, 1f); rowSpec = GridLayout.spec(index / 3)
             })
         }
         val scroll = ScrollView(this).apply { addView(grid) }
-        panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(230)))
-        val addTarget = glassButton("Solte aqui para adicionar à pasta", 12f)
-        acceptDrop(addTarget) { incoming ->
-            val state = runCatching { workspaceItems() }.getOrNull()
-            state != null && saveWorkspaceEdit(WorkspaceEdits.intoFolder(state, incoming, id))
+        panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(((folder.apps.size + 2) / 3).coerceIn(1, 2) * 84)))
+        val extractTarget = label("Arrastar para início", 12f).apply {
+            tag = "folder_drag_home"
+            setPadding(0, dp(8), 0, dp(8))
+            background = optionHighlight()
+            setOnClickListener {
+                folderHomeDragArmed = true
+                text = "Segure um aplicativo para arrastar à tela inicial"
+            }
         }
-        panel.addView(addTarget)
-        val extractTarget = glassButton("Solte aqui para mover à tela inicial", 12f)
         acceptDrop(extractTarget) { incoming ->
             val state = runCatching { workspaceItems() }.getOrNull()
             state != null && saveWorkspaceEdit(WorkspaceEdits.extract(state, id, incoming, pageIndex))
@@ -557,11 +575,11 @@ class MainActivity : Activity(), SensorEventListener {
         val tools = LinearLayout(this)
         listOf("Adicionar" to { addFolderApps(id) }, "Renomear" to { renameFolder(id) },
             "Organizar" to { folderAppActions(id) }).forEach { (title, action) ->
-            tools.addView(glassButton(title, 12f).apply { setOnClickListener { action() } },
+            tools.addView(label(title, 12f).apply { background = optionHighlight(); setPadding(0, dp(8), 0, dp(8)); setOnClickListener { action() } },
                 LinearLayout.LayoutParams(0, -2, 1f))
         }
         panel.addView(tools)
-        panel.addView(glassButton("Fechar", 12f).apply { setOnClickListener { dialog.dismiss() } })
+        panel.addView(label("Fechar", 12f).apply { setPadding(0, dp(8), 0, 0); setOnClickListener { dialog.dismiss() } })
         dialog.setOnCancelListener { if (dragging) cancelWorkspaceDrag() }
         dialog.setOnDismissListener {
             if (folderDialog === dialog) { folderDialog = null; openFolderId = null }
@@ -570,8 +588,23 @@ class MainActivity : Activity(), SensorEventListener {
         dialog.show()
         dialog.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setLayout((resources.displayMetrics.widthPixels - dp(32)).coerceAtMost(dp(360)), ViewGroup.LayoutParams.WRAP_CONTENT)
         }
+    }
+
+    private fun startFolderHomeDrag(source: View, key: String): Boolean {
+        if (dragging || !knownItem(key)) return false
+        val shadow = View.DragShadowBuilder(source)
+        // Use the still-attached home view as source, just as drawer-to-home dragging does.
+        pendingDrawerDrag = true
+        folderDialog?.dismiss()
+        pages.post {
+            pendingDrawerDrag = false
+            if (!isFinishing && !isDestroyed && !startItemDrag(pages, key, shadow))
+                Toast.makeText(this, "Arraste não iniciado; aplicativo preservado na pasta", Toast.LENGTH_SHORT).show()
+        }
+        return true
     }
 
     private fun renameFolder(id: String) {
@@ -589,7 +622,7 @@ class MainActivity : Activity(), SensorEventListener {
         val available = apps.filter { appKey(it) !in folder.apps }
         val selected = BooleanArray(available.size)
         AlertDialog.Builder(this).setTitle("Adicionar aplicativos")
-            .setMultiChoiceItems(available.map { it.loadLabel(packageManager).toString() }.toTypedArray(), selected) { _, index, checked ->
+            .setMultiChoiceItems(available.map { appLabel(it) }.toTypedArray(), selected) { _, index, checked ->
                 selected[index] = checked
             }.setPositiveButton("Adicionar") { _, _ ->
                 var next: WorkspaceItems? = runCatching { workspaceItems() }.getOrNull()
@@ -645,28 +678,64 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     // Janela de configurações com o fundo neon independente da tela inicial.
+    private fun smokePanel(): GradientDrawable = GradientDrawable().apply {
+        setColor(Color.argb(218, 14, 9, 20))
+        cornerRadius = dp(18).toFloat()
+        setStroke(dp(1).coerceAtLeast(1), Color.argb(110, 171, 107, 213))
+    }
+    private fun optionHighlight(): android.graphics.drawable.StateListDrawable {
+        val selected = GradientDrawable().apply {
+            setColor(Color.argb(75, 139, 67, 184)); cornerRadius = dp(10).toFloat()
+        }
+        return android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), selected)
+            addState(intArrayOf(android.R.attr.state_focused), selected)
+            addState(intArrayOf(), android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        }
+    }
     private fun settingsMenu() {
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("✦ Purple Charm • Configurações")
-            .setItems(arrayOf("⚙ Configurações do sistema", "✦ Configurações do tema",
-                "▦ Configurações do launcher")) { _, choice ->
-                when (choice) {
-                    0 -> try {
-                        startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
-                    } catch (_: Exception) {
-                        android.widget.Toast.makeText(this, "Não foi possível abrir o sistema", android.widget.Toast.LENGTH_SHORT).show()
+        optionsDialog?.dismiss()
+        val dialog = Dialog(this)
+        optionsDialog = dialog
+        val panel = LinearLayout(this).apply {
+            tag = "smoked_options"
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(12))
+            background = smokePanel()
+        }
+        panel.addView(label("✦ Purple Charm • Configurações", 18f, true))
+        listOf("⚙ Configurações do sistema", "✦ Configurações do tema", "▦ Configurações do launcher")
+            .forEachIndexed { choice, text ->
+                panel.addView(label(text, 15f).apply {
+                    tag = "settings_command_$choice"
+                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                    setPadding(dp(12), dp(14), dp(12), dp(14))
+                    background = optionHighlight()
+                    setOnClickListener {
+                        dialog.dismiss()
+                        when (choice) {
+                            0 -> try { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) }
+                                catch (_: Exception) { Toast.makeText(this@MainActivity, "Não foi possível abrir o sistema", Toast.LENGTH_SHORT).show() }
+                            1 -> settingsCategory("Tema")
+                            2 -> settingsCategory("Launcher")
+                        }
                     }
-                    1 -> settingsCategory("Tema")
-                    2 -> settingsCategory("Launcher")
-                }
-            }.show()
+                })
+            }
+        dialog.setOnDismissListener { if (optionsDialog === dialog) optionsDialog = null }
+        dialog.setContentView(panel); dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setLayout((resources.displayMetrics.widthPixels - dp(32)).coerceAtMost(dp(390)), -2)
+        }
     }
 
     private fun settingsCategory(category: String) {
         val dialog = Dialog(this)
         val frame = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         val backdrop = ImageView(this).apply {
-            setImageResource(R.drawable.wallpaper_neon)
+            setImageDrawable(packagedImage(R.drawable.wallpaper_neon, wallpaper = true))
             scaleType = ImageView.ScaleType.CENTER_CROP
         }
         frame.addView(backdrop, FrameLayout.LayoutParams(-1, -1))
@@ -700,9 +769,6 @@ class MainActivity : Activity(), SensorEventListener {
                 arrayOf("original", "ghost"), "original")
         }
         option("✦ Papéis de parede Purple Charm") { wallpaperMenu() }
-        option("✦ Aplicar Olho de Cristal na tela de bloqueio") {
-            wallpaperDestination("eye_crystal", R.drawable.purple_eye_crystal, null)
-        }
         } else {
         option("✦ Deslizar para cima: " + gestureName(setting("swipe_up", "drawer"))) {
             gestureSetting("Deslizar para cima", "swipe_up", "drawer")
@@ -824,6 +890,7 @@ class MainActivity : Activity(), SensorEventListener {
         val now = android.os.SystemClock.uptimeMillis()
         if (apps.isNotEmpty() && now - appsLoadedAt < 10_000L) return
         appsLoadedAt = now
+        labelCache.evictAll(); iconCache.evictAll()
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
 
@@ -925,13 +992,12 @@ class MainActivity : Activity(), SensorEventListener {
         setPadding(dp(12), dp(10), dp(12), dp(10))
     }
 
-    private fun buildRoot(): LinearLayout {
+    private fun buildRoot(backgroundResource: Int? = null): LinearLayout {
         val frame = FrameLayout(this)
         frame.setBackgroundColor(Color.BLACK)
 
         backgroundImage = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
-            setImageResource(R.drawable.purple_original_wallpaper)
         }
 
         frame.addView(
@@ -939,7 +1005,8 @@ class MainActivity : Activity(), SensorEventListener {
             FrameLayout.LayoutParams(-1, -1)
         )
 
-        applyWallpaper()
+        if (backgroundResource != null) backgroundImage.setImageDrawable(packagedImage(backgroundResource, wallpaper = true))
+        else applyWallpaper()
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -984,9 +1051,9 @@ class MainActivity : Activity(), SensorEventListener {
     // A escolha do wallpaper do launcher não altera o wallpaper do sistema.
     private fun applyWallpaper() {
         when (prefs.getString("pc_wallpaper_choice", "floral")) {
-            "eye_crystal" -> backgroundImage.setImageResource(R.drawable.purple_eye_crystal)
-            "eye_royal" -> backgroundImage.setImageResource(R.drawable.purple_eye_royal)
-            "ghost_fire" -> backgroundImage.setImageResource(R.drawable.wallpaper_ghost_fire)
+            "eye_crystal" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_eye_crystal, wallpaper = true))
+            "eye_royal" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_eye_royal, wallpaper = true))
+            "ghost_fire" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.wallpaper_ghost_fire, wallpaper = true))
             "gallery" -> {
                 val saved = prefs.getString("wallpaper_uri", null)
                 if (!saved.isNullOrEmpty()) {
@@ -995,9 +1062,9 @@ class MainActivity : Activity(), SensorEventListener {
                         if (backgroundImage.drawable != null) return
                     } catch (_: Exception) { }
                 }
-                backgroundImage.setImageResource(R.drawable.purple_original_wallpaper)
+                backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_original_wallpaper, wallpaper = true))
             }
-            else -> backgroundImage.setImageResource(R.drawable.purple_original_wallpaper)
+            else -> backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_original_wallpaper, wallpaper = true))
         }
     }
 
@@ -1042,7 +1109,7 @@ class MainActivity : Activity(), SensorEventListener {
                 setPadding(dp(5), dp(9), dp(5), dp(9))
             }
             val picture = ImageView(this).apply {
-                setImageResource(res)
+                setImageDrawable(packagedImage(res, wallpaper = true))
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 background = wallpaperGlass()
                 clipToOutline = true
@@ -1093,7 +1160,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val image = ImageView(this).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
-            if (res != null) setImageResource(res) else setImageURI(uri)
+            if (res != null) setImageDrawable(packagedImage(res, wallpaper = true)) else setImageURI(uri)
         }
         layout.addView(image, LinearLayout.LayoutParams(-1, 0, 1f))
         layout.addView(glassButton("✦ Aplicar papel de parede", 17f).apply {
@@ -1206,12 +1273,17 @@ class MainActivity : Activity(), SensorEventListener {
             ""
         )
 
-    private fun customIcon(app: ResolveInfo): Drawable {
+    private fun customIcon(app: ResolveInfo, includeFallbackFrame: Boolean = false): Drawable {
+        val key = "${appKey(app)}:${setting("fallback_skin", "original")}:$includeFallbackFrame"
+        iconCache.get(key)?.let { return it.newDrawable(resources).mutate() }
+        return uncachedIcon(app, includeFallbackFrame).also { icon -> icon.constantState?.let { iconCache.put(key, it) } }
+    }
+    private fun uncachedIcon(app: ResolveInfo, includeFallbackFrame: Boolean): Drawable {
         val pkg = app.activityInfo.packageName
             .lowercase(Locale.ROOT)
 
         val name = normalize(
-            app.loadLabel(packageManager).toString()
+            appLabel(app)
         )
 
         val iconName = when {
@@ -1348,7 +1420,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
 
         val original = app.loadIcon(packageManager)
-        if (setting("fallback_skin", "original") != "ghost") return original
+        if (!includeFallbackFrame || setting("fallback_skin", "original") != "ghost") return original
 
         // Usa o fundo autêntico recuperado do Purple Charm original.
         // Os ícones personalizados existentes permanecem intocados.
@@ -1562,9 +1634,17 @@ class MainActivity : Activity(), SensorEventListener {
         weatherLocation.onPermissionResult(requestCode)
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            graphicCache.clear(); iconCache.evictAll(); labelCache.evictAll()
+        }
+    }
     override fun onDestroy() {
         weatherHandler.removeCallbacks(weatherTick)
         weatherLocation.close()
+        graphicCache.clear(); iconCache.evictAll(); labelCache.evictAll()
+        optionsDialog?.dismiss()
         folderDialog?.dismiss()
         dragSession?.cancel()
         dragSession = null
@@ -1585,12 +1665,14 @@ class MainActivity : Activity(), SensorEventListener {
 
     // Replace only the widget, preserving pages, scroll state and drag/drop.
     private fun refreshCelestialView() {
-        if (isFinishing || isDestroyed || dragging || widgetResizeActive) return
+        if (isFinishing || isDestroyed || dragging || widgetResizeActive || drawerOpen) return
         val old = celestialView ?: return
         val parent = old.parent as? ViewGroup ?: return
         val index = parent.indexOfChild(old)
+        val updated = gothicMoonWidget(reuseUnchanged = true)
+        if (updated === old) return
         parent.removeViewAt(index)
-        parent.addView(gothicMoonWidget(), index)
+        parent.addView(updated, index)
     }
 
     private fun refreshGothicWeather() {
@@ -1604,7 +1686,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun gothicWeatherSettings() { weatherLocation.showOptions() }
 
-    private fun gothicMoonWidget(): View {
+    private fun gothicMoonWidget(reuseUnchanged: Boolean = false): View {
         // Ciclo sinódico médio de 29,530588853 dias; aproximação offline.
         // Referência: Lua Nova de 06/01/2000 às 18:14 UTC.
         val now = System.currentTimeMillis()
@@ -1634,12 +1716,6 @@ class MainActivity : Activity(), SensorEventListener {
         val snowy = weatherLoaded && (weatherCode in 71..77 || weatherCode in 85..86)
         val cold = weatherLoaded && (forecast?.temperature ?: 99.0) <= 12
         val size = prefs.getInt("gothic_moon_size", 1).coerceIn(0, 2)
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(0, 0, 0, 0)
-            setBackgroundColor(Color.TRANSPARENT)
-        }
         val selectedSun = if (mode == 0) {
             when {
                 rainy || snowy || cold || weatherCode in 2..3 || weatherCode == 45 -> 2
@@ -1659,12 +1735,6 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val selectedArt = WeatherArtworkCatalog.select(isSun, selectedSun, weatherArtIndex,
             phaseArtIndex, prefs.getString("gothic_manual_art", null), automaticWeather = mode == 0)
-        val artwork = ImageView(this).apply {
-            setImageResource(selectedArt.resource)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            adjustViewBounds = true
-            contentDescription = selectedArt.label
-        }
         // PNGs remain intact. Live data is available only in the details dialog.
         val columns = horizontalIconColumns()
         // Panoramic alternatives open at full grid width; a deliberate per-art resize persists.
@@ -1672,6 +1742,21 @@ class MainActivity : Activity(), SensorEventListener {
         val spanKey = if (selectedArt.panoramic) "gothic_widget_span_${selectedArt.slug}" else "gothic_widget_span"
         val defaultSpan = if (selectedArt.panoramic) columns else intArrayOf(2, 3, columns)[size]
         val initialSpan = prefs.getInt(spanKey, defaultSpan).coerceIn(1, columns)
+        val visualKey = "${selectedArt.slug}:$columns:$initialSpan"
+        if (reuseUnchanged && visualKey == lastCelestialKey && celestialView != null) return celestialView!!
+        lastCelestialKey = visualKey
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, 0, 0, 0)
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        val artwork = ImageView(this).apply {
+            setImageDrawable(packagedImage(selectedArt.resource))
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+            contentDescription = selectedArt.label
+        }
         val editor = WeatherResizeLayout(this, artwork, columns, initialSpan,
             { active -> widgetResizeActive = active },
             { span -> prefs.edit().putInt(spanKey, span).apply() },
@@ -1893,18 +1978,16 @@ class MainActivity : Activity(), SensorEventListener {
         return outer
     }
 
-    // Menu clássico do GO Launcher EX, redesenhado para o Purple Charm.
+    // Menu independente de personalização do Purple Charm.
     // Menu de personalização compacto: faixa horizontal acima do dock.
     // Mantém o papel de parede visível e evita o painel grande de seis botões.
     private fun showClassicCustomizationMenu() {
         val dialog = Dialog(this)
-        val icons = arrayOf("＋", "▧", "✦", "⚙", "⌘", "?")
-        val names = arrayOf("Organizar", "Papel de parede", "Tema",
-            "GO config.", "Sistema", "Ajuda")
+        val icons = arrayOf("＋", "▧", "⚙", "⌘", "?")
+        val names = arrayOf("Organizar", "Papel de parede", "Configurações", "Sistema", "Ajuda")
         val actions: Array<() -> Unit> = arrayOf(
             { editWorkspaceMenu() },
             { wallpaperMenu() },
-            { settingsMenu() },
             { settingsMenu() },
             {
                 try {
@@ -1960,8 +2043,7 @@ class MainActivity : Activity(), SensorEventListener {
     // Pesquisa Crystal Glass: busca local por aplicativos instalados.
     private fun showCrystalSearch() {
         loadApps()
-        val root = buildRoot()
-        backgroundImage.setImageResource(R.drawable.wallpaper_neon)
+        val root = buildRoot(R.drawable.wallpaper_neon)
         // Pesquisa em grade: reutiliza os ícones e as ações da gaveta,
         // evitando duplicar a lógica de abertura e toque longo.
         val results = GridLayout(this).apply {
@@ -2007,11 +2089,11 @@ class MainActivity : Activity(), SensorEventListener {
             if (query.isBlank()) return
             val term = normalize(query.trim())
             val filtered = apps.filter {
-                normalize(it.loadLabel(packageManager).toString()).startsWith(term)
+                normalize(appLabel(it)).startsWith(term)
             }.sortedWith(compareBy<ResolveInfo> {
-                normalize(it.loadLabel(packageManager).toString()) != term
+                normalize(appLabel(it)) != term
             }.thenBy {
-                normalize(it.loadLabel(packageManager).toString())
+                normalize(appLabel(it))
             })
             filtered.forEach { app ->
                 // Toque curto abre; toque longo oferece adicionar à página/dock.
@@ -2052,7 +2134,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     // Substitui os alvos permanentes da gaveta por um menu no toque longo.
     private fun homeAppActions(app: ResolveInfo) {
-        val name = app.loadLabel(packageManager).toString()
+        val name = appLabel(app)
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(name)
             .setItems(arrayOf("Mover para outra página", "Remover atalho da tela inicial")) { _, choice ->
@@ -2070,7 +2152,7 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun drawerAppActions(app: ResolveInfo) {
-        val name = app.loadLabel(packageManager).toString()
+        val name = appLabel(app)
         val pkg = app.activityInfo.packageName
         val systemApp = (app.activityInfo.applicationInfo.flags and
             android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
@@ -2114,7 +2196,7 @@ class MainActivity : Activity(), SensorEventListener {
         val options = (1..pageCount()).map { "Adicionar à página $it" } +
             listOf("Adicionar ao dock", "Gerenciar páginas")
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle(app.loadLabel(packageManager).toString())
+            .setTitle(appLabel(app))
             .setItems(options.toTypedArray()) { _, index ->
                 val key = appKey(app)
                 when {
@@ -2130,7 +2212,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun drawerCategory(app: ResolveInfo): String {
         val pkg = app.activityInfo.packageName.lowercase(Locale.ROOT)
-        val name = normalize(app.loadLabel(packageManager).toString())
+        val name = normalize(appLabel(app))
         return when {
             listOf("whatsapp", "telegram", "discord", "messenger", "facebook", "instagram",
                 "signal", "sms", "contacts", "contatos", "telefone", "phone", "gmail",
@@ -2145,8 +2227,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun showDrawer() {
         drawerOpen = true
         loadApps()
-        val root = buildRoot()
-        backgroundImage.setImageResource(R.drawable.wallpaper_neon)
+        val root = buildRoot(R.drawable.wallpaper_neon)
         val categories = listOf("Tudo", "Comunicação", "Entretenimento", "Outros")
         var selected = "Tudo"
         val tabs = LinearLayout(this).apply {
@@ -2202,9 +2283,9 @@ class MainActivity : Activity(), SensorEventListener {
             val visible = if (selected == "Tudo") apps else apps.filter {
                 drawerCategory(it) == selected
             }
-            val sorted = visible.sortedBy { normalize(it.loadLabel(packageManager).toString()) }
+            val sorted = visible.sortedBy { normalize(appLabel(it)) }
             val sections = sorted.groupBy {
-                normalize(it.loadLabel(packageManager).toString()).firstOrNull()
+                normalize(appLabel(it)).firstOrNull()
                     ?.uppercaseChar()?.toString() ?: "#"
             }
             // Grade contínua: sem títulos A/B/C entre os aplicativos.
@@ -2274,7 +2355,7 @@ class MainActivity : Activity(), SensorEventListener {
         val grid = GridLayout(this).apply {
             columnCount = columns
             background = null
-            setPadding(dp(1), dp(12), dp(1), dp(12))
+            setPadding(dp(1), 0, dp(1), 0)
         }
 
         items.forEach { app ->
@@ -2282,7 +2363,7 @@ class MainActivity : Activity(), SensorEventListener {
                 appTile(app, allowFavorite, false),
                 GridLayout.LayoutParams().apply {
                     width = 0
-                    height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    height = dp(88)
                     columnSpec = GridLayout.spec(
                         GridLayout.UNDEFINED, 1f
                     )
@@ -2346,12 +2427,14 @@ class MainActivity : Activity(), SensorEventListener {
         if (!compact) {
             tile.addView(
                 label(
-                    app.loadLabel(packageManager).toString(),
+                    appLabel(app),
                     10f
                 ).apply {
                     maxLines = 2
                     minLines = 2
-                    setPadding(0, dp(6), 0, 0)
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    includeFontPadding = false
+                    setPadding(0, dp(4), 0, 0)
                 }
             )
         }
