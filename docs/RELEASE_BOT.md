@@ -14,7 +14,7 @@ O bot combina validação manualmente acionada, APK de teste, assinatura estáve
 
 No navegador Android, crie o environment android-release em Settings → Environments. Quando disponível, habilite Required reviewers e restrinja branches/tags de deploy a main. Configure a variável de environment PURPLE_RELEASE_ENVIRONMENT_PROTECTED=YES somente após salvar as regras.
 
-Confirme o environment android-signing conforme docs/STABLE_SIGNING_SETUP.md. São necessários os secrets de keystore cifrado, senha/alias e frase de recuperação e a variable do SHA-256 do certificado. A URL secreta do Discord continua sendo DISCORD_WEBHOOK_URL e deve ficar como secret do repositório ou environment apropriado; ela nunca é usada nos testes.
+Confirme o environment android-signing conforme docs/STABLE_SIGNING_SETUP.md. O fluxo usa um secret de senha (`PURPLE_STORE_PASSWORD`), o keystore cifrado (`PURPLE_KEYSTORE_CIPHERTEXT_B64`) e a variable pública do SHA-256; o alias é fixo. A mesma senha protege o backup, concentrando o risco de acesso. A URL secreta do Discord continua sendo DISCORD_WEBHOOK_URL e deve ficar como secret do repositório ou environment apropriado; ela nunca é usada nos testes.
 
 ## Como operar depois que o workflow estiver na branch padrão
 

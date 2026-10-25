@@ -21,9 +21,10 @@ android {
     if (!signingPath.isNullOrBlank()) {
         signingConfigs.create("stable") {
             storeFile = file(signingPath)
-            storePassword = providers.environmentVariable("PURPLE_STORE_PASSWORD").get()
-            keyAlias = providers.environmentVariable("PURPLE_KEY_ALIAS").get()
-            keyPassword = providers.environmentVariable("PURPLE_KEY_PASSWORD").get()
+            val signingPassword = providers.environmentVariable("PURPLE_STORE_PASSWORD").get()
+            storePassword = signingPassword
+            keyAlias = "purple-charm-release"
+            keyPassword = signingPassword
         }
         buildTypes.getByName("release").signingConfig = signingConfigs.getByName("stable")
     }

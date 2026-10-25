@@ -62,17 +62,14 @@ jobs:
       - name: Descriptografar keystore e validar fingerprint antes do build
         env:
           KEYSTORE_CIPHERTEXT_B64: ${{ secrets.PURPLE_KEYSTORE_CIPHERTEXT_B64 }}
-          RECOVERY_PASSPHRASE: ${{ secrets.PURPLE_RECOVERY_PASSPHRASE }}
           STORE_PASSWORD: ${{ secrets.PURPLE_STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.PURPLE_KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.PURPLE_KEY_ALIAS }}
           EXPECTED_CERT: ${{ vars.PURPLE_SIGNING_CERT_SHA256 }}
           VERSION_CODE: ${{ inputs.version_code }}
           PROTECTION_ACK: ${{ vars.PURPLE_SIGNING_ENVIRONMENT_PROTECTED }}
         run: |
           set -euo pipefail
           test "$PROTECTION_ACK" = "YES" || { echo "Environment não foi confirmado como protegido; assinatura bloqueada."; exit 1; }
-          test -n "$KEYSTORE_CIPHERTEXT_B64" && test -n "$RECOVERY_PASSPHRASE" && test -n "$STORE_PASSWORD" && test -n "$KEY_PASSWORD" && test -n "$KEY_ALIAS" || {
+          test -n "$KEYSTORE_CIPHERTEXT_B64" && test -n "$STORE_PASSWORD" && test "${#STORE_PASSWORD}" -ge 20 || {
             echo "Secrets necessários ausentes no environment android-signing."
             exit 1
           }
@@ -83,16 +80,14 @@ jobs:
             exit 1
           }
           umask 077
-          printf '%s' "$RECOVERY_PASSPHRASE" > "$RUNNER_TEMP/recovery.pass"
           printf '%s' "$STORE_PASSWORD" > "$RUNNER_TEMP/store.pass"
-          printf '%s' "$KEY_PASSWORD" > "$RUNNER_TEMP/key.pass"
-          chmod 600 "$RUNNER_TEMP/"*.pass
+          chmod 600 "$RUNNER_TEMP/store.pass"
           printf '%s' "$KEYSTORE_CIPHERTEXT_B64" | base64 --decode > "$RUNNER_TEMP/keystore.pccks" || {
             echo "Secret de backup Base64 inválido."
             exit 1
           }
-          python3 scripts/keystore_crypto.py decrypt "$RUNNER_TEMP/keystore.pccks" "$RUNNER_TEMP/purple-release.jks" --passphrase-file "$RUNNER_TEMP/recovery.pass"
-          keytool -exportcert -alias "$KEY_ALIAS" -keystore "$RUNNER_TEMP/purple-release.jks" \
+          python3 scripts/keystore_crypto.py decrypt "$RUNNER_TEMP/keystore.pccks" "$RUNNER_TEMP/purple-release.jks" --passphrase-file "$RUNNER_TEMP/store.pass"
+          keytool -exportcert -alias purple-charm-release -keystore "$RUNNER_TEMP/purple-release.jks" \
             -storepass:file "$RUNNER_TEMP/store.pass" -file "$RUNNER_TEMP/certificate.der" >/dev/null 2>&1 || {
               echo "Keystore, senha ou alias inválido."
               exit 1
@@ -106,8 +101,6 @@ jobs:
       - name: Compilar APK release com segredo limitado a este passo
         env:
           PURPLE_STORE_PASSWORD: ${{ secrets.PURPLE_STORE_PASSWORD }}
-          PURPLE_KEY_PASSWORD: ${{ secrets.PURPLE_KEY_PASSWORD }}
-          PURPLE_KEY_ALIAS: ${{ secrets.PURPLE_KEY_ALIAS }}
         run: gradle :app:assembleRelease --stacktrace
       - name: Verificar assinatura e gerar metadados de auditoria
         id: verify
@@ -164,7 +157,7 @@ jobs:
           python3 - "$RUNNER_TEMP" <<'PY'
           import pathlib, sys
           root = pathlib.Path(sys.argv[1])
-          for name in ("purple-release.jks", "certificate.der", "keystore.pccks", "recovery.pass", "store.pass", "key.pass", "apksigner.txt", "badging.txt"):
+          for name in ("purple-release.jks", "certificate.der", "keystore.pccks", "store.pass", "apksigner.txt", "badging.txt"):
               p = root / name
               if p.exists():
                   p.unlink()
