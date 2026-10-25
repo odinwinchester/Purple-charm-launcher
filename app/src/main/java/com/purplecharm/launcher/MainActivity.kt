@@ -1753,6 +1753,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
     }
     private var celestialView: View? = null
+    private var liveWeatherLabel: TextView? = null
     private var widgetEditor: WeatherResizeLayout? = null
     private var widgetResizeActive = false
     private var widgetResizeGesture = false
@@ -1842,7 +1843,12 @@ class MainActivity : Activity(), SensorEventListener {
         val defaultSpan = if (selectedArt.panoramic) columns else intArrayOf(2, 3, columns)[size]
         val initialSpan = prefs.getInt(spanKey, defaultSpan).coerceIn(1, columns)
         val visualKey = "${selectedArt.slug}:$columns:$initialSpan"
-        if (reuseUnchanged && visualKey == lastCelestialKey && celestialView != null) return celestialView!!
+        val liveText = if (forecast != null) "MET Norway: ${kotlin.math.round(forecast.temperature).toInt()}°C • previsão atual"
+            else if (weatherActive) "Previsão indisponível • tocar para detalhes" else "Escolher localização • dados MET"
+        if (reuseUnchanged && visualKey == lastCelestialKey && celestialView != null) {
+            if (liveWeatherLabel?.text?.toString() != liveText) liveWeatherLabel?.text = liveText
+            return celestialView!!
+        }
         lastCelestialKey = visualKey
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1861,7 +1867,14 @@ class MainActivity : Activity(), SensorEventListener {
             { span -> prefs.edit().putInt(spanKey, span).apply() },
             { moonWidgetOptions() })
         widgetEditor = editor
-        panel.addView(editor, LinearLayout.LayoutParams(-1, -1))
+        panel.addView(editor, LinearLayout.LayoutParams(-1, 0, 1f))
+        liveWeatherLabel = label(liveText, 11f).apply {
+            tag = "live_weather_readout"
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            contentDescription = "Dados meteorológicos MET Norway para ${weatherLocation.summary}. Os valores impressos no PNG são ilustrativos."
+            setOnClickListener { weatherDetails() }
+        }
+        panel.addView(liveWeatherLabel, LinearLayout.LayoutParams(-1, -2))
         panel.setOnClickListener { moonWidgetOptions() }
         panel.setOnLongClickListener { editor.beginEditing(); true }
         celestialView = panel
