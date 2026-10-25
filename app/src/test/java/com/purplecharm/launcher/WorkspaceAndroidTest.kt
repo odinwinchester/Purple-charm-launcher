@@ -435,4 +435,48 @@ class WorkspaceAndroidTest {
         c.pause().stop().destroy()
     }
 
+    @Test fun nativeRootMovesApplicationIntoDockAndBackWithoutChangingOtherFolders() {
+        val p = seed(); val key = "pkg/App0"
+        val initial = state().copy(pages = listOf(listOf(id, key) + List(18) { "" }, List(20) { "" }, List(20) { "" }))
+        assertTrue(WorkspaceItemsStore(p).save(initial))
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get(); registerMember(a, key)
+        fun drop(tag: String) {
+            layout(a)
+            val root = a.window.decorView; val target = root.findViewWithTag<View>(tag)!!
+            val session = WorkspaceDragSession(key, current(a))
+            set(a, "dragSession", session); set(a, "dragging", true); set(a, "dragDropCommitted", false)
+            root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_STARTED, session, key = key))
+            val at = IntArray(2); val base = IntArray(2); target.getLocationOnScreen(at); root.getLocationOnScreen(base)
+            val x = at[0] - base[0] + target.width / 2f; val y = at[1] - base[1] + target.height / 2f
+            root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_LOCATION, session, key = key, x = x, y = y))
+            assertTrue(root.dispatchDragEvent(event(DragEvent.ACTION_DROP, session, key = key, x = x, y = y)))
+            root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_ENDED, session, key = key))
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+        drop("dock_slot_1")
+        assertEquals(key, current(a).dock[1]); assertEquals("", current(a).pages[0][1])
+        drop("workspace_cell_0_2")
+        val after = current(a)
+        assertEquals(key, after.pages[0][2]); assertEquals("", after.dock[1])
+        assertEquals(initial.folders, after.folders)
+        assertEquals(1, (after.pages.flatten() + after.dock).count { it == key })
+        c.pause().stop().destroy()
+    }
+    @Test fun editorRemovesOnlySelectedHomeShortcutWithoutUninstallOrDeletingDockCopy() {
+        val p = seed(); val key = "pkg/App0"
+        val initial = state().copy(pages = listOf(listOf(id, key) + List(18) { "" }, List(20) { "" }, List(20) { "" }), dock = listOf(key, "", "", ""))
+        assertTrue(WorkspaceItemsStore(p).save(initial))
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get(); registerMember(a, key)
+        MainActivity::class.java.getDeclaredMethod("enterEditMode").apply { isAccessible = true }.invoke(a)
+        fun choose(index: Int) {
+            val dialog = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
+            dialog.listView.performItemClick(null, index, index.toLong())
+        }
+        choose(1); choose(0); choose(1); choose(1)
+        val after = current(a)
+        assertEquals("", after.pages[0][1]); assertEquals(key, after.dock[0]); assertEquals(initial.folders, after.folders)
+        assertNull(shadowOf(a).nextStartedActivity)
+        c.pause().stop().destroy()
+    }
+
 }
