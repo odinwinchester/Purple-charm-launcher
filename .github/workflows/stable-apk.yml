@@ -8,12 +8,18 @@ on:
         required: true
         default: '9'
         type: string
+  workflow_call:
+    inputs:
+      version_code:
+        description: 'versionCode da versão aprovada'
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: purple-stable-apk
+  group: purple-stable-apk-${{ github.ref }}-${{ inputs.version_code }}
   cancel-in-progress: false
 
 jobs:
@@ -21,7 +27,7 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     environment: android-signing
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,11 +40,24 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Testar código e artes antes de acessar a chave
+        id: test
         run: |
           set -euo pipefail
           python3 scripts/verify_weather_artwork.py
-          gradle :app:testDebugUnitTest --stacktrace
-      - name: Instalar biblioteca criptográfica
+          gradle clean :app:testDebugUnitTest --stacktrace
+          python3 - <<'PY'
+          import glob, os, xml.etree.ElementTree as ET
+          suites = [ET.parse(p).getroot() for p in glob.glob("app/build/test-results/testDebugUnitTest/TEST-*.xml")]
+          total = sum(int(s.get("tests", 0)) for s in suites)
+          failures = sum(int(s.get("failures", 0)) + int(s.get("errors", 0)) + int(s.get("skipped", 0)) for s in suites)
+          assert total >= 107 and failures == 0, (total, failures)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"total={total}\n")
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"PURPLE_TESTS_TOTAL={total}\n")
+          print(f"{total} testes executados; falhas/erros/ignorados: 0.")
+          PY
+      - name: Instalar biblioteca criptográfica sem secrets
         run: python3 -m pip install --disable-pip-version-check --no-warn-script-location "cryptography==50.0.2"
       - name: Descriptografar keystore e validar fingerprint antes do build
         env:
@@ -82,6 +101,7 @@ jobs:
           test "$ACTUAL_CERT" = "$EXPECTED_CERT" || { echo "Fingerprint diverge do valor protegido; APK bloqueado."; exit 1; }
           echo "PURPLE_KEYSTORE_PATH=$RUNNER_TEMP/purple-release.jks" >> "$GITHUB_ENV"
           echo "PURPLE_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "EXPECTED_CERT=$EXPECTED_CERT" >> "$GITHUB_ENV"
           echo "Certificado SHA-256 validado antes da compilação e publicação."
       - name: Compilar APK release com segredo limitado a este passo
         env:
@@ -89,9 +109,8 @@ jobs:
           PURPLE_KEY_PASSWORD: ${{ secrets.PURPLE_KEY_PASSWORD }}
           PURPLE_KEY_ALIAS: ${{ secrets.PURPLE_KEY_ALIAS }}
         run: gradle :app:assembleRelease --stacktrace
-      - name: Verificar assinatura, pacote, versão, alinhamento e integridade
-        env:
-          EXPECTED_CERT: ${{ vars.PURPLE_SIGNING_CERT_SHA256 }}
+      - name: Verificar assinatura e gerar metadados de auditoria
+        id: verify
         run: |
           set -euo pipefail
           APK=app/build/outputs/apk/release/app-release.apk
@@ -101,25 +120,44 @@ jobs:
           "$TOOLS/zipalign" -c 4 "$APK"
           unzip -t "$APK" | tail -n 2
           "$TOOLS/aapt" dump badging "$APK" > "$RUNNER_TEMP/badging.txt"
-          python3 - "$RUNNER_TEMP/apksigner.txt" "$RUNNER_TEMP/badging.txt" <<'PY'
-          import os, pathlib, re, sys
+          python3 - "$RUNNER_TEMP/apksigner.txt" "$RUNNER_TEMP/badging.txt" "$APK" <<'PY'
+          import datetime, hashlib, json, os, pathlib, re, sys
           signer = pathlib.Path(sys.argv[1]).read_text()
           actual = {s.lower() for s in re.findall(r'certificate SHA-256 digest: ([0-9a-fA-F]+)', signer)}
           expected = os.environ['EXPECTED_CERT'].replace(':', '').lower()
           assert actual == {expected}, 'Certificado inesperado; não distribuir'
           badging = pathlib.Path(sys.argv[2]).read_text()
-          assert "package: name='com.purplecharm.launcher'" in badging
-          assert f"versionCode='{os.environ['PURPLE_VERSION_CODE']}'" in badging
-          print(next(line for line in badging.splitlines() if line.startswith('package:')))
+          match = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
+          assert match, 'Metadados Android ausentes'
+          package, code, version = match.groups()
+          assert package == 'com.purplecharm.launcher'
+          assert code == os.environ['PURPLE_VERSION_CODE']
+          apk = pathlib.Path(sys.argv[3])
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          metadata = {
+              'version': version,
+              'versionCode': int(code),
+              'applicationId': package,
+              'commit': os.environ['GITHUB_SHA'],
+              'builtAtUtc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'validation': {'status': 'passed', 'unitTests': int(os.environ['PURPLE_TESTS_TOTAL']), 'failures': 0, 'skipped': 0},
+              'apkSha256': digest,
+              'certificateSha256': next(iter(actual)),
+              'signatureType': 'STABLE_RELEASE'
+          }
+          pathlib.Path('dist').mkdir(exist_ok=True)
+          pathlib.Path('dist/release-metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
+          pathlib.Path('dist/Purple-Charm-Crystal-Class-v' + version + '-STABLE.apk').write_bytes(apk.read_bytes())
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version_name={version}\napk_sha256={digest}\n')
+          print(f"APK release validado: {package} v{version} code {code}, certificado SHA-256 {next(iter(actual))}.")
           PY
-          sha256sum "$APK"
-          mkdir -p dist
-          cp "$APK" dist/Purple-Charm-Crystal-Class-v0.7.2-STABLE.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Purple-Charm-Crystal-Class-v0.7.2-STABLE
-          path: dist/*.apk
+          name: Purple-Charm-Stable-APK
+          path: dist/*
           if-no-files-found: error
+          retention-days: 30
       - name: Limpar keystore, ciphertext e senhas temporários
         if: always()
         run: |

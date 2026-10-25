@@ -1,0 +1,206 @@
+name: Purple Charm Release Bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: 'Código Android crescente (mínimo 10)'
+        required: true
+        default: '10'
+        type: string
+      publish_release:
+        description: 'Assinar e solicitar publicação oficial após homologar o APK de teste'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: purple-release-${{ github.ref }}-${{ inputs.version_code }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    outputs:
+      version_name: ${{ steps.inspect.outputs.version_name }}
+      version_code: ${{ steps.inspect.outputs.version_code }}
+      tests_total: ${{ steps.tests.outputs.total }}
+      apk_sha256: ${{ steps.inspect.outputs.apk_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Validar recursos e executar todos os testes antes do APK
+        id: tests
+        env:
+          REQUESTED_VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_VERSION_CODE" =~ ^[0-9]+$ ]] && (( REQUESTED_VERSION_CODE >= 10 && REQUESTED_VERSION_CODE <= 2100000000 )) || {
+            echo "versionCode deve ser inteiro entre 10 e 2100000000."
+            exit 1
+          }
+          python3 scripts/verify_weather_artwork.py
+          gradle clean :app:testDebugUnitTest --stacktrace
+          python3 - <<'PY'
+          import glob, os, xml.etree.ElementTree as ET
+          suites = [ET.parse(p).getroot() for p in glob.glob("app/build/test-results/testDebugUnitTest/TEST-*.xml")]
+          total = sum(int(s.get("tests", 0)) for s in suites)
+          failed = sum(int(s.get("failures", 0)) + int(s.get("errors", 0)) + int(s.get("skipped", 0)) for s in suites)
+          assert total >= 107 and failed == 0, (total, failed)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"total={total}\n")
+          print(f"{total} testes executados; falhas/erros/ignorados: 0.")
+          PY
+      - name: Compilar APK de teste descartável
+        env:
+          PURPLE_VERSION_CODE: ${{ inputs.version_code }}
+        run: gradle :app:assembleDebug --stacktrace
+      - name: Validar APK de teste e registrar metadados
+        id: inspect
+        env:
+          REQUESTED_VERSION_CODE: ${{ inputs.version_code }}
+          TESTS_TOTAL: ${{ steps.tests.outputs.total }}
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$TOOLS/zipalign" -c 4 "$APK"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/debug-cert.txt"
+          "$TOOLS/aapt" dump badging "$APK" > "$RUNNER_TEMP/badging.txt"
+          python3 - "$RUNNER_TEMP/badging.txt" "$RUNNER_TEMP/debug-cert.txt" "$APK" <<'PY'
+          import datetime, hashlib, json, os, pathlib, re, sys
+          badging = pathlib.Path(sys.argv[1]).read_text()
+          cert_text = pathlib.Path(sys.argv[2]).read_text()
+          apk = pathlib.Path(sys.argv[3])
+          package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
+          assert package, "Metadados Android ausentes."
+          name, code, version = package.groups()
+          assert name == "com.purplecharm.launcher"
+          assert code == os.environ["REQUESTED_VERSION_CODE"]
+          assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?", version)
+          certs = {x.lower() for x in re.findall(r"certificate SHA-256 digest: ([0-9a-fA-F]+)", cert_text)}
+          assert len(certs) == 1
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          metadata = {
+              "version": version,
+              "versionCode": int(code),
+              "applicationId": name,
+              "commit": os.environ["GITHUB_SHA"],
+              "builtAtUtc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "validation": {"status": "passed", "unitTests": int(os.environ["TESTS_TOTAL"]), "failures": 0, "skipped": 0},
+              "apkSha256": digest,
+              "certificateSha256": next(iter(certs)),
+              "signatureType": "DEBUG_EPHEMERAL_TEST_ONLY"
+          }
+          pathlib.Path("dist").mkdir(exist_ok=True)
+          pathlib.Path("dist/release-metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
+          pathlib.Path("dist/Purple-Charm-Crystal-Class-v" + version + "-code" + code + "-DEBUG-EPHEMERAL.apk").write_bytes(apk.read_bytes())
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"version_name={version}\nversion_code={code}\napk_sha256={digest}\n")
+          print(f"APK teste validado: {name} v{version} code {code}; SHA-256 {digest}. Assinatura descartável.")
+          PY
+      - name: Disponibilizar APK de teste e metadados
+        uses: actions/upload-artifact@v4
+        with:
+          name: Purple-Charm-Test-v${{ steps.inspect.outputs.version_name }}-code${{ steps.inspect.outputs.version_code }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  sign:
+    needs: validate
+    if: ${{ inputs.publish_release == true && github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/stable-apk.yml
+    with:
+      version_code: ${{ inputs.version_code }}
+
+  publish:
+    needs: [validate, sign]
+    if: ${{ inputs.publish_release == true && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    environment: android-release
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - name: Validar confirmação do environment de publicação
+        env:
+          RELEASE_PROTECTION_ACK: ${{ vars.PURPLE_RELEASE_ENVIRONMENT_PROTECTED }}
+          VERSION_NAME: ${{ needs.validate.outputs.version_name }}
+          VERSION_CODE: ${{ needs.validate.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          test "$RELEASE_PROTECTION_ACK" = "YES" || {
+            echo "Configure e proteja android-release antes de publicar."
+            exit 1
+          }
+          [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
+          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]]
+      - name: Baixar APK assinado e metadados validados
+        uses: actions/download-artifact@v4
+        with:
+          name: Purple-Charm-Stable-APK
+          path: dist
+      - name: Conferir metadados e criar release oficial aprovada
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_NAME: ${{ needs.validate.outputs.version_name }}
+          VERSION_CODE: ${{ needs.validate.outputs.version_code }}
+          TESTS_TOTAL: ${{ needs.validate.outputs.tests_total }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          APK="dist/Purple-Charm-Crystal-Class-v${VERSION_NAME}-STABLE.apk"
+          test -s "$APK" && test -s dist/release-metadata.json
+          python3 - "$APK" dist/release-metadata.json <<'PY'
+          import hashlib, json, os, pathlib, sys
+          apk = pathlib.Path(sys.argv[1])
+          data = json.loads(pathlib.Path(sys.argv[2]).read_text())
+          assert data["validation"]["status"] == "passed"
+          assert data["applicationId"] == "com.purplecharm.launcher"
+          assert data["version"] == os.environ["VERSION_NAME"]
+          assert str(data["versionCode"]) == os.environ["VERSION_CODE"]
+          assert data["commit"] == os.environ["COMMIT_SHA"]
+          assert data["validation"]["unitTests"] >= 107
+          assert data["validation"]["failures"] == 0 and data["validation"]["skipped"] == 0
+          assert data["apkSha256"] == hashlib.sha256(apk.read_bytes()).hexdigest()
+          assert len(data["certificateSha256"]) == 64
+          print("APK assinado e metadados de validação conferidos.")
+          PY
+          TAG="v${VERSION_NAME}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release/tag já existe; publicação duplicada bloqueada."
+            exit 1
+          fi
+          cat > dist/release-notes.md <<EOF
+          Purple Charm Crystal Class v${VERSION_NAME}
+
+          - applicationId: com.purplecharm.launcher
+          - versionCode: ${VERSION_CODE}
+          - Commit: ${COMMIT_SHA}
+          - Testes aprovados: ${TESTS_TOTAL}; falhas/ignorados: 0
+          - APK assinado validado pelo workflow protegido android-signing
+          - SHA-256 do certificado e do APK: release-metadata.json
+
+          <!-- purple-charm-release-approved -->
+          EOF
+          gh release create "$TAG" "$APK" dist/release-metadata.json \
+            --title "Purple Charm Crystal Class v${VERSION_NAME}" \
+            --notes-file dist/release-notes.md \
+            --target "$COMMIT_SHA"
