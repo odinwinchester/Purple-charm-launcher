@@ -1,0 +1,63 @@
+name: Verificar backup de assinatura
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-recovery:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    environment: android-signing
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Instalar biblioteca criptográfica sem secrets
+        run: python3 -m pip install --disable-pip-version-check --no-warn-script-location "cryptography==50.0.2"
+      - name: Validar backup, senha e fingerprint sem exportar chave
+        env:
+          KEYSTORE_CIPHERTEXT_B64: ${{ secrets.PURPLE_KEYSTORE_CIPHERTEXT_B64 }}
+          RECOVERY_PASSPHRASE: ${{ secrets.PURPLE_RECOVERY_PASSPHRASE }}
+          STORE_PASSWORD: ${{ secrets.PURPLE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PURPLE_KEY_ALIAS }}
+          EXPECTED_CERT: ${{ vars.PURPLE_SIGNING_CERT_SHA256 }}
+          PROTECTION_ACK: ${{ vars.PURPLE_SIGNING_ENVIRONMENT_PROTECTED }}
+        run: |
+          set -euo pipefail
+          test "$PROTECTION_ACK" = "YES" || { echo "Environment não foi confirmado como protegido; recuperação bloqueada."; exit 1; }
+          test -n "$KEYSTORE_CIPHERTEXT_B64" && test -n "$RECOVERY_PASSPHRASE" && test -n "$STORE_PASSWORD" && test -n "$KEY_ALIAS" || {
+            echo "Secrets necessários ausentes no environment android-signing."
+            exit 1
+          }
+          EXPECTED_CERT="$(printf '%s' "$EXPECTED_CERT" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          [[ "$EXPECTED_CERT" =~ ^[0-9a-f]{64}$ ]] || { echo "PURPLE_SIGNING_CERT_SHA256 inválido."; exit 1; }
+          umask 077
+          printf '%s' "$RECOVERY_PASSPHRASE" > "$RUNNER_TEMP/recovery.pass"
+          printf '%s' "$STORE_PASSWORD" > "$RUNNER_TEMP/store.pass"
+          chmod 600 "$RUNNER_TEMP/"*.pass
+          printf '%s' "$KEYSTORE_CIPHERTEXT_B64" | base64 --decode > "$RUNNER_TEMP/keystore.pccks"
+          python3 scripts/keystore_crypto.py decrypt "$RUNNER_TEMP/keystore.pccks" "$RUNNER_TEMP/purple-release.jks" --passphrase-file "$RUNNER_TEMP/recovery.pass"
+          keytool -exportcert -alias "$KEY_ALIAS" -keystore "$RUNNER_TEMP/purple-release.jks" \
+            -storepass:file "$RUNNER_TEMP/store.pass" -file "$RUNNER_TEMP/certificate.der" >/dev/null 2>&1 || {
+              echo "Keystore, senha ou alias inválido."
+              exit 1
+            }
+          ACTUAL_CERT="$(openssl dgst -sha256 "$RUNNER_TEMP/certificate.der" | awk '{print tolower($NF)}')"
+          test "$ACTUAL_CERT" = "$EXPECTED_CERT" || { echo "Fingerprint do backup diverge; recuperação bloqueada."; exit 1; }
+          echo "Recuperação validada: AES-GCM, senha do keystore e certificado SHA-256 conferem."
+          echo "Nenhum arquivo descriptografado foi publicado ou enviado para artifact."
+      - name: Limpar keystore, ciphertext e senhas temporários
+        if: always()
+        run: |
+          python3 - "$RUNNER_TEMP" <<'PY'
+          import pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          for name in ("purple-release.jks", "certificate.der", "keystore.pccks", "recovery.pass", "store.pass"):
+              p = root / name
+              if p.exists():
+                  p.unlink()
+          PY

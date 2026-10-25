@@ -6,6 +6,7 @@ Esta preparação implementa uma chave Android permanente e backup cifrado para 
 
 - .github/workflows/signing-crypto-selftest.yml executa em PR sem secrets e testa uma chave descartável.
 - .github/workflows/generate-signing-keystore.yml gera JKS uma única vez em execução manual, com controle de senha já existente e apenas em android-signing. O artefato inclui ciphertext AES-256-GCM autenticado, Base64 desse ciphertext e fingerprint público.
+- .github/workflows/verify-signing-recovery.yml valida manualmente a recuperação e o fingerprint, sem publicar keystore descriptografado.
 - .github/workflows/stable-apk.yml restaura o keystore cifrado em diretório temporário, valida o fingerprint antes do build e confirma assinatura, pacote, versionCode, zipalign e integridade antes de publicar APK.
 - scripts/keystore_crypto.py implementa criptografia autenticada com AES-GCM e chave derivada por scrypt.
 - scripts/test_signing_crypto.sh testa ida e volta, igualdade binária e do certificado, rejeição de frase errada e detecção de ciphertext adulterado.
@@ -46,9 +47,10 @@ O GitHub não permite acionar workflow_dispatch de um workflow que só existe na
 4. Copie o conteúdo de keystore-backup.base64.txt para o secret PURPLE_KEYSTORE_CIPHERTEXT_B64. Copie certificate.sha256 para a variable PURPLE_SIGNING_CERT_SHA256.
 5. Baixe keystore-backup.pccks pelo celular e guarde uma cópia em pasta privada do Google Drive. Preserve a frase de recuperação separadamente. Artifact expira em 90 dias; o backup no Drive e ciphertext no GitHub Secret são duráveis.
 6. Após receber um artifact, não reexecute nem use Re-run na geração. Confirme que o ciphertext e fingerprint foram salvos antes de encerrar. A geração é bloqueada se o ciphertext já existe, ou se o Actions ainda registra uma execução bem-sucedida/artefato anterior. Se a execução falhar antes de produzir artifact, verifique que artifact não existe e o ciphertext segue vazio antes de considerar nova execução.
-7. Para assinar versão futura, Actions → APK estável assinado → Run workflow; selecione main e use versionCode maior que o instalado. Aguarde aprovação do environment antes de baixar o APK.
+7. Execute Actions → Verificar backup de assinatura para confirmar restauração/fingerprint; o workflow não publica arquivos descriptografados.
+8. Para assinar versão futura, Actions → APK estável assinado → Run workflow; selecione main e use versionCode maior que o instalado. Aguarde aprovação do environment antes de baixar o APK.
 
-A cópia no Drive é cifrada com AES-256-GCM e só pode ser aberta com a frase de recuperação. Para recuperar por meio do runner, o workflow estável descriptografa apenas em arquivo temporário após aprovação; não publique o resultado nem o envie por mensagem.
+A cópia no Drive é cifrada com AES-256-GCM e só pode ser aberta com a frase de recuperação. O workflow Verificar backup de assinatura testa a recuperação e remove o arquivo temporário sem artifact. O fluxo estável reutiliza a mesma descriptografia temporária para assinar.
 
 ## Estado e limites
 
