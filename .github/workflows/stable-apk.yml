@@ -64,8 +64,8 @@ jobs:
           import os,re,pathlib
           root=pathlib.Path(os.environ['RUNNER_TEMP'])
           cert=(root/'purple-cert.txt').read_text()
-          actual=re.search(r'Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)',cert).group(1).lower()
-          assert actual == os.environ['EXPECTED_CERT'].replace(':','').lower(), 'Certificado inesperado: nao distribuir'
+          actual={s.lower() for s in re.findall(r'certificate SHA-256 digest: ([0-9a-fA-F]+)',cert)}
+          assert actual == {os.environ['EXPECTED_CERT'].replace(':','').lower()}, 'Certificado inesperado: nao distribuir'
           badging=(root/'purple-badging.txt').read_text()
           assert "package: name='com.purplecharm.launcher'" in badging
           assert f"versionCode='{os.environ['PURPLE_VERSION_CODE']}'" in badging

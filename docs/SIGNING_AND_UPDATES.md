@@ -4,6 +4,8 @@ Identificador preservado: com.purplecharm.launcher. Versão0.7.1, versionCode pa
 
 ## Diagnóstico e limite
 
+Comparação dos logs confirmou certificados diferentes: run40148632092 (APK9b367d...) usa SHA-256 d26c279a2628db655a74c2ef5ef4e7a1684d56ff8ba00b9986e8dd44f906b2f5; run40109985804 (APKc57544...) usa afce6b7e23934997267037139a3b7dce4d3b2e338bab145437e00f4744880598. Não são atualizações compatíveis entre si.
+
 O workflow antigo somente executava assembleDebug, sem signingConfig persistente. Um runner efêmero pode gerar uma nova chave debug. Certificados públicos no APK/log não permitem recuperar a chave privada. Um código maior sozinho não permite atualizar APK assinado por outra chave.
 
 O workflow android.yml continua oferecendo APK DEBUG-EPHEMERAL, explicitamente diagnóstico; não promete atualização sobre instalações anteriores. Não reutilizar cache público de Actions nem artefatos para guardar chave privada. Nunca desinstalar automaticamente.

@@ -372,4 +372,66 @@ class WorkspaceAndroidTest {
         controller.pause().stop().destroy()
     }
 
+    private fun registerMember(a: MainActivity, key: String) {
+        @Suppress("UNCHECKED_CAST")
+        val apps = MainActivity::class.java.getDeclaredField("apps").apply { isAccessible = true }.get(a) as MutableList<android.content.pm.ResolveInfo>
+        apps.add(android.content.pm.ResolveInfo().apply {
+            nonLocalizedLabel = key
+            activityInfo = android.content.pm.ActivityInfo().apply {
+                packageName = key.substringBefore('/'); name = key.substringAfter('/')
+                applicationInfo = android.content.pm.ApplicationInfo(a.applicationInfo).apply { packageName = key.substringBefore('/') }
+            }
+        })
+    }
+    @Test fun nativeDragLeavesSameWindowFolderAndCommitsHomeWithoutDuplicatingOrLosingOverflow() {
+        for (count in listOf(1, 8)) {
+            val p = seed(); val initial = state().copy(folders = mapOf(id to WorkspaceFolder("Teste", List(count) { "pkg/Member$it" })))
+            assertTrue(WorkspaceItemsStore(p).save(initial))
+            val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get(); registerMember(a, "pkg/Member0")
+            a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!.performClick(); layout(a)
+            val folder = MainActivity::class.java.getDeclaredField("folderDialog").apply { isAccessible = true }.get(a) as FolderSurface
+            val source = folder.content.findViewWithTag<View>("folder_member_0")!!
+            val session = WorkspaceDragSession("pkg/Member0", current(a))
+            set(a, "dragSession", session); set(a, "dragging", true); set(a, "dragSource", source)
+            val root = a.window.decorView
+            assertTrue(root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_STARTED, session, key = session.key)))
+            val target = root.findViewWithTag<View>("workspace_cell_0_1")!!
+            val origin = IntArray(2); val base = IntArray(2); target.getLocationOnScreen(origin); root.getLocationOnScreen(base)
+            val x = origin[0] - base[0] + target.width / 2f; val y = origin[1] - base[1] + target.height / 2f
+            // First move outside the folder's panel, then onto the measured home cell.
+            root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_LOCATION, session, key = session.key, x = 1f, y = 1f))
+            assertTrue(folder.collapsed); assertTrue(source.isAttachedToWindow)
+            root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_LOCATION, session, key = session.key, x = x, y = y))
+            assertTrue(root.dispatchDragEvent(event(DragEvent.ACTION_DROP, session, key = session.key, x = x, y = y)))
+            root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_ENDED, session, key = session.key))
+            shadowOf(Looper.getMainLooper()).idle()
+            val after = current(a)
+            assertEquals(session.key, after.pages[0][1]); assertFalse(folder.isShowing)
+            if (count == 1) { assertFalse(id in after.folders); assertEquals("", after.pages[0][0]) }
+            else assertEquals(count - 1, after.folders.getValue(id).apps.size)
+            val all = after.pages.flatten() + after.dock + after.folders.values.flatMap { it.apps }
+            assertEquals(1, all.count { it == session.key })
+            c.pause().stop().destroy()
+            val restarted = Robolectric.buildActivity(MainActivity::class.java).setup()
+            assertEquals(after, current(restarted.get())); restarted.pause().stop().destroy()
+        }
+    }
+    @Test fun canceledNativeFolderExitRestoresPanelAndEveryPreference() {
+        val p = seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        registerMember(a, "pkg/A")
+        a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!.performClick(); layout(a)
+        val before = p.all.toMap()
+        val folder = MainActivity::class.java.getDeclaredField("folderDialog").apply { isAccessible = true }.get(a) as FolderSurface
+        val session = WorkspaceDragSession("pkg/A", current(a))
+        set(a, "dragSession", session); set(a, "dragging", true)
+        val root = a.window.decorView
+        root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_STARTED, session, key = session.key))
+        root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_LOCATION, session, key = session.key))
+        assertTrue(folder.collapsed)
+        root.dispatchDragEvent(event(DragEvent.ACTION_DRAG_ENDED, session, key = session.key))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(folder.collapsed); assertTrue(folder.isShowing); assertEquals(before, p.all)
+        c.pause().stop().destroy()
+    }
+
 }
