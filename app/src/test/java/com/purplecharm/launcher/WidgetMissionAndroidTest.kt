@@ -158,4 +158,42 @@ class WidgetMissionAndroidTest {
         assertEquals(before, p.all)
     }
 
+    @Test fun frameworkHostViewIsCreatedReusedAndKeptOutsideIconViewport() {
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        val p = prefs("hostView"); p.edit().clear().commit()
+        val manager = AppWidgetManager.getInstance(a)
+        val info = provider().apply { provider = ComponentName(a.packageName, "WidgetProbeProvider") }
+        val metadata = android.content.pm.ActivityInfo().apply {
+            packageName = a.packageName; name = "WidgetProbeProvider"; applicationInfo = a.applicationInfo
+        }
+        AppWidgetProviderInfo::class.java.getDeclaredField("providerInfo").apply { isAccessible = true }.set(info, metadata)
+        shadowOf(manager).addInstalledProvider(info); shadowOf(manager).setAllowedToBindAppWidgets(true)
+        val controller = AndroidWidgetController(a, p, { 3 }, { 5 }, {})
+        val host = AndroidWidgetController::class.java.getDeclaredField("host").apply { isAccessible = true }.get(controller) as android.appwidget.AppWidgetHost
+        shadowOf(host).setAppWidgetIdToAllocate(104); controller.add(info)
+        val firstPage = controller.pageView(1)!!
+        val hosted = views(firstPage).filterIsInstance<android.appwidget.AppWidgetHostView>().single()
+        assertEquals(104, hosted.appWidgetId)
+        val secondPage = controller.pageView(1)!!
+        assertSame(hosted, views(secondPage).filterIsInstance<android.appwidget.AppWidgetHostView>().single())
+        controller.start(); assertTrue(shadowOf(host).isListening)
+        controller.stop(); assertFalse(shadowOf(host).isListening)
+        controller.close(); c.pause().stop().destroy()
+    }
+    @Test fun forecastIsNeverBorrowedFromAnotherCityOrKeptAfterItsLastPointExpires() {
+        val p = prefs("metCity"); p.edit().clear().commit()
+        val now = System.currentTimeMillis()
+        val timestamp = java.time.Instant.ofEpochMilli(now - 60_000).toString()
+        val body = """{"properties":{"timeseries":[{"time":"$timestamp","data":{"instant":{"details":{"air_temperature":23.25}},"next_1_hours":{"summary":{"symbol_code":"cloudy"}}}}]}}"""
+        p.edit().putString("gothic_weather_lat", "0").putString("gothic_weather_lon", "0")
+            .putString("met_forecast_location", "lat=1.0000&lon=1.0000").putString("met_forecast_json", body).commit()
+        val client = MetWeatherClient(p)
+        assertNull(client.current(now))
+        p.edit().putString("met_forecast_location", "lat=0.0000&lon=0.0000").commit()
+        assertEquals(23.25, client.current(now)!!.temperature, 0.0)
+        assertNull(client.current(now + 3 * 60 * 60_000L))
+        p.edit().putString("gothic_weather_lat", "5").commit()
+        assertNull(client.current(now))
+    }
+
 }
