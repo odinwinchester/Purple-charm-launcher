@@ -164,6 +164,11 @@ class ConsolidationAndroidTest {
             val name = tile.getChildAt(1) as TextView
             assertEquals(2, name.maxLines); assertEquals(2, name.minLines)
         }
+        val icons = field(a, "iconCache") as android.util.LruCache<*, *>
+        assertEquals(4 * 1024 * 1024, icons.maxSize())
+        assertTrue(icons.size() <= icons.maxSize())
+        a.onTrimMemory(android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW)
+        assertEquals(0, icons.size())
         c.pause().stop().destroy()
     }
     @Test fun folderHandoffCollapsesWindowAndLeavesDataUntouchedUntilDrop() {
