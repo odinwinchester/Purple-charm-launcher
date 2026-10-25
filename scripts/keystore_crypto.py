@@ -32,6 +32,25 @@ def derive(passphrase: bytes, salt: bytes) -> bytes:
     )
 
 
+def write_new(target: pathlib.Path, data: bytes) -> None:
+    """Atomically create a private output without replacing an existing file."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f".{target.name}.{secrets.token_hex(12)}.tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(data)
+            output.flush()
+            os.fsync(output.fileno())
+        os.link(temporary, target)
+        target.chmod(0o600)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def encrypt(source: pathlib.Path, target: pathlib.Path, password_file: pathlib.Path) -> None:
     data = source.read_bytes()
     passphrase = password_file.read_bytes().rstrip(b"\r\n")
@@ -39,8 +58,7 @@ def encrypt(source: pathlib.Path, target: pathlib.Path, password_file: pathlib.P
     nonce = secrets.token_bytes(NONCE_SIZE)
     header = MAGIC + salt + nonce
     ciphertext = AESGCM(derive(passphrase, salt)).encrypt(nonce, data, header)
-    target.write_bytes(header + ciphertext)
-    target.chmod(0o600)
+    write_new(target, header + ciphertext)
 
 
 def decrypt(source: pathlib.Path, target: pathlib.Path, password_file: pathlib.Path) -> None:
@@ -54,8 +72,7 @@ def decrypt(source: pathlib.Path, target: pathlib.Path, password_file: pathlib.P
     header = payload[: offset + SALT_SIZE + NONCE_SIZE]
     passphrase = password_file.read_bytes().rstrip(b"\r\n")
     plaintext = AESGCM(derive(passphrase, salt)).decrypt(nonce, payload[len(header) :], header)
-    target.write_bytes(plaintext)
-    target.chmod(0o600)
+    write_new(target, plaintext)
 
 
 def main() -> int:
