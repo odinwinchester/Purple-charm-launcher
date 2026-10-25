@@ -1847,6 +1847,7 @@ class MainActivity : Activity(), SensorEventListener {
             else if (weatherActive) "Previsão indisponível • tocar para detalhes" else "Escolher localização • dados MET"
         if (reuseUnchanged && visualKey == lastCelestialKey && celestialView != null) {
             if (liveWeatherLabel?.text?.toString() != liveText) liveWeatherLabel?.text = liveText
+            liveWeatherLabel?.contentDescription = "Dados meteorológicos MET Norway para ${weatherLocation.summary}. Os valores impressos no PNG são ilustrativos."
             return celestialView!!
         }
         lastCelestialKey = visualKey
@@ -2105,10 +2106,7 @@ class MainActivity : Activity(), SensorEventListener {
                 val holder = FrameLayout(this).apply {
                     tag = "dock_slot_$dockIndex"
                     addView(view, FrameLayout.LayoutParams(-1, -1))
-                    addView(label("⋮", 16f).apply {
-                        contentDescription = "Configurar posição ${dockIndex + 1} do dock"
-                        setOnClickListener { dockSlotOptions(dockIndex) }
-                    }, FrameLayout.LayoutParams(dp(24), dp(26), Gravity.TOP or Gravity.END))
+
                 }
                 acceptDrop(holder) { key -> placeInDock(key, dockIndex) }
                 holder
