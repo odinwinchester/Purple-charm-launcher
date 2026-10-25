@@ -113,6 +113,30 @@ class WorkMission2RegressionTest {
         controller.pause().stop().destroy()
     }
 
+    @Test fun dragStartsOnlyAfterExplicitContextMenuChoiceAndCancelPreservesWorkspace() {
+        seedApp()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get()
+        @Suppress("UNCHECKED_CAST")
+        val apps = field(a, "apps") as MutableList<ResolveInfo>
+        apps.add(fake(a))
+        call(a, "showHome"); layout(a)
+        val before = prefs().all.toMap()
+        val tile = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
+        tile.performLongClick()
+        assertFalse(field(a, "dragging") as Boolean)
+        org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog().listView
+            .performItemClick(null, 1, 1L)
+        assertTrue(field(a, "dragging") as Boolean)
+        assertNotNull(field(a, "dragSession"))
+        assertEquals(before, prefs().all)
+        a.onBackPressed()
+        org.robolectric.Shadows.shadowOf(org.robolectric.RuntimeEnvironment.getApplication().mainLooper).idle()
+        assertFalse(field(a, "dragging") as Boolean)
+        assertEquals(before, prefs().all)
+        controller.pause().stop().destroy()
+    }
+
     @Test fun swipeClassifierRejectsDiagonalsAndSelectsOnlyOneAxis() {
         assertEquals(WorkspaceSwipe.HORIZONTAL, WorkspaceGestureClassifier.classify(-150f, 40f, 65f))
         assertEquals(WorkspaceSwipe.VERTICAL, WorkspaceGestureClassifier.classify(20f, -120f, 65f))
