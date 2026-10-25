@@ -20,8 +20,6 @@
         android:allowBackup="false"
         android:supportsRtl="true">
 
-        <activity android:name=".RetroImporterActivity" android:exported="false" />
-
         <activity
             android:name=".MainActivity"
             android:exported="true">

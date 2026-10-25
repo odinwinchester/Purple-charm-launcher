@@ -69,7 +69,8 @@ class MainActivity : Activity(), SensorEventListener {
     private var dragSource: View? = null
     private val workspaceStore by lazy { WorkspaceItemsStore(prefs) }
     private val workspaceMime = "application/vnd.purplecharm.workspace-item"
-    private var folderDialog: Dialog? = null
+    private var folderDialog: FolderSurface? = null
+    private lateinit var homeHost: FrameLayout
     private var openFolderId: String? = null
     private var pendingDrawerDrag = false
     private var folderHomeDragArmed = false
@@ -217,7 +218,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun managePages() {
         val options = arrayOf("＋ Adicionar página", "－ Excluir página atual (se vazia)")
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        SmokeDialogBuilder(this)
             .setTitle("✦ Páginas Purple Charm • ${pageCount()} de $maxPages")
             .setItems(options) { _, which ->
                 if (which == 0) {
@@ -389,6 +390,9 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun completeWorkspaceDrag() {
+        if (folderDialog?.collapsed == true) {
+            if (dragDropCommitted) folderDialog?.dismiss() else folderDialog?.restore()
+        }
         dragSession?.cancel()
         dragSession = null
         dragging = false
@@ -538,8 +542,6 @@ class MainActivity : Activity(), SensorEventListener {
         }
         folderDialog?.dismiss()
         folderHomeDragArmed = false
-        val dialog = Dialog(this)
-        folderDialog = dialog
         openFolderId = id
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -589,37 +591,24 @@ class MainActivity : Activity(), SensorEventListener {
                 LinearLayout.LayoutParams(0, -2, 1f))
         }
         panel.addView(tools)
-        panel.addView(label("Fechar", 12f).apply { setPadding(0, dp(8), 0, 0); setOnClickListener { dialog.dismiss() } })
-        dialog.setOnCancelListener { if (dragging) cancelWorkspaceDrag() }
-        dialog.setOnDismissListener {
-            if (folderDialog === dialog) { folderDialog = null; openFolderId = null }
-        }
-        dialog.setContentView(panel)
-        dialog.show()
-        dialog.window?.apply {
-            setBackgroundDrawableResource(android.R.color.transparent)
-            clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setLayout((resources.displayMetrics.widthPixels - dp(32)).coerceAtMost(dp(360)), ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
+        panel.addView(label("Fechar", 12f).apply { setPadding(0, dp(8), 0, 0); setOnClickListener { folderDialog?.dismiss() } })
+        val surface = FolderSurface(this, homeHost, panel,
+            onCancel = { if (dragging) cancelWorkspaceDrag() },
+            onDismiss = { folderDialog = null; openFolderId = null })
+        folderDialog = surface
+        surface.show()
     }
 
     private fun startFolderHomeDrag(source: View, key: String): Boolean {
-        if (dragging || !knownItem(key)) return false
-        // Use the still-attached home view as source, just as drawer-to-home dragging does.
-        pendingDrawerDrag = true
-        folderDialog?.dismiss()
-        pages.post {
-            pendingDrawerDrag = false
-            if (!isFinishing && !isDestroyed && !startItemDrag(pages, key, View.DragShadowBuilder(source)))
-                Toast.makeText(this, "Arraste não iniciado; aplicativo preservado na pasta", Toast.LENGTH_SHORT).show()
-        }
+        if (!startItemDrag(source, key)) return false
+        folderDialog?.collapse()
         return true
     }
 
     private fun renameFolder(id: String) {
         val folder = runCatching { workspaceStore.folders()[id] }.getOrNull() ?: return
         val input = EditText(this).apply { setText(folder.name); setSingleLine(true) }
-        AlertDialog.Builder(this).setTitle("Renomear pasta").setView(input)
+        SmokeDialogBuilder(this).setTitle("Renomear pasta").setView(input)
             .setPositiveButton("Salvar") { _, _ ->
                 val state = runCatching { workspaceItems() }.getOrNull()
                 if (state != null) saveWorkspaceEdit(WorkspaceEdits.rename(state, id, input.text.toString()))
@@ -630,7 +619,7 @@ class MainActivity : Activity(), SensorEventListener {
         val folder = runCatching { workspaceStore.folders()[id] }.getOrNull() ?: return
         val available = apps.filter { appKey(it) !in folder.apps }
         val selected = BooleanArray(available.size)
-        AlertDialog.Builder(this).setTitle("Adicionar aplicativos")
+        SmokeDialogBuilder(this).setTitle("Adicionar aplicativos")
             .setMultiChoiceItems(available.map { appLabel(it) }.toTypedArray(), selected) { _, index, checked ->
                 selected[index] = checked
             }.setPositiveButton("Adicionar") { _, _ ->
@@ -644,10 +633,10 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun folderAppActions(id: String) {
         val folder = runCatching { workspaceStore.folders()[id] }.getOrNull() ?: return
-        AlertDialog.Builder(this).setTitle("Organizar aplicativos da pasta")
+        SmokeDialogBuilder(this).setTitle("Organizar aplicativos da pasta")
             .setItems(folder.apps.map { resolveKey(it)?.loadLabel(packageManager)?.toString() ?: it.substringAfterLast('/') }.toTypedArray()) { _, index ->
                 val key = folder.apps[index]
-                AlertDialog.Builder(this).setTitle(resolveKey(key)?.loadLabel(packageManager)?.toString() ?: key)
+                SmokeDialogBuilder(this).setTitle(resolveKey(key)?.loadLabel(packageManager)?.toString() ?: key)
                     .setItems(arrayOf("Mover para a tela inicial", "Remover atalho da pasta", "Mover antes", "Mover depois")) { _, action ->
                         val state = runCatching { workspaceItems() }.getOrNull() ?: return@setItems
                         val next = when (action) {
@@ -675,7 +664,7 @@ class MainActivity : Activity(), SensorEventListener {
         labels: Array<String>, values: Array<String>, default: String
     ) {
         val selectedIndex = values.indexOf(setting(key, default)).coerceAtLeast(0)
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        SmokeDialogBuilder(this)
             .setTitle(title)
             .setSingleChoiceItems(labels, selectedIndex) { dialog, index ->
                 saveSetting(key, values[index])
@@ -687,11 +676,7 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     // Janela de configurações com o fundo neon independente da tela inicial.
-    private fun smokePanel(): GradientDrawable = GradientDrawable().apply {
-        setColor(Color.argb(218, 14, 9, 20))
-        cornerRadius = dp(18).toFloat()
-        setStroke(dp(1).coerceAtLeast(1), Color.argb(110, 171, 107, 213))
-    }
+    private fun smokePanel(): GradientDrawable = SmokeUi.panel(this)
     private fun optionHighlight(): android.graphics.drawable.StateListDrawable {
         val selected = GradientDrawable().apply {
             setColor(Color.argb(75, 139, 67, 184)); cornerRadius = dp(10).toFloat()
@@ -713,7 +698,7 @@ class MainActivity : Activity(), SensorEventListener {
             background = smokePanel()
         }
         panel.addView(label("✦ Purple Charm • Configurações", 18f, true))
-        listOf("⚙ Configurações do sistema", "✦ Configurações do tema", "▦ Configurações do launcher")
+        listOf("✦ Configurações do tema", "▦ Configurações do launcher")
             .forEachIndexed { choice, text ->
                 panel.addView(label(text, 15f).apply {
                     tag = "settings_command_$choice"
@@ -723,10 +708,8 @@ class MainActivity : Activity(), SensorEventListener {
                     setOnClickListener {
                         dialog.dismiss()
                         when (choice) {
-                            0 -> try { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) }
-                                catch (_: Exception) { Toast.makeText(this@MainActivity, "Não foi possível abrir o sistema", Toast.LENGTH_SHORT).show() }
-                            1 -> settingsCategory("Tema")
-                            2 -> settingsCategory("Launcher")
+                            0 -> settingsCategory("Tema")
+                            1 -> settingsCategory("Launcher")
                         }
                     }
                 })
@@ -742,14 +725,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun settingsCategory(category: String) {
         val dialog = Dialog(this)
-        val frame = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
-        val backdrop = ImageView(this).apply {
-            setImageDrawable(packagedImage(R.drawable.wallpaper_neon, wallpaper = true))
-            scaleType = ImageView.ScaleType.CENTER_CROP
-        }
-        frame.addView(backdrop, FrameLayout.LayoutParams(-1, -1))
-        frame.addView(View(this).apply { setBackgroundColor(Color.argb(145, 0, 0, 0)) },
-            FrameLayout.LayoutParams(-1, -1))
+        val frame = FrameLayout(this).apply { background = smokePanel() }
         val scroll = ScrollView(this)
         val menu = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -768,9 +744,6 @@ class MainActivity : Activity(), SensorEventListener {
             })
         }
         if (category == "Tema") {
-        option("✦ Importar tema Purple Charm Retro 0.4") {
-            startActivity(Intent(this, RetroImporterActivity::class.java))
-        }
         option("✦ Máscara para ícones sem tema: " +
             if (setting("fallback_skin", "original") == "ghost") "Cristal Ghost Fire" else "Original") {
             chooseSetting("Ícones sem arte original", "fallback_skin",
@@ -807,7 +780,7 @@ class MainActivity : Activity(), SensorEventListener {
                 arrayOf("cube", "flip", "zoom", "slide", "none"), "cube")
         }
         option("✦ Restaurar gestos e grade") {
-            AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Restaurar configurações?")
+            SmokeDialogBuilder(this).setTitle("Restaurar configurações?")
                 .setMessage("Isso não altera seus wallpapers nem a organização.")
                 .setPositiveButton("Restaurar") { _, _ ->
                     prefs.edit().remove("pc_swipe_up").remove("pc_swipe_down").remove("pc_double_tap")
@@ -816,7 +789,7 @@ class MainActivity : Activity(), SensorEventListener {
                 }.setNegativeButton("Cancelar", null).show()
         }
         option("✦ Restaurar organização dos ícones") {
-            AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Restaurar organização?")
+            SmokeDialogBuilder(this).setTitle("Restaurar organização?")
                 .setMessage("As posições das páginas, pastas e dock serão restauradas. Aplicativos não serão desinstalados.")
                 .setPositiveButton("Restaurar") { _, _ ->
                     if (workspaceStore.reset()) {
@@ -997,12 +970,27 @@ class MainActivity : Activity(), SensorEventListener {
         value: String,
         size: Float = 16f
     ): TextView = label(value, size).apply {
-        background = glass(18)
+        background = optionHighlight()
         setPadding(dp(12), dp(10), dp(12), dp(10))
     }
 
     private fun buildRoot(backgroundResource: Int? = null): LinearLayout {
-        val frame = FrameLayout(this)
+        val frame = object : FrameLayout(this) {
+            override fun dispatchDragEvent(event: DragEvent): Boolean {
+                if (ownsDrag(event)) {
+                    if (event.action == DragEvent.ACTION_DRAG_LOCATION) {
+                        val folder = folderDialog
+                        if (folder != null && !folder.collapsed) {
+                            val at = IntArray(2); getLocationOnScreen(at)
+                            if (!folder.containsScreenPoint(at[0] + event.x.toInt(), at[1] + event.y.toInt())) folder.collapse()
+                        }
+                    }
+                    if (event.action == DragEvent.ACTION_DRAG_ENDED) finishWorkspaceDrag()
+                }
+                return super.dispatchDragEvent(event)
+            }
+        }
+        homeHost = frame
         frame.setBackgroundColor(Color.BLACK)
 
         backgroundImage = ImageView(this).apply {
@@ -1102,7 +1090,7 @@ class MainActivity : Activity(), SensorEventListener {
         val dialog = Dialog(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.BLACK)
+            background = smokePanel()
             setPadding(dp(14), dp(20), dp(14), dp(12))
         }
         val header = glassButton("‹     ✦ Papéis de parede", 21f).apply {
@@ -1800,18 +1788,18 @@ class MainActivity : Activity(), SensorEventListener {
                     "\nMET Norway • previsão $time$stale"
             }
         }
-        AlertDialog.Builder(this).setTitle("Previsão real • MET Norway")
+        SmokeDialogBuilder(this).setTitle("Previsão real • MET Norway")
             .setMessage("${weatherLocation.summary}\n$liveText\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.")
             .setPositiveButton("Fechar", null).show()
     }
 
     private fun moonWidgetOptions() {
-        AlertDialog.Builder(this).setTitle("Clima • automático por padrão")
+        SmokeDialogBuilder(this).setTitle("Clima • automático por padrão")
             .setItems(arrayOf("Localização e clima", "Personalizar arte (opcional)",
                 "Restaurar comportamento automático", "Redimensionar com alças", "Ocultar widget", "Sobre as artes", "Ver previsão real")) { _, which ->
                 when (which) {
                     0 -> gothicWeatherSettings()
-                    1 -> AlertDialog.Builder(this).setTitle("Escolher uma das ${WeatherArtworkCatalog.all.size} artes")
+                    1 -> SmokeDialogBuilder(this).setTitle("Escolher uma das ${WeatherArtworkCatalog.all.size} artes")
                         .setItems(WeatherArtworkCatalog.all.map { it.label }.toTypedArray()) { _, index ->
                             prefs.edit().putString("gothic_manual_art", WeatherArtworkCatalog.all[index].slug)
                                 .putInt("gothic_celestial_mode", 0).putBoolean("gothic_moon_auto", true).apply()
@@ -1829,7 +1817,7 @@ class MainActivity : Activity(), SensorEventListener {
                         showHome()
                     }
                     6 -> weatherDetails()
-                    5 -> AlertDialog.Builder(this).setTitle("Artes originais")
+                    5 -> SmokeDialogBuilder(this).setTitle("Artes originais")
                         .setMessage("As ${WeatherArtworkCatalog.all.size} artes permanecem completas, incluindo personagens, relógios, textos, cores e molduras. A previsão real permanece separada dos valores ilustrativos. Dados: MET Norway, CC BY 4.0.")
                         .setPositiveButton("Fechar", null).show()
                 }
@@ -2011,7 +1999,7 @@ class MainActivity : Activity(), SensorEventListener {
                 }
             },
             {
-                AlertDialog.Builder(this)
+                SmokeDialogBuilder(this)
                     .setTitle("Purple Charm • Ajuda")
                     .setMessage("Deslize para cima a partir do dock para personalizar. Toque no ícone central para abrir os aplicativos.")
                     .setPositiveButton("Entendi", null).show()
@@ -2149,13 +2137,13 @@ class MainActivity : Activity(), SensorEventListener {
     // Substitui os alvos permanentes da gaveta por um menu no toque longo.
     private fun homeAppActions(app: ResolveInfo) {
         val name = appLabel(app)
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        SmokeDialogBuilder(this)
             .setTitle(name)
             .setItems(arrayOf("Mover para outra página", "Remover atalho da tela inicial")) { _, choice ->
                 if (choice == 0) {
                     appPlacementMenu(app)
                 } else {
-                    AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    SmokeDialogBuilder(this)
                         .setTitle("Remover atalho?")
                         .setMessage("Remover $name da tela inicial? O aplicativo continuará instalado.")
                         .setNegativeButton("Cancelar", null)
@@ -2175,13 +2163,13 @@ class MainActivity : Activity(), SensorEventListener {
         } else {
             arrayOf("Adicionar à tela inicial", "Desinstalar aplicativo", "Informações do aplicativo")
         }
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        SmokeDialogBuilder(this)
             .setTitle(name)
             .setItems(options) { _, choice ->
                 when {
                     choice == 0 -> appPlacementMenu(app)
                     !systemApp && choice == 1 -> {
-                        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        SmokeDialogBuilder(this)
                             .setTitle("Desinstalar $name?")
                             .setMessage("O Android pedirá sua confirmação antes de desinstalar o aplicativo.")
                             .setNegativeButton("Cancelar", null)
@@ -2209,7 +2197,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun appPlacementMenu(app: ResolveInfo) {
         val options = (1..pageCount()).map { "Adicionar à página $it" } +
             listOf("Adicionar ao dock", "Gerenciar páginas")
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        SmokeDialogBuilder(this)
             .setTitle(appLabel(app))
             .setItems(options.toTypedArray()) { _, index ->
                 val key = appKey(app)
@@ -2256,7 +2244,7 @@ class MainActivity : Activity(), SensorEventListener {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        header.addView(tabsScroll, LinearLayout.LayoutParams(0, dp(55), 1f))
+        header.addView(tabsScroll, LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(TextView(this).apply {
             text = "⚙"
             textSize = 25f
@@ -2264,7 +2252,8 @@ class MainActivity : Activity(), SensorEventListener {
             setTextColor(Color.WHITE)
             setOnClickListener { settingsMenu() }
         }, LinearLayout.LayoutParams(dp(48), dp(52)))
-        root.addView(header)
+        header.tag = "drawer_header"
+        root.addView(header, LinearLayout.LayoutParams(-1, -2))
 
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val scroll = ScrollView(this).apply {
@@ -2298,21 +2287,16 @@ class MainActivity : Activity(), SensorEventListener {
                 drawerCategory(it) == selected
             }
             val sorted = visible.sortedBy { normalize(appLabel(it)) }
-            val sections = sorted.groupBy {
-                normalize(appLabel(it)).firstOrNull()
-                    ?.uppercaseChar()?.toString() ?: "#"
+            val grid = DrawerAppGrid(this).apply { tag = "drawer_grid" }
+            val anchors = linkedMapOf<String, Int>()
+            sorted.forEachIndexed { index, app ->
+                val letter = normalize(appLabel(app)).firstOrNull()?.uppercaseChar()?.toString() ?: "#"
+                anchors.putIfAbsent(letter, index)
+                grid.addView(appTile(app, true, false, dense = true).apply { tag = "drawer_app_${appKey(app)}" })
             }
-            // Grade contínua: sem títulos A/B/C entre os aplicativos.
-            sections.forEach { (letter, group) ->
-                val section = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    tag = "section_$letter"
-                }
-                section.addView(appGrid(group, true, 5))
-                content.addView(section)
-            }
+            content.addView(grid, LinearLayout.LayoutParams(-1, -2))
             alphabet.removeAllViews()
-            val letters = sections.keys.toList()
+            val letters = anchors.keys.toList()
             letters.forEach { letter ->
                 alphabet.addView(TextView(this).apply {
                     text = letter
@@ -2331,7 +2315,7 @@ class MainActivity : Activity(), SensorEventListener {
                             val bandHeight = (last.bottom - first.top).coerceAtLeast(1)
                             val index = (((event.y - first.top) / bandHeight) * letters.size)
                                 .toInt().coerceIn(0, letters.lastIndex)
-                            val target = content.findViewWithTag<View>("section_${letters[index]}")
+                            val target = grid.getChildAt(anchors.getValue(letters[index]))
                             if (target != null) scroll.scrollTo(0, target.top)
                         }
                         true
@@ -2344,10 +2328,12 @@ class MainActivity : Activity(), SensorEventListener {
             categories.forEach { category ->
                 tabs.addView(TextView(this).apply {
                     text = category
-                    textSize = 16f
+                    textSize = 14f
+                    maxLines = 1
                     setTextColor(if (selected == category) lilac else Color.WHITE)
                     setPadding(dp(11), dp(10), dp(11), dp(10))
                     setOnClickListener {
+                        if (selected == category) return@setOnClickListener
                         selected = category
                         render()
                         scroll.scrollTo(0, 0)
@@ -2356,9 +2342,10 @@ class MainActivity : Activity(), SensorEventListener {
             }
         }
         render()
-        root.addView(crystalSearchBar(), LinearLayout.LayoutParams(-1, -2).apply {
-            setMargins(dp(8), dp(8), dp(8), dp(12))
-        })
+        root.addView(crystalSearchBar().apply {
+            tag = "drawer_search"
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+        }, LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(8), dp(3), dp(8), dp(3)) })
     }
 
     private fun appGrid(
@@ -2606,6 +2593,7 @@ class MainActivity : Activity(), SensorEventListener {
     override fun onBackPressed() {
         if (dragging) { cancelWorkspaceDrag(); return }
         if (widgetResizeActive) { widgetEditor?.endEditing(); return }
+        if (folderDialog?.isShowing == true) { folderDialog?.cancel(); return }
         if (editMode) {
             leaveEditMode()
             return

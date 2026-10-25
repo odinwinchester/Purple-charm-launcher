@@ -130,12 +130,12 @@ internal class WeatherLocationController(
     }
 
     fun showOptions() {
-        AlertDialog.Builder(activity).setTitle("Local da previsão")
+        SmokeDialogBuilder(activity).setTitle("Local da previsão")
             .setMessage("Local atual: $summary\n\nUse localização aproximada enquanto o launcher estiver aberto ou escolha uma cidade. Coordenadas são enviadas ao MET Norway para consultar a previsão.")
             .setPositiveButton("Usar minha localização") { _, _ -> enableAutomatic() }
             .setNeutralButton("Buscar cidade") { _, _ -> searchCity() }
             .setNegativeButton("Mais opções") { _, _ ->
-                AlertDialog.Builder(activity).setTitle("Localização do clima")
+                SmokeDialogBuilder(activity).setTitle("Localização do clima")
                     .setItems(arrayOf("Configurações de localização do Android", "Desativar clima")) { _, which ->
                         if (which == 0) activity.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                         else {
@@ -164,7 +164,7 @@ internal class WeatherLocationController(
             if (foreground) start()
         } else {
             notifyStatus("Permissão não concedida • busque uma cidade")
-            AlertDialog.Builder(activity).setTitle("Localização não autorizada")
+            SmokeDialogBuilder(activity).setTitle("Localização não autorizada")
                 .setMessage("Você pode buscar uma cidade sem conceder localização. Para alterar a permissão, abra as configurações do aplicativo.")
                 .setPositiveButton("Buscar cidade") { _, _ -> searchCity() }
                 .setNeutralButton("Permissões") { _, _ -> activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -180,7 +180,7 @@ internal class WeatherLocationController(
             setSingleLine(true)
             setText(prefs.getString("gothic_weather_city", ""))
         }
-        val dialog = AlertDialog.Builder(activity).setTitle("Buscar cidade")
+        val dialog = SmokeDialogBuilder(activity).setTitle("Buscar cidade")
             .setMessage("Ex.: Campo Grande, MS, Brasil. A busca depende do serviço de geocodificação do Android.")
             .setView(input).setPositiveButton("Buscar", null).setNegativeButton("Cancelar", null).create()
         dialog.setOnShowListener {
@@ -208,7 +208,7 @@ internal class WeatherLocationController(
                         input.error = error ?: "Cidade não encontrada. Inclua estado e país."
                     } else {
                         dialog.dismiss()
-                        AlertDialog.Builder(activity).setTitle("Escolha a cidade")
+                        SmokeDialogBuilder(activity).setTitle("Escolha a cidade")
                             .setItems(candidates.map { cityLabel(it) }.toTypedArray()) { _, which ->
                                 val city = candidates[which]
                                 stopTracking()

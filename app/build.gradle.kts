@@ -12,8 +12,19 @@ android {
         applicationId = "com.purplecharm.launcher"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.7.0"
+        versionCode = providers.environmentVariable("PURPLE_VERSION_CODE").orElse("8").get().toInt()
+        versionName = "0.7.1"
+    }
+
+    val signingPath = providers.environmentVariable("PURPLE_KEYSTORE_PATH").orNull
+    if (!signingPath.isNullOrBlank()) {
+        signingConfigs.create("stable") {
+            storeFile = file(signingPath)
+            storePassword = providers.environmentVariable("PURPLE_STORE_PASSWORD").get()
+            keyAlias = providers.environmentVariable("PURPLE_KEY_ALIAS").get()
+            keyPassword = providers.environmentVariable("PURPLE_KEY_PASSWORD").get()
+        }
+        buildTypes.getByName("release").signingConfig = signingConfigs.getByName("stable")
     }
 
     testOptions {

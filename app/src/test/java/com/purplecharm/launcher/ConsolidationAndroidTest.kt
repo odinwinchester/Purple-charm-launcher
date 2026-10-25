@@ -41,21 +41,25 @@ class ConsolidationAndroidTest {
         root.measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(1920, View.MeasureSpec.EXACTLY))
         root.layout(0, 0, 1080, 1920)
     }
-    @Test fun smokedOptionsKeepsThreeCommandsAndSystemIntent() {
+    @Test fun smokedOptionsKeepsThemeLauncherAndSystemOnlyInBottomMenu() {
         seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
         call(a, "settingsMenu"); val dialog = field(a, "optionsDialog") as Dialog
         val panel = dialog.window!!.decorView.findViewWithTag<LinearLayout>("smoked_options")!!
         val color = (panel.background as GradientDrawable).color!!.defaultColor
         assertTrue(Color.alpha(color) in 1..254); assertTrue(Color.red(color) < 30)
-        assertEquals(4, panel.childCount)
-        dialog.window!!.decorView.findViewWithTag<View>("settings_command_0")!!.performClick()
-        assertFalse(dialog.isShowing)
+        assertEquals(3, panel.childCount)
+        assertFalse(views(panel).filterIsInstance<TextView>().any { it.text.toString().contains("Configurações do sistema") })
+        dialog.dismiss()
+        call(a, "showClassicCustomizationMenu")
+        val bottom = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        val system = views(bottom.window!!.decorView).filterIsInstance<TextView>().first { it.text.toString() == "Sistema" }
+        (system.parent as View).performClick()
         assertEquals(android.provider.Settings.ACTION_SETTINGS, shadowOf(a).nextStartedActivity.action)
         c.pause().stop().destroy()
     }
     @Test fun themeAndLauncherCommandsOpenTheirExistingCategories() {
         seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
-        for ((index, expected) in listOf(1 to "✦ Tema", 2 to "✦ Launcher")) {
+        for ((index, expected) in listOf(0 to "✦ Tema", 1 to "✦ Launcher")) {
             call(a, "settingsMenu"); val dialog = field(a, "optionsDialog") as Dialog
             dialog.window!!.decorView.findViewWithTag<View>("settings_command_$index")!!.performClick()
             val opened = org.robolectric.shadows.ShadowDialog.getLatestDialog()
@@ -70,8 +74,8 @@ class ConsolidationAndroidTest {
             seed(count); val before = prefs().getString("workspace_folders_v1", null)
             val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
             MainActivity::class.java.getDeclaredMethod("showFolder", String::class.java).apply { isAccessible = true }.invoke(a, "folder:test")
-            val dialog = field(a, "folderDialog") as Dialog
-            val panel = dialog.window!!.decorView.findViewWithTag<LinearLayout>("folder_panel")!!
+            val dialog = field(a, "folderDialog") as FolderSurface
+            val panel = dialog.content as LinearLayout
             val grid = panel.findViewWithTag<GridLayout>("folder_grid")!!
             assertEquals(3, grid.columnCount); assertEquals(count, grid.childCount)
             assertEquals(Color.TRANSPARENT, (panel.background as GradientDrawable).color!!.defaultColor)
@@ -86,9 +90,9 @@ class ConsolidationAndroidTest {
         seed(8); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
         val before = prefs().all.toMap()
         MainActivity::class.java.getDeclaredMethod("showFolder", String::class.java).apply { isAccessible = true }.invoke(a, "folder:test")
-        val dialog = field(a, "folderDialog") as Dialog
+        val dialog = field(a, "folderDialog") as FolderSurface
         assertEquals(false, field(a, "folderHomeDragArmed"))
-        dialog.window!!.decorView.findViewWithTag<View>("folder_drag_home")!!.performClick()
+        dialog.content.findViewWithTag<View>("folder_drag_home")!!.performClick()
         assertEquals(true, field(a, "folderHomeDragArmed"))
         dialog.cancel(); shadowOf(Looper.getMainLooper()).idle()
         assertEquals(before, prefs().all)
@@ -177,11 +181,11 @@ class ConsolidationAndroidTest {
         val apps = field(a, "apps") as MutableList<ResolveInfo>
         apps.add(fake(a, "pkg", "App0"))
         MainActivity::class.java.getDeclaredMethod("showFolder", String::class.java).apply { isAccessible = true }.invoke(a, "folder:test")
-        val dialog = field(a, "folderDialog") as Dialog
+        val dialog = field(a, "folderDialog") as FolderSurface
         val before = prefs().all.toMap()
-        dialog.window!!.decorView.findViewWithTag<View>("folder_drag_home")!!.performClick()
-        assertTrue(dialog.window!!.decorView.findViewWithTag<View>("folder_member_0")!!.performLongClick())
-        assertFalse(dialog.isShowing)
+        dialog.content.findViewWithTag<View>("folder_drag_home")!!.performClick()
+        assertTrue(dialog.content.findViewWithTag<View>("folder_member_0")!!.performLongClick())
+        assertTrue(dialog.collapsed)
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(before, prefs().all)
         assertEquals(false, field(a, "pendingDrawerDrag"))

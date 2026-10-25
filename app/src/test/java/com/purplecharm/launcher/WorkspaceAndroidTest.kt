@@ -147,8 +147,8 @@ class WorkspaceAndroidTest {
         val before = p.all.toMap()
         activity.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!.performClick()
         val dialog = MainActivity::class.java.getDeclaredField("folderDialog").apply { isAccessible = true }
-            .get(activity) as android.app.Dialog
-        val member = dialog.window!!.decorView.findViewWithTag<View>("folder_member_0")!!
+            .get(activity) as FolderSurface
+        val member = dialog.content.findViewWithTag<View>("folder_member_0")!!
         val session = WorkspaceDragSession("pkg/A", current(activity))
         set(activity, "dragSession", session); set(activity, "dragging", true); set(activity, "dragSource", member)
         dialog.cancel()
@@ -284,8 +284,8 @@ class WorkspaceAndroidTest {
         val event = android.view.MotionEvent.obtain(0, 1, android.view.MotionEvent.ACTION_DOWN,
             rail.width / 2f, last.top + last.height / 2f, 0)
         assertTrue(rail.dispatchTouchEvent(event)); event.recycle()
-        val target = a.window.decorView.findViewWithTag<View>("section_Z")!!
-        val scroll = target.parent.parent as android.widget.ScrollView
+        val grid = a.window.decorView.findViewWithTag<DrawerAppGrid>("drawer_grid")!!
+        val scroll = grid.parent.parent as android.widget.ScrollView
         assertTrue(scroll.scrollY > 0)
         val up = android.view.MotionEvent.obtain(0, 2, android.view.MotionEvent.ACTION_UP, 1f, 1f, 0)
         assertTrue(rail.dispatchTouchEvent(up)); up.recycle()
@@ -361,7 +361,7 @@ class WorkspaceAndroidTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get()
         MainActivity::class.java.getDeclaredMethod("showFolder", String::class.java).apply { isAccessible = true }.invoke(a, id)
-        val dialog = MainActivity::class.java.getDeclaredField("folderDialog").apply { isAccessible = true }.get(a) as android.app.Dialog
+        val dialog = MainActivity::class.java.getDeclaredField("folderDialog").apply { isAccessible = true }.get(a) as FolderSurface
         assertTrue(dialog.isShowing)
         val edited = WorkspaceEdits.removeApp(current(a), id, "pkg/A")!!
         assertEquals(true, MainActivity::class.java.getDeclaredMethod("saveWorkspaceEdit", WorkspaceItems::class.java)

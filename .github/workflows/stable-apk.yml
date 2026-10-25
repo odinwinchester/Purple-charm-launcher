@@ -1,0 +1,84 @@
+name: APK com assinatura estavel
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: 'versionCode maior que o APK instalado (minimo 8)'
+        required: true
+        default: '8'
+        type: string
+permissions:
+  contents: read
+jobs:
+  stable:
+    runs-on: ubuntu-24.04
+    environment: android-signing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Validar codigo e artes antes de acessar chave
+        run: |
+          python3 scripts/verify_weather_artwork.py
+          gradle :app:testDebugUnitTest
+      - name: Preparar chave privada do environment protegido
+        env:
+          KEYSTORE_B64: ${{ secrets.PURPLE_KEYSTORE_BASE64 }}
+          EXPECTED_CERT: ${{ vars.PURPLE_SIGNING_CERT_SHA256 }}
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          python3 - <<'PY'
+          import os,base64,pathlib,re
+          assert os.environ['KEYSTORE_B64'], 'Configurar PURPLE_KEYSTORE_BASE64 em android-signing'
+          cert = os.environ['EXPECTED_CERT'].replace(':','').lower()
+          assert re.fullmatch('[0-9a-f]{64}',cert), 'Configurar PURPLE_SIGNING_CERT_SHA256 confiavel'
+          assert os.environ['VERSION_CODE'].isdigit() and 8 <= int(os.environ['VERSION_CODE']) <= 2100000000
+          target = pathlib.Path(os.environ['RUNNER_TEMP'])/'purple-signing.keystore'
+          target.write_bytes(base64.b64decode(os.environ['KEYSTORE_B64'],validate=True)); target.chmod(0o600)
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write(f'PURPLE_KEYSTORE_PATH={target}\nPURPLE_VERSION_CODE={os.environ["VERSION_CODE"]}\n')
+          PY
+      - name: Compilar APK estavel
+        env:
+          PURPLE_STORE_PASSWORD: ${{ secrets.PURPLE_STORE_PASSWORD }}
+          PURPLE_KEY_ALIAS: ${{ secrets.PURPLE_KEY_ALIAS }}
+          PURPLE_KEY_PASSWORD: ${{ secrets.PURPLE_KEY_PASSWORD }}
+        run: gradle :app:assembleRelease --stacktrace
+      - name: Verificar certificado identidade versao e APK
+        env:
+          EXPECTED_CERT: ${{ vars.PURPLE_SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/purple-cert.txt"
+          "$TOOLS/zipalign" -c 4 "$APK"
+          unzip -t "$APK" | tail -n 2
+          "$TOOLS/aapt" dump badging "$APK" > "$RUNNER_TEMP/purple-badging.txt"
+          python3 - <<'PY'
+          import os,re,pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          cert=(root/'purple-cert.txt').read_text()
+          actual=re.search(r'Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)',cert).group(1).lower()
+          assert actual == os.environ['EXPECTED_CERT'].replace(':','').lower(), 'Certificado inesperado: nao distribuir'
+          badging=(root/'purple-badging.txt').read_text()
+          assert "package: name='com.purplecharm.launcher'" in badging
+          assert f"versionCode='{os.environ['PURPLE_VERSION_CODE']}'" in badging
+          print(badging.splitlines()[0])
+          PY
+          sha256sum "$APK"
+          mkdir -p dist
+          cp "$APK" dist/Purple-Charm-Crystal-Class-v0.7.1-STABLE.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Purple-Charm-Crystal-Class-v0.7.1-STABLE
+          path: dist/*.apk
+          if-no-files-found: error
+      - name: Remover chave do runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/purple-signing.keystore"
