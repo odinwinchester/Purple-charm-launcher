@@ -595,13 +595,12 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun startFolderHomeDrag(source: View, key: String): Boolean {
         if (dragging || !knownItem(key)) return false
-        val shadow = View.DragShadowBuilder(source)
         // Use the still-attached home view as source, just as drawer-to-home dragging does.
         pendingDrawerDrag = true
         folderDialog?.dismiss()
         pages.post {
             pendingDrawerDrag = false
-            if (!isFinishing && !isDestroyed && !startItemDrag(pages, key, shadow))
+            if (!isFinishing && !isDestroyed && !startItemDrag(pages, key, View.DragShadowBuilder(source)))
                 Toast.makeText(this, "Arraste não iniciado; aplicativo preservado na pasta", Toast.LENGTH_SHORT).show()
         }
         return true

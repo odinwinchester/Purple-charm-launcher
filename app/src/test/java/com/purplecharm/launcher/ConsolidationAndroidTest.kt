@@ -138,4 +138,52 @@ class ConsolidationAndroidTest {
         assertEquals(0, graphics.bytes()); assertFalse(drawable.bitmap.isRecycled)
         c.pause().stop().destroy()
     }
+    private fun fake(a: MainActivity, pkg: String, activity: String = "Main") = ResolveInfo().apply {
+        nonLocalizedLabel = "Aplicativo"
+        activityInfo = android.content.pm.ActivityInfo().apply {
+            packageName = pkg; name = activity
+            applicationInfo = android.content.pm.ApplicationInfo(a.applicationInfo).apply { packageName = pkg }
+        }
+    }
+    @Test fun compactDrawerGridHasUniformRowsNoSectionPaddingAndOriginalFrames() {
+        seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        prefs().edit().putString("pc_fallback_skin", "ghost").commit()
+        val items = List(8) { fake(a, "unmapped.$it") }
+        val method = MainActivity::class.java.getDeclaredMethod("appGrid", List::class.java,
+            Boolean::class.javaPrimitiveType, Int::class.javaPrimitiveType).apply { isAccessible = true }
+        val grid = method.invoke(a, items, true, 5) as GridLayout
+        assertEquals(0, grid.paddingTop); assertEquals(0, grid.paddingBottom)
+        assertEquals(8, grid.childCount)
+        for (i in 0 until grid.childCount) {
+            val tile = grid.getChildAt(i) as ViewGroup
+            assertEquals((88 * a.resources.displayMetrics.density).toInt(), tile.layoutParams.height)
+            val frame = tile.getChildAt(0) as android.widget.FrameLayout
+            assertNotNull(frame.background)
+            val icon = frame.getChildAt(0) as android.widget.ImageView
+            assertFalse(icon.drawable is android.graphics.drawable.LayerDrawable)
+            val name = tile.getChildAt(1) as TextView
+            assertEquals(2, name.maxLines); assertEquals(2, name.minLines)
+        }
+        c.pause().stop().destroy()
+    }
+    @Test fun folderHandoffCollapsesWindowAndLeavesDataUntouchedUntilDrop() {
+        seed(2); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get(); layout(a)
+        @Suppress("UNCHECKED_CAST")
+        val apps = field(a, "apps") as MutableList<ResolveInfo>
+        apps.add(fake(a, "pkg", "App0"))
+        MainActivity::class.java.getDeclaredMethod("showFolder", String::class.java).apply { isAccessible = true }.invoke(a, "folder:test")
+        val dialog = field(a, "folderDialog") as Dialog
+        val before = prefs().all.toMap()
+        dialog.window!!.decorView.findViewWithTag<View>("folder_drag_home")!!.performClick()
+        assertTrue(dialog.window!!.decorView.findViewWithTag<View>("folder_member_0")!!.performLongClick())
+        assertFalse(dialog.isShowing)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(before, prefs().all)
+        assertEquals(false, field(a, "pendingDrawerDrag"))
+        a.onBackPressed(); shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(before, prefs().all)
+        assertEquals(2, WorkspaceItemsStore(prefs()).folders().getValue("folder:test").apps.size)
+        c.pause().stop().destroy()
+    }
+
 }
