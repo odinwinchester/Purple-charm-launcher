@@ -1120,28 +1120,28 @@ class MainActivity : Activity(), SensorEventListener {
         val collections = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         fun tiles(options: List<Triple<String, String, Int>>): GridLayout {
             val grid = GridLayout(this).apply { columnCount = 2 }
-        options.forEach { (name, key, res) ->
-            val tile = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(5), dp(9), dp(5), dp(9))
+            options.forEach { (name, key, res) ->
+                val tile = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(5), dp(9), dp(5), dp(9))
+                }
+                val picture = ImageView(this).apply {
+                    setImageDrawable(packagedImage(res, wallpaper = true))
+                    scaleType = if (key == "cosmic_azathoth") ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
+                    tag = "wallpaper_$key"
+                    contentDescription = name
+                    background = wallpaperGlass()
+                    clipToOutline = key != "cosmic_azathoth"
+                    setOnClickListener { wallpaperPreview(key, res, null) }
+                    setOnLongClickListener { wallpaperDestination(key, res, null); true }
+                }
+                tile.addView(picture, LinearLayout.LayoutParams(-1, dp(238)))
+                tile.addView(label(name, 13f))
+                grid.addView(tile, GridLayout.LayoutParams().apply {
+                    width = 0
+                    columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                })
             }
-            val picture = ImageView(this).apply {
-                setImageDrawable(packagedImage(res, wallpaper = true))
-                scaleType = if (key == "cosmic_azathoth") ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
-                tag = "wallpaper_$key"
-                contentDescription = name
-                background = wallpaperGlass()
-                clipToOutline = true
-                setOnClickListener { wallpaperPreview(key, res, null) }
-                setOnLongClickListener { wallpaperDestination(key, res, null); true }
-            }
-            tile.addView(picture, LinearLayout.LayoutParams(-1, dp(238)))
-            tile.addView(label(name, 13f))
-            grid.addView(tile, GridLayout.LayoutParams().apply {
-                width = 0
-                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
-            })
-        }
             return grid
         }
         collections.addView(tiles(wallpaperOptions))
