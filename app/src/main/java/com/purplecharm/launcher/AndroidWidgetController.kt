@@ -21,7 +21,7 @@ internal class AndroidWidgetController(private val activity: Activity, private v
     private val pageCount: () -> Int, private val columns: () -> Int, private val changed: () -> Unit, private val added: (Int) -> Unit = { changed() }) {
     companion object { const val HOST_ID = 701; const val BIND_REQUEST = 7310; const val CONFIG_REQUEST = 7311 }
     private val manager = AppWidgetManager.getInstance(activity)
-    private val host = AppWidgetHost(activity, HOST_ID)
+    private val host = LauncherWidgetHost(activity)
     private val store = HostedWidgetStore(prefs)
     private val views = mutableMapOf<Int, AppWidgetHostView>()
     private val sizedViews = mutableSetOf<Int>()
@@ -40,10 +40,10 @@ internal class AndroidWidgetController(private val activity: Activity, private v
     fun releaseHiddenViews() {
         if (listening || views.isEmpty()) return
         views.values.forEach { view -> (view.parent as? ViewGroup)?.removeView(view) }
-        runCatching { host.clearViews() }
+        runCatching { host.releaseViews() }
         views.clear(); sizedViews.clear(); rebuildOnStart = true
     }
-    fun close() { stop(); runCatching { host.clearViews() }; views.clear(); sizedViews.clear() }
+    fun close() { stop(); runCatching { host.releaseViews() }; views.clear(); sizedViews.clear() }
     fun hasWidgets(page: Int) = values()?.any { it.page.coerceAtMost(pageCount() - 1) == page } == true
     private fun providerLabel(info: AppWidgetProviderInfo): String {
         val origin = runCatching { activity.packageManager.getApplicationLabel(activity.packageManager.getApplicationInfo(info.provider.packageName, 0)).toString() }.getOrDefault(info.provider.packageName)
@@ -260,4 +260,9 @@ internal class AndroidWidgetController(private val activity: Activity, private v
         content.addView(external, LinearLayout.LayoutParams(-1, dp(320)))
         return ScrollView(activity).apply { addView(content) }
     }
+}
+
+/** clearViews is a protected host API; expose it through the supported subclass boundary. */
+private class LauncherWidgetHost(context: android.content.Context) : AppWidgetHost(context, AndroidWidgetController.HOST_ID) {
+    fun releaseViews() { clearViews() }
 }
