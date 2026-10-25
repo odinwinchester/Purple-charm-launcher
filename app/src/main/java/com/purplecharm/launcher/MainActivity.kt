@@ -74,7 +74,17 @@ class MainActivity : Activity(), SensorEventListener {
     private var pendingDrawerDrag = false
     private var folderHomeDragArmed = false
     private val graphicCache by lazy { GraphicResourceCache(resources) }
-    private val iconCache = android.util.LruCache<String, Drawable.ConstantState>(64)
+    private data class CachedIcon(val state: Drawable.ConstantState, val bytes: Int)
+    private val iconCache = object : android.util.LruCache<String, CachedIcon>(4 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: CachedIcon) = value.bytes
+    }
+    private fun iconBytes(icon: Drawable): Int = when (icon) {
+        is android.graphics.drawable.BitmapDrawable -> icon.bitmap.allocationByteCount
+        is LayerDrawable -> (0 until icon.numberOfLayers).sumOf { iconBytes(icon.getDrawable(it)).toLong() }
+            .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        else -> (icon.intrinsicWidth.coerceAtLeast(1).toLong() * icon.intrinsicHeight.coerceAtLeast(1) * 4)
+            .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    }.coerceAtLeast(1)
     private val labelCache = android.util.LruCache<String, String>(128)
     private var optionsDialog: Dialog? = null
     private var lastCelestialKey: String? = null
@@ -1274,8 +1284,11 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun customIcon(app: ResolveInfo, includeFallbackFrame: Boolean = false): Drawable {
         val key = "${appKey(app)}:${setting("fallback_skin", "original")}:$includeFallbackFrame"
-        iconCache.get(key)?.let { return it.newDrawable(resources).mutate() }
-        return uncachedIcon(app, includeFallbackFrame).also { icon -> icon.constantState?.let { iconCache.put(key, it) } }
+        iconCache.get(key)?.let { return it.state.newDrawable(resources).mutate() }
+        return uncachedIcon(app, includeFallbackFrame).also { icon ->
+            val bytes = iconBytes(icon)
+            if (bytes <= iconCache.maxSize()) icon.constantState?.let { iconCache.put(key, CachedIcon(it, bytes)) }
+        }
     }
     private fun uncachedIcon(app: ResolveInfo, includeFallbackFrame: Boolean): Drawable {
         val pkg = app.activityInfo.packageName

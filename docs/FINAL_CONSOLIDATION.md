@@ -27,3 +27,24 @@ Base main: c07c643ce2edbdfbfa580d2461e771b96aa2f13c. Base escolhida: codex/integ
 ## Critério de integração
 
 Executar testes e build no Actions, conferir todas as artes da base e publicar APK de teste. Novos visuais e transferência de pasta para home exigem validação física no POCO antes de declarar conclusão/estabilidade e integrar na main conforme a condição de validação da missão. Não simular esse aceite.
+
+## Ajustes implementados na integração
+
+- Menu fumê sem blur: painel ARGB(218,14,9,20), contorno violeta de 1 dp, destaque pressionado/focado, três comandos preservados. Sem fundo adicional opaco/dim do sistema.
+- Pasta com fundo transparente e uma borda violeta; três colunas e viewport de uma ou duas linhas de 88 dp. Mais de seis itens continuam na mesma pasta e podem ser acessados rolando. Adicionar/renomear/organizar/extrair preservados.
+- Para manter o arraste de reordenação dentro da pasta: `Arrastar para início` arma o modo; depois segurar um membro recolhe a janela e inicia pelo view da home ainda anexado. Não há gravação até drop válido; falha/cancelamento preserva os membros. O alvo de extração anterior continua aceitando drop.
+- Gaveta mantém agrupamento/ordenação/categorias/pesquisa e índice de até18 dp; remove padding de seção e usa linhas uniformes de88 dp com nomes de duas linhas. Rolagem não reconstrói os itens.
+- Personalizados originais mantidos. Uma única moldura original por tile; evitada composição de fallback duplicada. Miniaturas da pasta podem usar o fallback original quando configurado.
+- Menu inferior unifica Tema/GO config. em Configurações. Olho de Crystal fica na galeria de papéis de parede, que mantém o destino de bloqueio por toque prolongado; nenhuma arte apagada. Não há widget Olho implementado para eliminar ou recriar.
+- Cache de bitmaps empacotados limitado a16 MiB; cache de ícones limitado a4 MiB contabilizados/estimados e nomes a128 entradas. Drawables separados compartilham pixels. Evicção não recicla bitmap exibido. Limpeza em pressão de memória e destruição.
+- Wallpapers decodificados sem ampliação por densidade e com amostragem somente quando o arquivo excede o tamanho de exibição. PNGs do clima mantêm dimensões nativas/proporções. Fundos intermediários desnecessários evitados.
+- Widget é reutilizado quando arte/colunas/span não mudaram. Atualização de dados MET/localização continua; detalhes reais consultados sob demanda. Nenhuma reconstrução da área de trabalho durante essa atualização.
+- Sem biblioteca nova, WebP, PNG/GIF alterado ou animação solar ativada. Pipeline assíncrono de fotos externas e medição real de memória/FPS não foram introduzidos sem validação específica.
+
+## Pendências explícitas
+
+- Lista dos aplicativos sem ícone gótico no POCO: depende dos aplicativos instalados; preservar fallback/moldura existente, sem inventar novas artes.
+- Widget Olho de Crystal: não existe no código auditado. Falta especificação/arte exata aprovada para um widget, distinta do wallpaper existente. Nenhum widget novo foi inventado.
+- Quatro animações solares: classe antiga de sobreposição não usada não é GIF aprovado; não ativada para evitar mudança visual não validada. Produção/integração das animações exatas continua pendente.
+- Eclipses continuam manuais; automatização depende de fonte/cálculo confiável e visibilidade local.
+- Aceite físico do POCO: menu fumê e três destinos, pasta transparente compacta, rolagem de pasta com mais de seis itens, reordenação, transferência para home/dock/páginas, cancelamento, última entrada, reinício, nomes/índice/categorias/pesquisa,26 artes e tamanhos. Verificar legibilidade com fonte/densidade do proprietário e atualização real/offline de MET/localização. Memória/FPS/vazamentos físicos ainda não medidos.
