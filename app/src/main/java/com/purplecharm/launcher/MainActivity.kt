@@ -544,7 +544,7 @@ class MainActivity : Activity(), SensorEventListener {
         val grid = GridLayout(this).apply { columnCount = 3; tag = "folder_grid" }
         folder.apps.forEachIndexed { index, key ->
             val app = resolveKey(key)
-            val tile = if (app != null) appTile(app, false, false) else label(key.substringAfterLast('/'), 10f)
+            val tile = if (app != null) appTile(app, false, false, dense = true) else label(key.substringAfterLast('/'), 10f)
             tile.tag = "folder_member_$index"
             tile.setOnLongClickListener { if (folderHomeDragArmed) startFolderHomeDrag(tile, key) else startItemDrag(tile, key) }
             acceptDrop(tile) { incoming ->
@@ -552,12 +552,12 @@ class MainActivity : Activity(), SensorEventListener {
                 state != null && saveWorkspaceEdit(WorkspaceEdits.intoFolder(state, incoming, id, index))
             }
             grid.addView(tile, GridLayout.LayoutParams().apply {
-                width = 0; height = dp(84)
+                width = 0; height = dp(88)
                 columnSpec = GridLayout.spec(index % 3, 1f); rowSpec = GridLayout.spec(index / 3)
             })
         }
         val scroll = ScrollView(this).apply { addView(grid) }
-        panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(((folder.apps.size + 2) / 3).coerceIn(1, 2) * 84)))
+        panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(((folder.apps.size + 2) / 3).coerceIn(1, 2) * 88)))
         val extractTarget = label("Arrastar para início", 12f).apply {
             tag = "folder_drag_home"
             setPadding(0, dp(8), 0, dp(8))
@@ -1636,7 +1636,9 @@ class MainActivity : Activity(), SensorEventListener {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+        if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
+            level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
+            level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
             graphicCache.clear(); iconCache.evictAll(); labelCache.evictAll()
         }
     }
@@ -2360,7 +2362,7 @@ class MainActivity : Activity(), SensorEventListener {
 
         items.forEach { app ->
             grid.addView(
-                appTile(app, allowFavorite, false),
+                appTile(app, allowFavorite, false, dense = true),
                 GridLayout.LayoutParams().apply {
                     width = 0
                     height = dp(88)
@@ -2377,13 +2379,14 @@ class MainActivity : Activity(), SensorEventListener {
     private fun appTile(
         app: ResolveInfo,
         allowFavorite: Boolean,
-        compact: Boolean
+        compact: Boolean,
+        dense: Boolean = false
     ): View {
         val tile = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             background = null
-            setPadding(dp(2), dp(6), dp(2), dp(8))
+            setPadding(dp(2), dp(if (dense) 2 else 6), dp(2), dp(if (dense) 2 else 8))
         }
 
         val iconSize = if (compact) 35 else 43
