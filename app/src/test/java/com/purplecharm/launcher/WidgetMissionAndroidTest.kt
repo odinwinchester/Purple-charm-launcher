@@ -1,0 +1,112 @@
+package com.purplecharm.launcher
+
+import android.app.Activity
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.TextView
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowAlertDialog
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28])
+class WidgetMissionAndroidTest {
+    private fun prefs(name: String = "purple_charm_favorites") = RuntimeEnvironment.getApplication().getSharedPreferences(name, Context.MODE_PRIVATE)
+    private fun seed() { prefs().edit().clear().commit() }
+    private fun field(a: MainActivity, key: String) = MainActivity::class.java.getDeclaredField(key).apply { isAccessible = true }.get(a)
+    private fun call(a: MainActivity, key: String) = MainActivity::class.java.getDeclaredMethod(key).apply { isAccessible = true }.invoke(a)
+    private fun views(v: View): List<View> = listOf(v) + if (v is ViewGroup) (0 until v.childCount).flatMap { views(v.getChildAt(it)) } else emptyList()
+    private fun provider() = AppWidgetProviderInfo().apply { provider = ComponentName("test.clock", "Provider"); label = "Clock"; minWidth = 60; minHeight = 80; initialLayout = android.R.layout.simple_list_item_1 }
+    @Test fun emptyCellLongPressOpensSmokedEditorWithoutChangingLayout() {
+        seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        val before = prefs().all.toMap()
+        val cell = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
+        assertTrue(cell.performLongClick())
+        val dialog = ShadowAlertDialog.getLatestAlertDialog()
+        val entries = (0 until dialog.listView.adapter.count).map { dialog.listView.adapter.getItem(it).toString() }
+        assertTrue("Widgets" in entries); assertTrue("Configurar dock" in entries); assertTrue("Wallpapers" in entries)
+        assertEquals(before, prefs().all)
+        dialog.dismiss(); c.pause().stop().destroy()
+    }
+    @Test fun dockCenterOpensDrawerAndEmptySlotsHaveManualConfiguration() {
+        seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        for (i in 0..3) assertNotNull(a.window.decorView.findViewWithTag<View>("dock_slot_$i"))
+        call(a, "dockConfiguration")
+        val menu = ShadowAlertDialog.getLatestAlertDialog()
+        assertEquals(4, menu.listView.adapter.count); menu.dismiss()
+        a.window.decorView.findViewWithTag<View>("dock_drawer")!!.performClick()
+        assertEquals(true, field(a, "drawerOpen")); assertNotNull(a.window.decorView.findViewWithTag<View>("drawer_grid"))
+        c.pause().stop().destroy()
+    }
+    @Test fun widgetCenterExposesExclusiveAndOfficialAndroidChoices() {
+        seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        call(a, "widgetCenter"); val dialog = ShadowAlertDialog.getLatestAlertDialog()
+        assertEquals(3, dialog.listView.adapter.count)
+        assertTrue(dialog.listView.adapter.getItem(1).toString().contains("Android"))
+        dialog.dismiss(); c.pause().stop().destroy()
+    }
+    @Test fun bindingDenialDeletesPendingIdAndLeavesExistingPreferencesUntouched() {
+        val c = Robolectric.buildActivity(Activity::class.java).setup(); val a = c.get()
+        val p = prefs("bindDenied"); p.edit().clear().putString("wallpaper", "keep").commit()
+        val manager = AppWidgetManager.getInstance(a); val info = provider()
+        shadowOf(manager).addInstalledProvider(info)
+        shadowOf(manager).setAllowedToBindAppWidgets(false)
+        val controller = AndroidWidgetController(a, p, { 3 }, { 5 }, {})
+        controller.add(info)
+        val pending = p.getInt("widget_pending_id", 0); assertTrue(pending > 0)
+        val request = shadowOf(a).nextStartedActivity
+        assertEquals(AppWidgetManager.ACTION_APPWIDGET_BIND, request.action)
+        assertEquals(pending, request.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 0))
+        assertTrue(controller.onResult(AndroidWidgetController.BIND_REQUEST, Activity.RESULT_CANCELED, null))
+        assertEquals(0, p.getInt("widget_pending_id", 0)); assertTrue(HostedWidgetStore(p).read().isEmpty())
+        assertEquals("keep", p.getString("wallpaper", null))
+        controller.close(); c.pause().stop().destroy()
+    }
+    @Test fun boundIdPersistsOnceAndCancellationCannotDeleteAlreadyStoredInstance() {
+        val c = Robolectric.buildActivity(Activity::class.java).setup(); val a = c.get()
+        val p = prefs("bound"); p.edit().clear().commit()
+        val manager = AppWidgetManager.getInstance(a); val info = provider()
+        shadowOf(manager).addInstalledProvider(info); shadowOf(manager).setAllowedToBindAppWidgets(true)
+        var changes = 0
+        val controller = AndroidWidgetController(a, p, { 3 }, { 5 }, { changes++ })
+        controller.add(info)
+        val saved = HostedWidgetStore(p).read(); assertEquals(1, saved.size); assertEquals(1, changes)
+        assertEquals(1, saved[0].page); assertEquals(info.provider.flattenToString(), saved[0].provider)
+        controller.onResult(AndroidWidgetController.BIND_REQUEST, Activity.RESULT_OK, null)
+        assertEquals(saved, HostedWidgetStore(p).read())
+        p.edit().putInt("widget_pending_id", saved[0].id).commit(); controller.cancelPending()
+        assertNotNull(manager.getAppWidgetInfo(saved[0].id)); assertEquals(saved, HostedWidgetStore(p).read())
+        controller.close(); c.pause().stop().destroy()
+    }
+    @Test fun corruptHostedLayoutIsNotOverwrittenByNewAddition() {
+        val c = Robolectric.buildActivity(Activity::class.java).setup(); val a = c.get()
+        val p = prefs("badHost"); p.edit().clear().putString("hosted_widgets_v1", "corrupt").commit()
+        val before = p.all.toMap(); val controller = AndroidWidgetController(a, p, { 3 }, { 5 }, {})
+        controller.add(provider()); assertEquals(before, p.all)
+        controller.close(); c.pause().stop().destroy()
+    }
+    @Test fun allTwentySixArtworksFitIncludingTheirBottomBorderAtDifferentViewportSizes() {
+        val app = RuntimeEnvironment.getApplication()
+        for (art in WeatherArtworkCatalog.all) for ((w, h) in listOf(1080 to 300, 720 to 130, 1920 to 180)) {
+            val image = ImageView(app).apply { setImageResource(art.resource); scaleType = ImageView.ScaleType.FIT_CENTER }
+            val editor = WeatherResizeLayout(app, image, 5, 5, {}, {}, {})
+            editor.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
+            editor.layout(0, 0, w, h)
+            val frame = editor.getChildAt(0)
+            assertTrue(art.slug, frame.left >= 0 && frame.top >= 0 && frame.right <= w && frame.bottom <= h)
+            assertTrue(art.slug, frame.width > 0 && frame.height > 0)
+        }
+    }
+}

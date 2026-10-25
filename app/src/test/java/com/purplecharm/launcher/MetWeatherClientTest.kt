@@ -35,4 +35,13 @@ class MetWeatherClientTest {
     @Test fun neutralSymbolDoesNotInventDaylight() {
         assertNull(WeatherForecast(0, 20.0, null, null, "cloudy").isDay)
     }
+    @Test fun oldOfflinePointAndNonCelsiusPayloadCannotBePresentedAsCurrentCelsius() {
+        val body = """{"properties":{"timeseries":[${point("2026-10-24T00:00:00Z", 50)}]}}"""
+        assertNull(MetWeatherClient.parse(body, Instant.parse("2026-10-25T00:00:00Z").toEpochMilli()))
+        val kelvin = org.json.JSONObject(body).apply {
+            getJSONObject("properties").put("meta", org.json.JSONObject("""{"units":{"air_temperature":"kelvin"}}"""))
+        }.toString()
+        assertNull(MetWeatherClient.parse(kelvin, Instant.parse("2026-10-24T00:30:00Z").toEpochMilli()))
+    }
+
 }

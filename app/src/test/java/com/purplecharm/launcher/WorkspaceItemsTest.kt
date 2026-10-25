@@ -150,4 +150,14 @@ class WorkspaceItemsTest {
         assertEquals(withLegacy.pages[1], after.pages[1])
     }
 
+    @Test fun manualDockReplacementPreservesDisplacedShortcutAndCancelChangesNothing() {
+        val s = state().copy(dock = listOf("other/X", "", "", ""))
+        val after = WorkspaceEdits.configureDock(s, "external/Y", 0)!!
+        assertEquals("external/Y", after.dock[0]); assertTrue("other/X" in after.pages.flatten())
+        assertEquals("other/X", s.dock[0])
+        assertEquals(1, (after.pages.flatten() + after.dock).count { it == "external/Y" })
+        val full = s.copy(pages = s.pages.map { it.map { key -> key.ifEmpty { "occupied/X" } } })
+        assertNull(WorkspaceEdits.configureDock(full, "external/Y", 0))
+    }
+
 }

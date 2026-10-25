@@ -70,8 +70,11 @@ class AdditionalWeatherAndroidTest {
         val p = prefs()
         val timestamp = Instant.ofEpochMilli(System.currentTimeMillis() - 60_000L).toString()
         val json = """{"properties":{"timeseries":[{"time":"$timestamp","data":{"instant":{"details":{"air_temperature":$temperature}},"next_1_hours":{"summary":{"symbol_code":"$symbol"}}}}]}}"""
-        p.edit().putString("gothic_weather_location_mode", "city").putString("gothic_weather_lat", "-20.4")
-            .putString("gothic_weather_lon", "-54.6").putString("met_forecast_location", "lat=-20.4000&lon=-54.6000")
+        val utc = java.time.Instant.ofEpochMilli(System.currentTimeMillis()).atZone(java.time.ZoneOffset.UTC)
+        val longitude = 180.0 - (utc.hour + utc.minute / 60.0) * 15.0 // near local solar noon
+        val key = String.format(java.util.Locale.US, "lat=%.4f&lon=%.4f", 0.0, longitude)
+        p.edit().putString("gothic_weather_location_mode", "city").putString("gothic_weather_lat", "0")
+            .putString("gothic_weather_lon", longitude.toString()).putString("met_forecast_location", key)
             .putString("met_forecast_json", json).putLong("gothic_weather_expires", System.currentTimeMillis() + 3_600_000L).commit()
     }
     @Test fun activitySelectsRainColdAndSnowFromMetCacheWithoutRealNetwork() {

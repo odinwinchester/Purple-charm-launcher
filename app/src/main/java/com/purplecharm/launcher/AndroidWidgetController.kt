@@ -18,7 +18,7 @@ import kotlin.math.ceil
 
 /** Official host; authorization/configuration belong to Android/provider, not to the launcher. */
 internal class AndroidWidgetController(private val activity: Activity, private val prefs: SharedPreferences,
-    private val pageCount: () -> Int, private val columns: () -> Int, private val changed: () -> Unit) {
+    private val pageCount: () -> Int, private val columns: () -> Int, private val changed: () -> Unit, private val added: (Int) -> Unit = { changed() }) {
     companion object { const val HOST_ID = 701; const val BIND_REQUEST = 7310; const val CONFIG_REQUEST = 7311 }
     private val manager = AppWidgetManager.getInstance(activity)
     private val host = AppWidgetHost(activity, HOST_ID)
@@ -40,7 +40,7 @@ internal class AndroidWidgetController(private val activity: Activity, private v
     fun choose() {
         if (values() == null) return
         if (prefs.getInt("widget_pending_id", 0) != 0) { pendingOptions(); return }
-        val providers = manager.installedProviders.sortedBy { providerLabel(it).lowercase() }
+        val providers = runCatching { manager.installedProviders }.getOrDefault(emptyList()).sortedBy { providerLabel(it).lowercase() }
         if (providers.isEmpty()) { message("Nenhum widget Android disponível neste perfil"); return }
         SmokeDialogBuilder(activity).setTitle("Widgets Android • aplicativo de origem")
             .setItems(providers.map { providerLabel(it) }.toTypedArray()) { _, i -> add(providers[i]) }
@@ -65,7 +65,7 @@ internal class AndroidWidgetController(private val activity: Activity, private v
         val id = prefs.getInt("widget_pending_id", 0)
         val provider = ComponentName.unflattenFromString(prefs.getString("widget_pending_provider", "") ?: "") ?: return cancelPending()
         val bound = runCatching { manager.bindAppWidgetIdIfAllowed(id, provider, Bundle().apply { putInt(AppWidgetManager.OPTION_APPWIDGET_HOST_CATEGORY, AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN) }) }.getOrDefault(false)
-        if (bound || manager.getAppWidgetInfo(id) != null) configurePending()
+        if (bound || runCatching { manager.getAppWidgetInfo(id) }.getOrNull() != null) configurePending()
         else try {
             activity.startActivityForResult(Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id).putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider), BIND_REQUEST)
@@ -73,7 +73,7 @@ internal class AndroidWidgetController(private val activity: Activity, private v
     }
     private fun configurePending() {
         val id = prefs.getInt("widget_pending_id", 0)
-        val info = manager.getAppWidgetInfo(id) ?: return cancelPending()
+        val info = runCatching { manager.getAppWidgetInfo(id) }.getOrNull() ?: return cancelPending()
         val expected = prefs.getString("widget_pending_provider", null)
         if (info.provider.flattenToString() != expected) { cancelPending(); return }
         if (info.configure == null) finishPending()
@@ -87,6 +87,8 @@ internal class AndroidWidgetController(private val activity: Activity, private v
         if (request != BIND_REQUEST && request != CONFIG_REQUEST) return false
         val id = prefs.getInt("widget_pending_id", 0)
         if (id <= 0) return true
+        val expectedStage = if (request == BIND_REQUEST) "bind" else "configure"
+        if (prefs.getString("widget_pending_stage", null) != expectedStage) return true
         val returned = data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id) ?: id
         if (result != Activity.RESULT_OK || returned != id) { cancelPending(); return true }
         if (request == BIND_REQUEST) configurePending() else finishPending()
@@ -95,7 +97,7 @@ internal class AndroidWidgetController(private val activity: Activity, private v
     private fun finishPending() {
         val list = values() ?: return
         val id = prefs.getInt("widget_pending_id", 0)
-        val info = manager.getAppWidgetInfo(id) ?: return cancelPending()
+        val info = runCatching { manager.getAppWidgetInfo(id) }.getOrNull() ?: return cancelPending()
         if (info.provider.flattenToString() != prefs.getString("widget_pending_provider", null)) { cancelPending(); return }
         if (list.any { it.id == id }) { clearPending(); return }
         val density = activity.resources.displayMetrics.density
@@ -103,15 +105,18 @@ internal class AndroidWidgetController(private val activity: Activity, private v
         val height = ceil((info.minHeight + padding.top + padding.bottom) / density).toInt().coerceIn(80, 1200)
         val weatherPage = prefs.getInt("weather_widget_page", 0)
         val target = (0 until pageCount()).firstOrNull { it != weatherPage } ?: 0
-        val item = HostedWidget(id, info.provider.flattenToString(), target, columns(), height, list.count { it.page == target })
+        val availableWidth = activity.resources.displayMetrics.widthPixels - dp(36)
+        val span = ceil((info.minWidth + padding.left + padding.right + dp(8)).toDouble() * columns() / availableWidth).toInt().coerceIn(1, columns())
+        val item = HostedWidget(id, info.provider.flattenToString(), target, span, height, list.count { it.page == target })
         // Persist the instance and clear pending state atomically before notifying UI.
         val old = prefs.getString("hosted_widgets_v1", null)
+        val stage = prefs.getString("widget_pending_stage", "bind")
         if (!prefs.edit().putString("hosted_widgets_v1", HostedWidgetStore.encode(list + item))
                 .remove("widget_pending_id").remove("widget_pending_provider").remove("widget_pending_stage").commit()) {
-            val edit = prefs.edit(); if (old == null) edit.remove("hosted_widgets_v1") else edit.putString("hosted_widgets_v1", old)
+            val edit = prefs.edit().putInt("widget_pending_id", id).putString("widget_pending_provider", info.provider.flattenToString()).putString("widget_pending_stage", stage); if (old == null) edit.remove("hosted_widgets_v1") else edit.putString("hosted_widgets_v1", old)
             edit.commit(); message("Widget não salvo; tente continuar pela central"); return
         }
-        changed()
+        added(target)
     }
     private fun clearPending(): Boolean = prefs.edit().remove("widget_pending_id").remove("widget_pending_provider").remove("widget_pending_stage").commit()
     internal fun cancelPending() {
@@ -134,7 +139,7 @@ internal class AndroidWidgetController(private val activity: Activity, private v
             val id = raw.toIntOrNull() ?: return@filter false
             id in used || id == pending || runCatching { host.deleteAppWidgetId(id) }.isFailure
         }.toSet()
-        prefs.edit().putStringSet("widget_cleanup_ids", left).apply()
+        if (left != prefs.getStringSet("widget_cleanup_ids", emptySet())) prefs.edit().putStringSet("widget_cleanup_ids", left).apply()
     }
     private fun pendingOptions() {
         SmokeDialogBuilder(activity).setTitle("Widget Android pendente")
@@ -175,7 +180,7 @@ internal class AndroidWidgetController(private val activity: Activity, private v
             }.show()
     }
     private fun resize(widget: HostedWidget) {
-        val info = manager.getAppWidgetInfo(widget.id) ?: return message("Aplicativo de origem indisponível")
+        val info = runCatching { manager.getAppWidgetInfo(widget.id) }.getOrNull() ?: return message("Aplicativo de origem indisponível")
         val horizontal = info.resizeMode and AppWidgetProviderInfo.RESIZE_HORIZONTAL != 0
         val vertical = info.resizeMode and AppWidgetProviderInfo.RESIZE_VERTICAL != 0
         if (!horizontal && !vertical) { message("Este aplicativo não permite redimensionar o widget"); return }

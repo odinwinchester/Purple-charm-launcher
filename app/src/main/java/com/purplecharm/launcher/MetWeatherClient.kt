@@ -61,7 +61,7 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
         cachedBody = null
         retryAfter = 0L
         prefs.edit().remove("met_forecast_json").remove("met_forecast_location")
-            .remove("gothic_weather_expires").remove("gothic_weather_last_modified").apply()
+            .remove("gothic_weather_expires").remove("gothic_weather_last_modified").remove("met_forecast_received").apply()
     }
 
     fun current(now: Long = System.currentTimeMillis()): WeatherForecast? {
@@ -94,7 +94,7 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                     .coerceAtLeast(System.currentTimeMillis() + 60_000L)
                 if (status == 304 && cachedBody != null) {
                     synchronized(this) {
-                        if (location() == key) prefs.edit().putLong("gothic_weather_expires", expires).apply()
+                        if (location() == key) prefs.edit().putLong("gothic_weather_expires", expires).putLong("met_forecast_received", System.currentTimeMillis()).apply()
                     }
                 } else if (status == 200 || status == 203) {
                     val body = connection.inputStream.bufferedReader().use { it.readText() }

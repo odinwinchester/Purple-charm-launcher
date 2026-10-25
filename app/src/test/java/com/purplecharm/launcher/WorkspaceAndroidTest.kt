@@ -279,7 +279,8 @@ class WorkspaceAndroidTest {
         val density = a.resources.displayMetrics.density
         assertEquals(26, rail.childCount); assertTrue(rail.width >= (32 * density).toInt())
         val first = rail.getChildAt(0); val last = rail.getChildAt(25)
-        assertTrue(first.height <= (18 * density).toInt()); assertTrue(first.top > 0)
+        assertEquals(0, first.top)
+        assertTrue(kotlin.math.abs(first.height * 26 - rail.height) <= 26)
         assertTrue(last.bottom <= rail.height)
         val event = android.view.MotionEvent.obtain(0, 1, android.view.MotionEvent.ACTION_DOWN,
             rail.width / 2f, last.top + last.height / 2f, 0)

@@ -1682,14 +1682,14 @@ class MainActivity : Activity(), SensorEventListener {
         weatherLocation.onPermissionResult(requestCode)
     }
 
-    private val androidWidgets by lazy { AndroidWidgetController(this, prefs, { pageCount() }, { horizontalIconColumns() }, { refreshWorkspaceSafely() }) }
+    private val androidWidgets by lazy { AndroidWidgetController(this, prefs, { pageCount() }, { horizontalIconColumns() }, { refreshWorkspaceSafely() }, { page -> pageIndex = page; refreshWorkspaceSafely() }) }
     override fun onStart() { super.onStart(); androidWidgets.start() }
     override fun onStop() { androidWidgets.stop(); super.onStop() }
     private fun widgetCenter() {
         SmokeDialogBuilder(this).setTitle("✦ Central de widgets")
             .setItems(arrayOf("Purple Charm • clima gótico", "Adicionar widget Android", "Gerenciar widgets adicionados")) { _, choice ->
                 when (choice) {
-                    0 -> { if (!prefs.getBoolean("gothic_moon_visible", true)) { prefs.edit().putBoolean("gothic_moon_visible", true).apply(); refreshWorkspaceSafely() }; moonWidgetOptions() }
+                    0 -> { if (!prefs.getBoolean("gothic_moon_visible", true)) { prefs.edit().putBoolean("gothic_moon_visible", true).apply(); weatherLocation.start(); refreshGothicWeather(); refreshWorkspaceSafely() }; moonWidgetOptions() }
                     1 -> androidWidgets.choose()
                     2 -> androidWidgets.manage()
                 }
@@ -1698,7 +1698,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun dockConfiguration() {
         SmokeDialogBuilder(this).setTitle("✦ Dock • quatro atalhos e gaveta central")
             .setItems((0..3).map { i -> "Posição ${i + 1}: " + dockSlots()[i].let { key -> resolveKey(key)?.let { appLabel(it) } ?: workspaceStore.folders()[key]?.name ?: "Vazia" } }.toTypedArray()) { _, i -> dockSlotOptions(i) }
-            .setMessage("Configure manualmente a mesma ordem do POCO. O Android não oferece acesso público à organização privada do outro launcher.").show()
+            .setNeutralButton("Sobre importação") { _, _ -> SmokeDialogBuilder(this).setMessage("A organização privada de outro launcher não é exposta por API pública Android. Configure manualmente as quatro posições.").setPositiveButton("Fechar", null).show() }.show()
     }
     private fun dockChooseApp(slot: Int) {
         loadApps()
@@ -1756,6 +1756,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var widgetResizeActive = false
     private var widgetResizeGesture = false
     private var iconViewportGesture = false
+    private var externalWidgetGesture = false
 
     // Replace only the widget, preserving pages, scroll state and drag/drop.
     private fun refreshCelestialView() {
@@ -1884,7 +1885,7 @@ class MainActivity : Activity(), SensorEventListener {
             }
         }
         SmokeDialogBuilder(this).setTitle("Previsão real • MET Norway")
-            .setMessage("${weatherLocation.summary}\nCoordenadas: ${prefs.getString("gothic_weather_lat", "—")}, ${prefs.getString("gothic_weather_lon", "—")}\n$liveText\nHorário da previsão no fuso do aparelho (${java.time.ZoneId.systemDefault()}). Temperatura instantânea prevista, não mínima/máxima nem observação de estação.\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.")
+            .setMessage("${weatherLocation.summary}\nCoordenadas: ${prefs.getString("gothic_weather_lat", "—")}, ${prefs.getString("gothic_weather_lon", "—")}\n$liveText\nRecebimento/validação: ${prefs.getLong("met_forecast_received", 0).takeIf { it > 0 }?.let { java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(it)) } ?: "não registrado"}.\nHorário da previsão no fuso do aparelho (${java.time.ZoneId.systemDefault()}). Temperatura instantânea prevista, não mínima/máxima nem observação de estação.\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.")
             .setPositiveButton("Fechar", null).show()
     }
 
@@ -1911,7 +1912,10 @@ class MainActivity : Activity(), SensorEventListener {
                         weatherLocation.stop()
                         showHome()
                     }
-                    7 -> weatherClient.refresh(force = true) { runOnUiThread { refreshCelestialView(); weatherDetails() } }
+                    7 -> if (!prefs.contains("gothic_weather_lat")) gothicWeatherSettings() else {
+                        Toast.makeText(this, "Consultando previsão • limites de rede respeitados", Toast.LENGTH_SHORT).show()
+                        weatherClient.refresh(force = true) { runOnUiThread { if (!isFinishing && !isDestroyed) { refreshCelestialView(); weatherDetails() } } }
+                    }
                     8 -> SmokeDialogBuilder(this).setTitle("Página do clima")
                         .setItems((1..pageCount()).map { "Página $it" }.toTypedArray()) { _, p ->
                             if (androidWidgets.hasWidgets(p)) Toast.makeText(this, "Escolha uma página sem widgets Android para preservar a área completa do clima", Toast.LENGTH_LONG).show()
@@ -2603,6 +2607,15 @@ class MainActivity : Activity(), SensorEventListener {
     override fun dispatchTouchEvent(
         event: MotionEvent
     ): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && ::pages.isInitialized) {
+            val external = pages.currentView?.findViewWithTag<View>("external_widgets_scroll")
+            val bounds = android.graphics.Rect()
+            externalWidgetGesture = external != null && external.getGlobalVisibleRect(bounds) && bounds.contains(event.rawX.toInt(), event.rawY.toInt())
+        }
+        if (externalWidgetGesture) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) externalWidgetGesture = false
+            return super.dispatchTouchEvent(event)
+        }
         if (pendingDrawerDrag) return super.dispatchTouchEvent(event)
         if (widgetResizeActive || widgetResizeGesture) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
