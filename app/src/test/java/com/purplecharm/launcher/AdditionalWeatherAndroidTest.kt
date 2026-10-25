@@ -184,7 +184,7 @@ class AdditionalWeatherAndroidTest {
         val location = p.getString("gothic_weather_lat", null)
         menu(a); click(ShadowAlertDialog.getLatestAlertDialog(), 6)
         val details = ShadowAlertDialog.getLatestAlertDialog()
-        val message = details.findViewById<android.widget.TextView>(android.R.id.message).text.toString()
+        val message = details.window!!.decorView.findViewWithTag<android.widget.TextView>("weather_hourly_details").text.toString()
         assertTrue(message.contains("20°C")); assertTrue(message.contains("MET Norway"))
         assertTrue(message.contains("ilustrativos")); assertEquals(location, p.getString("gothic_weather_lat", null))
         details.dismiss(); controller.pause().stop().destroy()

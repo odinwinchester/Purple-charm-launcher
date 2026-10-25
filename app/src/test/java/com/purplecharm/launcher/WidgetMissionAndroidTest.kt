@@ -29,6 +29,38 @@ class WidgetMissionAndroidTest {
     private fun call(a: MainActivity, key: String) = MainActivity::class.java.getDeclaredMethod(key).apply { isAccessible = true }.invoke(a)
     private fun views(v: View): List<View> = listOf(v) + if (v is ViewGroup) (0 until v.childCount).flatMap { views(v.getChildAt(it)) } else emptyList()
     private fun provider() = AppWidgetProviderInfo().apply { provider = ComponentName("test.clock", "Provider"); label = "Clock"; minWidth = 60; minHeight = 80; initialLayout = android.R.layout.simple_list_item_1 }
+    @Test fun hourlyDetailsScrollAndPreserveUtcConversionAndLocationCacheIsolation() {
+        seed()
+        val now = System.currentTimeMillis()
+        val base = now / 3_600_000L * 3_600_000L
+        val points = (0..12).joinToString(",") { i ->
+            """{"time":"${java.time.Instant.ofEpochMilli(base + i * 3_600_000L)}","data":{"instant":{"details":{"air_temperature":${20 + i}}}}}"""
+        }
+        prefs().edit().putString("gothic_weather_lat", "-20.4").putString("gothic_weather_lon", "-54.6")
+            .putString("met_forecast_location", "lat=-20.4000&lon=-54.6000")
+            .putString("met_forecast_json", """{"properties":{"timeseries":[$points]}}""")
+            .putLong("gothic_weather_expires", now + 3_600_000L).commit()
+        val previousZone = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/Campo_Grande"))
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            call(c.get(), "weatherDetails")
+            val dialog = ShadowAlertDialog.getLatestAlertDialog()
+            val scroll = dialog.window!!.decorView.findViewWithTag<android.widget.ScrollView>("weather_details_scroll")!!
+            val text = scroll.findViewWithTag<TextView>("weather_hourly_details")!!
+            assertEquals(Int.MAX_VALUE, text.maxLines)
+            assertTrue(text.text.toString().contains("Próximas horas"))
+            assertTrue(text.text.toString().contains("-04:00"))
+            assertTrue(text.text.toString().contains("32°C"))
+            dialog.dismiss()
+            prefs().edit().putString("gothic_weather_lon", "-45").commit()
+            val client = MetWeatherClient(prefs())
+            assertNull(client.current(now)); assertTrue(client.upcoming(now).isEmpty())
+        } finally {
+            c.pause().stop().destroy()
+            java.util.TimeZone.setDefault(previousZone)
+        }
+    }
     @Test fun emptyCellLongPressOpensSmokedEditorWithoutChangingLayout() {
         seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
         val before = prefs().all.toMap()

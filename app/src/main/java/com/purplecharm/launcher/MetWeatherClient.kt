@@ -69,6 +69,11 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
         return cachedBody?.let { parse(it, now) }
     }
 
+    fun upcoming(now: Long = System.currentTimeMillis()): List<WeatherForecast> {
+        if (location() == null || location() != prefs.getString("met_forecast_location", null)) return emptyList()
+        return cachedBody?.let { parseUpcoming(it, now) } ?: emptyList()
+    }
+
     fun refresh(force: Boolean = false, onChanged: () -> Unit): Boolean {
         val key = location() ?: return false
         val now = System.currentTimeMillis()
@@ -136,11 +141,42 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
     }
 
     companion object {
-        internal fun parse(body: String, now: Long): WeatherForecast? = try {
+        private fun series(body: String): org.json.JSONArray {
             val properties = JSONObject(body).getJSONObject("properties")
             val unit = properties.optJSONObject("meta")?.optJSONObject("units")?.optString("air_temperature")
             require(unit.isNullOrEmpty() || unit == "celsius")
-            val series = properties.getJSONArray("timeseries")
+            return properties.getJSONArray("timeseries")
+        }
+
+        private fun decodePoint(point: JSONObject): WeatherForecast {
+            val data = point.getJSONObject("data")
+            val instant = data.getJSONObject("instant").getJSONObject("details")
+            val symbol = listOf("next_1_hours", "next_6_hours", "next_12_hours")
+                .firstNotNullOfOrNull { period -> data.optJSONObject(period)?.optJSONObject("summary")
+                    ?.optString("symbol_code")?.takeIf { it.isNotEmpty() } } ?: ""
+            val temperature = instant.getDouble("air_temperature")
+            require(temperature.isFinite())
+            return WeatherForecast(Instant.parse(point.getString("time")).toEpochMilli(), temperature,
+                instant.optDouble("relative_humidity").takeIf { it.isFinite() },
+                instant.optDouble("wind_speed").takeIf { it.isFinite() }, symbol)
+        }
+
+        internal fun parseUpcoming(body: String, now: Long): List<WeatherForecast> = try {
+            // Do not revive stale or wrong-unit cache for the hourly panel.
+            require(parse(body, now) != null)
+            val series = series(body)
+            val result = mutableListOf<WeatherForecast>()
+            for (i in 0 until series.length()) {
+                val item = series.getJSONObject(i)
+                val time = Instant.parse(item.getString("time")).toEpochMilli()
+                if (time > now + 24 * 60 * 60_000L || result.size == 12) break
+                if (time > now) runCatching { decodePoint(item) }.getOrNull()?.let { result.add(it) }
+            }
+            result
+        } catch (_: Exception) { emptyList() }
+
+        internal fun parse(body: String, now: Long): WeatherForecast? = try {
+            val series = series(body)
             var selected: JSONObject? = null
             for (i in 0 until series.length()) {
                 val point = series.getJSONObject(i)
@@ -151,18 +187,7 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                 val timestamp = Instant.parse(point.getString("time")).toEpochMilli()
                 // Do not label an old last point as current after an offline cache has expired.
                 require(now - timestamp in 0..(2 * 60 * 60_000L))
-                val data = point.getJSONObject("data")
-                val instant = data.getJSONObject("instant").getJSONObject("details")
-                val symbol = listOf("next_1_hours", "next_6_hours", "next_12_hours")
-                    .firstNotNullOfOrNull { period ->
-                        data.optJSONObject(period)?.optJSONObject("summary")
-                            ?.optString("symbol_code")?.takeIf { it.isNotEmpty() }
-                    } ?: ""
-                val temperature = instant.getDouble("air_temperature")
-                require(temperature.isFinite())
-                WeatherForecast(Instant.parse(point.getString("time")).toEpochMilli(), temperature,
-                    instant.optDouble("relative_humidity").takeIf { it.isFinite() },
-                    instant.optDouble("wind_speed").takeIf { it.isFinite() }, symbol)
+                decodePoint(point)
             }
         } catch (_: Exception) { null }
     }

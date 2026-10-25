@@ -1835,7 +1835,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val selectedArt = WeatherArtworkCatalog.select(isSun, selectedSun, weatherArtIndex,
             phaseArtIndex, prefs.getString("gothic_manual_art", null), automaticWeather = mode == 0)
-        // PNGs remain intact. Live data is available only in the details dialog.
+        // PNGs remain intact; live data is outside the artwork and in the details dialog.
         val columns = horizontalIconColumns()
         // Panoramic alternatives open at full grid width; a deliberate per-art resize persists.
         // Existing global sizing preferences remain unchanged for the original and other arts.
@@ -1899,9 +1899,25 @@ class MainActivity : Activity(), SensorEventListener {
                     "\nMET Norway • previsão $time$stale"
             }
         }
+        val upcoming = weatherClient.upcoming()
+        val formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm XXX", Locale.getDefault())
+            .withZone(java.time.ZoneId.systemDefault())
+        val hourly = if (upcoming.isEmpty()) "Próximas horas indisponíveis" else
+            "Próximas horas • fuso do aparelho\n" + upcoming.joinToString("\n") {
+                "${formatter.format(java.time.Instant.ofEpochMilli(it.time))} • ${kotlin.math.round(it.temperature).toInt()}°C • ${it.description}"
+            }
+        val details = "${weatherLocation.summary}\nCoordenadas: ${prefs.getString("gothic_weather_lat", "—")}, ${prefs.getString("gothic_weather_lon", "—")}\n$liveText\nEstado de rede: ${prefs.getString("met_weather_error", "sem erro registrado")}.\nRecebimento/validação: ${prefs.getLong("met_forecast_received", 0).takeIf { it > 0 }?.let { java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(it)) } ?: "não registrado"}.\nHorário da previsão no fuso do aparelho (${java.time.ZoneId.systemDefault()}). Temperatura instantânea prevista, não mínima/máxima nem observação de estação.\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.\n\n$hourly"
+        val content = label(details, 14f).apply {
+            tag = "weather_hourly_details"
+            setPadding(dp(16), dp(8), dp(16), dp(16))
+            setTextIsSelectable(true)
+        }
+        val scroll = ScrollView(this).apply {
+            tag = "weather_details_scroll"
+            addView(content, ViewGroup.LayoutParams(-1, -2))
+        }
         SmokeDialogBuilder(this).setTitle("Previsão real • MET Norway")
-            .setMessage("${weatherLocation.summary}\nCoordenadas: ${prefs.getString("gothic_weather_lat", "—")}, ${prefs.getString("gothic_weather_lon", "—")}\n$liveText\nEstado de rede: ${prefs.getString("met_weather_error", "sem erro registrado")}.\nRecebimento/validação: ${prefs.getLong("met_forecast_received", 0).takeIf { it > 0 }?.let { java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(it)) } ?: "não registrado"}.\nHorário da previsão no fuso do aparelho (${java.time.ZoneId.systemDefault()}). Temperatura instantânea prevista, não mínima/máxima nem observação de estação.\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.")
-            .setPositiveButton("Fechar", null).show()
+            .setView(scroll).setPositiveButton("Fechar", null).show()
     }
 
     private fun moonWidgetOptions() {

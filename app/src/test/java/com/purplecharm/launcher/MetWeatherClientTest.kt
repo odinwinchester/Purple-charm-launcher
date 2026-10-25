@@ -44,4 +44,31 @@ class MetWeatherClientTest {
         assertNull(MetWeatherClient.parse(kelvin, Instant.parse("2026-10-24T00:30:00Z").toEpochMilli()))
     }
 
+    @Test fun upcomingUsesUtcInstantsAcrossLocalMidnightAndLimitsTheList() {
+        val now = Instant.parse("2026-10-25T02:30:00Z").toEpochMilli()
+        val points = (0..30).joinToString(",") { point(Instant.ofEpochMilli(now - 30 * 60_000L + it * 60 * 60_000L).toString(), it) }
+        val body = """{"properties":{"timeseries":[$points]}}"""
+        val result = MetWeatherClient.parseUpcoming(body, now)
+        assertEquals(12, result.size)
+        assertEquals(Instant.parse("2026-10-25T03:00:00Z").toEpochMilli(), result.first().time)
+        val local = Instant.ofEpochMilli(result.first().time).atZone(java.time.ZoneId.of("America/Campo_Grande"))
+        assertEquals("2026-10-24", local.toLocalDate().toString())
+        assertEquals(23, local.hour)
+        assertEquals(1.0, result.first().temperature, 0.0)
+    }
+    @Test fun upcomingKeepsRealIntervalsWithoutInventingMissingHours() {
+        val now = Instant.parse("2026-10-24T00:30:00Z").toEpochMilli()
+        val body = """{"properties":{"timeseries":[${point("2026-10-24T00:00:00Z", 10)},${point("2026-10-24T06:00:00Z", 16)},${point("2026-10-25T12:00:00Z", 99)}]}}"""
+        val result = MetWeatherClient.parseUpcoming(body, now)
+        assertEquals(1, result.size)
+        assertEquals(16.0, result.single().temperature, 0.0)
+        assertEquals(Instant.parse("2026-10-24T06:00:00Z").toEpochMilli(), result.single().time)
+        assertTrue(MetWeatherClient.parseUpcoming(body, now + 48 * 60 * 60_000L).isEmpty())
+    }
+    @Test fun upcomingRejectsInvalidOrNonCelsiusData() {
+        assertTrue(MetWeatherClient.parseUpcoming("not json", 0).isEmpty())
+        val body = """{"properties":{"meta":{"units":{"air_temperature":"kelvin"}},"timeseries":[${point("2026-10-24T00:00:00Z", 273)},${point("2026-10-24T01:00:00Z", 274)}]}}"""
+        assertTrue(MetWeatherClient.parseUpcoming(body, Instant.parse("2026-10-24T00:30:00Z").toEpochMilli()).isEmpty())
+    }
+
 }
