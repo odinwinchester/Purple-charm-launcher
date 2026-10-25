@@ -44,11 +44,20 @@ class WorkMission2RegressionTest {
         }
     }
 
-    private fun seedApp(key: String = "test.purple.app/Main") {
+    private fun seedApp(key: String = "test.purple.app/Main", preserveOtherCopies: Boolean = false) {
         prefs().edit().clear().commit()
-        val cells = List(20) { index -> if (index == 0) key else "" }
+        val folderId = "folder:duplicate"
+        val cells = List(20) { index -> when (index) {
+            0 -> key
+            1 -> if (preserveOtherCopies) folderId else ""
+            else -> ""
+        } }
         assertTrue(WorkspaceItemsStore(prefs()).save(
-            WorkspaceItems(listOf(cells, List(20) { "" }, List(20) { "" }), List(4) { "" }, emptyMap())
+            WorkspaceItems(
+                listOf(cells, List(20) { "" }, List(20) { "" }),
+                List(4) { index -> if (preserveOtherCopies && index == 0) key else "" },
+                if (preserveOtherCopies) mapOf(folderId to WorkspaceFolder("Outra cópia", listOf(key))) else emptyMap()
+            )
         ))
     }
 
@@ -65,7 +74,7 @@ class WorkMission2RegressionTest {
     }
 
     @Test fun homeAppLongPressShowsContextMenuWithoutStartingDragAndRemovalOnlyRemovesShortcut() {
-        seedApp()
+        seedApp(preserveOtherCopies = true)
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get()
         @Suppress("UNCHECKED_CAST")
@@ -85,8 +94,25 @@ class WorkMission2RegressionTest {
         confirmation.getButton(-1).performClick()
         val afterRemoval = call(a, "workspaceItems") as WorkspaceItems
         assertFalse(afterRemoval.pages.flatten().contains("test.purple.app/Main"))
+        assertEquals("test.purple.app/Main", afterRemoval.dock[0])
+        assertEquals(listOf("test.purple.app/Main"), afterRemoval.folders.getValue("folder:duplicate").apps)
         assertNull(shadowOf(a).nextStartedActivity)
         controller.pause().stop().destroy()
+    }
+
+    @Test fun pageOnlyRemovalRejectsWrongCellAndPreservesMatchingDockAndFolderCopies() {
+        val key = "pkg/Test"
+        val folderId = "folder:copy"
+        val state = WorkspaceItems(
+            listOf(listOf(key, "", "", "") + List(16) { "" }, List(20) { "" }, List(20) { "" }),
+            listOf(key, "", "", ""), mapOf(folderId to WorkspaceFolder("Preservar", listOf(key)))
+        )
+        val copy = state.copy(pages = listOf(listOf(key, folderId, "", "") + List(16) { "" }, state.pages[1], state.pages[2]))
+        assertNull(WorkspaceEdits.removeFromPage(copy, key, 0, 1))
+        val updated = WorkspaceEdits.removeFromPage(copy, key, 0, 0)!!
+        assertEquals("", updated.pages[0][0])
+        assertEquals(key, updated.dock[0])
+        assertEquals(listOf(key), updated.folders.getValue(folderId).apps)
     }
 
     @Test fun longPressMoveMenuHasExplicitDragAndPageFlows() {

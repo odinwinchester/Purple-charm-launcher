@@ -576,13 +576,15 @@ class MainActivity : Activity(), SensorEventListener {
         return saveWorkspaceEdit(WorkspaceEdits.dock(state, key, position.coerceIn(0, 3)))
     }
 
-    private fun removeShortcut(key: String): Boolean {
-        val state = runCatching { workspaceItems() }.getOrNull() ?: return false
+    private fun removeShortcutFromPage(key: String, page: Int): Boolean {
         if (WorkspaceItems.isFolder(key)) {
-            Toast.makeText(this, "Abra a pasta para mover ou remover seus atalhos com segurança", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Abra a pasta para editar seus aplicativos com segurança", Toast.LENGTH_SHORT).show()
             return false
         }
-        return saveWorkspaceEdit(WorkspaceEdits.removeShortcut(state, key))
+        val state = runCatching { workspaceItems() }.getOrNull() ?: return false
+        val cell = state.pages.getOrNull(page)?.indexOf(key) ?: -1
+        if (cell < 0) return false
+        return saveWorkspaceEdit(WorkspaceEdits.removeFromPage(state, key, page, cell))
     }
 
     private fun folderTile(id: String, compact: Boolean): View {
@@ -2182,7 +2184,7 @@ class MainActivity : Activity(), SensorEventListener {
         acceptDrop(add) { key -> dialog.dismiss(); placeOnPage(key, page) }
         panel.addView(add)
         val remove = glassButton("× Arraste um ícone para remover o atalho", 12f)
-        acceptDrop(remove) { key -> dialog.dismiss(); removeShortcut(key) }
+        acceptDrop(remove) { key -> dialog.dismiss(); removeShortcutFromPage(key, page) }
         panel.addView(remove)
         panel.addView(glassButton("✦ Gerenciar páginas", 13f).apply {
             setOnClickListener { dialog.dismiss(); managePages() }
@@ -2421,7 +2423,7 @@ class MainActivity : Activity(), SensorEventListener {
                         .setTitle("Remover atalho?")
                         .setMessage("Remover $name da tela inicial? O aplicativo continuará instalado.")
                         .setNegativeButton("Cancelar", null)
-                        .setPositiveButton("Remover") { _, _ -> removeShortcut(appKey(app)) }
+                        .setPositiveButton("Remover") { _, _ -> removeShortcutFromPage(appKey(app), pageIndex) }
                         .show()
                 }
             }.show()

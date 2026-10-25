@@ -166,6 +166,13 @@ internal object WorkspaceEdits {
         if (WorkspaceItems.isFolder(key)) return null
         val e = Edit(s); e.remove(key); return e.done()
     }
+    fun removeFromPage(s: WorkspaceItems, key: String, page: Int, cell: Int): WorkspaceItems? {
+        if (!s.valid() || WorkspaceItems.isFolder(key) || page !in s.pages.indices ||
+            cell !in s.pages[page].indices || s.pages[page][cell] != key) return null
+        val pages = s.pages.map { it.toMutableList() }.toMutableList()
+        pages[page][cell] = ""
+        return s.copy(pages = pages.map { it.toList() }).takeIf { it.valid() }
+    }
 }
 
 /** Begin/cancel perform no writes. A successful drop consumes the session exactly once. */
