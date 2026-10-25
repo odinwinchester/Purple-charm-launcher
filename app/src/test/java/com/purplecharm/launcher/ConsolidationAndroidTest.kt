@@ -196,4 +196,47 @@ class ConsolidationAndroidTest {
         c.pause().stop().destroy()
     }
 
+    @Test fun drawerCategoriesUseOnePackedGridWithNonoverlappingHeaderAndSearch() {
+        seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        @Suppress("UNCHECKED_CAST")
+        val apps = field(a, "apps") as MutableList<ResolveInfo>
+        apps.clear()
+        for (i in 0 until 47) apps.add(fake(a, if (i % 2 == 0) "chat.whatsapp$i" else "other.$i").apply {
+            nonLocalizedLabel = "${('A'.code + i % 26).toChar()} app $i"
+        })
+        call(a, "showDrawer"); layout(a)
+        fun grid() = a.window.decorView.findViewWithTag<DrawerAppGrid>("drawer_grid")!!
+        assertEquals(47, grid().childCount)
+        val header = a.window.decorView.findViewWithTag<View>("drawer_header")!!
+        val search = a.window.decorView.findViewWithTag<View>("drawer_search")!!
+        val bounds = android.graphics.Rect(); header.getGlobalVisibleRect(bounds)
+        val searchBounds = android.graphics.Rect(); search.getGlobalVisibleRect(searchBounds)
+        assertTrue(bounds.bottom < searchBounds.top)
+        val category = views(header).filterIsInstance<TextView>().first { it.text.toString() == "Comunicação" }
+        category.performClick(); layout(a)
+        assertEquals(24, grid().childCount)
+        val before = grid().getChildAt(0)
+        val viewport = grid().parent.parent as ScrollView
+        viewport.scrollTo(0, 100)
+        assertSame(before, grid().getChildAt(0))
+        val sameCategory = views(header).filterIsInstance<TextView>().first { it.text.toString() == "Comunicação" }
+        sameCategory.performClick()
+        assertSame(before, grid().getChildAt(0))
+        c.pause().stop().destroy()
+    }
+    @Test fun retroImporterRemovedButExistingArtworkAndThemeControlsRemain() {
+        seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        assertThrows(android.content.pm.PackageManager.NameNotFoundException::class.java) {
+            a.packageManager.getActivityInfo(android.content.ComponentName(a.packageName, "com.purplecharm.launcher.RetroImporterActivity"), 0)
+        }
+        call(a, "settingsMenu")
+        val options = field(a, "optionsDialog") as Dialog
+        options.window!!.decorView.findViewWithTag<View>("settings_command_0")!!.performClick()
+        val theme = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        val texts = views(theme.window!!.decorView).filterIsInstance<TextView>().map { it.text.toString() }
+        assertFalse(texts.any { it.contains("Retro 0.4") || it.contains("IMPORTAR APK") })
+        assertTrue(texts.any { it.contains("Papéis de parede") })
+        theme.dismiss(); c.pause().stop().destroy()
+    }
+
 }

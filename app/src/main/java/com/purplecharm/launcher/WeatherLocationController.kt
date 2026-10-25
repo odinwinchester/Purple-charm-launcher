@@ -184,6 +184,7 @@ internal class WeatherLocationController(
             .setMessage("Ex.: Campo Grande, MS, Brasil. A busca depende do serviço de geocodificação do Android.")
             .setView(input).setPositiveButton("Buscar", null).setNegativeButton("Cancelar", null).create()
         dialog.setOnShowListener {
+            SmokeUi.style(dialog)
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val query = input.text.toString().trim()
                 if (query.length < 2) { input.error = "Informe o nome da cidade"; return@setOnClickListener }
