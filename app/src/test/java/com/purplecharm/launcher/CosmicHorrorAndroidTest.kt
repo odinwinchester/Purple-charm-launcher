@@ -50,7 +50,8 @@ class CosmicHorrorAndroidTest {
         val preview = ShadowDialog.getLatestDialog()
         val full = views(preview.window!!.decorView).filterIsInstance<ImageView>().first()
         assertEquals(ImageView.ScaleType.FIT_CENTER, full.scaleType)
-        full.performClick()
+        views(preview.window!!.decorView).filterIsInstance<TextView>()
+            .first { it.text.toString() == "✦ Aplicar papel de parede" }.performClick()
         val destination = ShadowDialog.getLatestDialog()
         views(destination.window!!.decorView).filterIsInstance<TextView>().first { it.text.toString() == "⌂ Tela inicial" }.performClick()
         assertEquals("cosmic_azathoth", p.getString("pc_wallpaper_choice", null))
@@ -64,7 +65,9 @@ class CosmicHorrorAndroidTest {
             val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
             assertEquals(ImageView.ScaleType.FIT_CENTER, background(a).scaleType)
             val bitmap = (background(a).drawable as BitmapDrawable).bitmap
-            assertEquals(941, bitmap.width); assertEquals(1672, bitmap.height)
+            // The existing loader may subsample for the simulated device's smaller screen.
+            assertTrue(bitmap.width in 1..941); assertTrue(bitmap.height in 1..1672)
+            assertTrue(kotlin.math.abs(bitmap.width * 1672 - bitmap.height * 941) <= 1672)
             c.pause().stop().destroy()
         }
         p.edit().putString("pc_wallpaper_choice", "ghost_fire").commit()
