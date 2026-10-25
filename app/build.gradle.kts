@@ -14,6 +14,7 @@ android {
         targetSdk = 35
         versionCode = providers.environmentVariable("PURPLE_VERSION_CODE").orElse("9").get().toInt()
         versionName = "0.7.2"
+        testInstrumentationRunner = "com.purplecharm.launcher.UpgradeProbe"
     }
 
     val signingPath = providers.environmentVariable("PURPLE_KEYSTORE_PATH").orNull

@@ -1,0 +1,72 @@
+name: Validar atualizacao Android com mesma chave
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/build.gradle.kts'
+      - 'app/src/androidTest/**'
+      - '.github/workflows/verify-upgrade.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  upgrade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Compilar duas versoes com a mesma chave de teste do runner
+        run: |
+          mkdir -p upgrade-test
+          PURPLE_VERSION_CODE=9 gradle :app:assembleDebug :app:assembleDebugAndroidTest
+          cp app/build/outputs/apk/debug/app-debug.apk upgrade-test/version9.apk
+          PURPLE_VERSION_CODE=10 gradle :app:assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk upgrade-test/version10.apk
+          TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+          "$TOOLS/apksigner" verify --print-certs upgrade-test/version9.apk > upgrade-test/cert9.txt
+          "$TOOLS/apksigner" verify --print-certs upgrade-test/version10.apk > upgrade-test/cert10.txt
+          python3 - <<'PY'
+          import re,pathlib
+          def cert(p):
+              return set(re.findall(r'certificate SHA-256 digest: ([0-9a-fA-F]+)',pathlib.Path(p).read_text()))
+          a=cert('upgrade-test/cert9.txt'); b=cert('upgrade-test/cert10.txt')
+          assert len(a)==1 and a==b
+          print('Duas versoes com mesmo certificado publico SHA-256:',next(iter(a)))
+          PY
+      - name: Habilitar KVM para emulador
+        run: sudo chmod 666 /dev/kvm
+      - name: Instalar atualizar sem desinstalar e conferir persistencia
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-snapshot -gpu swiftshader_indirect -no-boot-anim
+          script: |
+            adb install upgrade-test/version9.apk
+            adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w -e phase write com.purplecharm.launcher.test/com.purplecharm.launcher.UpgradeProbe | tee upgrade-test/write.txt
+            grep -q UPGRADE_PROBE_OK:write upgrade-test/write.txt
+            adb shell am force-stop com.purplecharm.launcher
+            adb install -r upgrade-test/version10.apk
+            adb shell am start -W -n com.purplecharm.launcher/.MainActivity | tee upgrade-test/launch.txt
+            adb shell pidof com.purplecharm.launcher
+            adb shell am instrument -w -e phase verify com.purplecharm.launcher.test/com.purplecharm.launcher.UpgradeProbe | tee upgrade-test/verify.txt
+            grep -q UPGRADE_PROBE_OK:verify upgrade-test/verify.txt
+            adb shell dumpsys package com.purplecharm.launcher | grep versionCode=10
+            echo 'ATUALIZACAO_ANDROID_OK: install -r 9 para 10, mesma chave, pastas/dock/arte preservados, sem desinstalacao'
+      - name: Relatorios publicos sem chaves privadas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Purple-Charm-Upgrade-Test
+          path: upgrade-test/*.txt
+          if-no-files-found: warn
