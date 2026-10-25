@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
     inputs:
       version_code:
-        description: 'versionCode maior que o APK instalado (minimo 8)'
+        description: 'versionCode maior que o APK instalado (minimo 9)'
         required: true
-        default: '8'
+        default: '9'
         type: string
 permissions:
   contents: read
@@ -37,7 +37,7 @@ jobs:
           assert os.environ['KEYSTORE_B64'], 'Configurar PURPLE_KEYSTORE_BASE64 em android-signing'
           cert = os.environ['EXPECTED_CERT'].replace(':','').lower()
           assert re.fullmatch('[0-9a-f]{64}',cert), 'Configurar PURPLE_SIGNING_CERT_SHA256 confiavel'
-          assert os.environ['VERSION_CODE'].isdigit() and 8 <= int(os.environ['VERSION_CODE']) <= 2100000000
+          assert os.environ['VERSION_CODE'].isdigit() and 9 <= int(os.environ['VERSION_CODE']) <= 2100000000
           target = pathlib.Path(os.environ['RUNNER_TEMP'])/'purple-signing.keystore'
           target.write_bytes(base64.b64decode(os.environ['KEYSTORE_B64'],validate=True)); target.chmod(0o600)
           with open(os.environ['GITHUB_ENV'],'a') as f:
@@ -73,10 +73,10 @@ jobs:
           PY
           sha256sum "$APK"
           mkdir -p dist
-          cp "$APK" dist/Purple-Charm-Crystal-Class-v0.7.1-STABLE.apk
+          cp "$APK" dist/Purple-Charm-Crystal-Class-v0.7.2-STABLE.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Purple-Charm-Crystal-Class-v0.7.1-STABLE
+          name: Purple-Charm-Crystal-Class-v0.7.2-STABLE
           path: dist/*.apk
           if-no-files-found: error
       - name: Remover chave do runner

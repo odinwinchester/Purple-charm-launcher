@@ -1914,10 +1914,11 @@ class MainActivity : Activity(), SensorEventListener {
                     7 -> weatherClient.refresh(force = true) { runOnUiThread { refreshCelestialView(); weatherDetails() } }
                     8 -> SmokeDialogBuilder(this).setTitle("Página do clima")
                         .setItems((1..pageCount()).map { "Página $it" }.toTypedArray()) { _, p ->
-                            prefs.edit().putInt("weather_widget_page", p).apply(); refreshWorkspaceSafely()
+                            if (androidWidgets.hasWidgets(p)) Toast.makeText(this, "Escolha uma página sem widgets Android para preservar a área completa do clima", Toast.LENGTH_LONG).show()
+                            else { prefs.edit().putInt("weather_widget_page", p).apply(); refreshWorkspaceSafely() }
                         }.show()
                     9 -> {
-                        val panel = celestialView ?: return@setItems
+                        if (celestialView == null) return@setItems
                         val image = (widgetEditor?.getChildAt(0) as? ViewGroup)?.getChildAt(0) as? ImageView
                         if (image != null) {
                             val full = Dialog(this)
@@ -2070,6 +2071,8 @@ class MainActivity : Activity(), SensorEventListener {
                     setOnClickListener {
                         showDrawer()
                     }
+                    contentDescription = "Abrir gaveta de aplicativos"
+                    tag = "dock_drawer"
                     // Toque longo reservado: personalização permanece no gesto de deslizar para cima.
                 }
             } else {

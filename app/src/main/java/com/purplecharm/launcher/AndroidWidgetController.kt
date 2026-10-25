@@ -24,13 +24,15 @@ internal class AndroidWidgetController(private val activity: Activity, private v
     private val host = AppWidgetHost(activity, HOST_ID)
     private val store = HostedWidgetStore(prefs)
     private val views = mutableMapOf<Int, AppWidgetHostView>()
+    private val sizedViews = mutableSetOf<Int>()
     private fun dp(value: Int) = (value * activity.resources.displayMetrics.density).toInt()
     private fun message(value: String) = Toast.makeText(activity, value, Toast.LENGTH_LONG).show()
     private fun values(): List<HostedWidget>? = runCatching { store.read() }.getOrElse { message("Organização de widgets ilegível; dados preservados"); null }
     private fun save(list: List<HostedWidget>): Boolean = runCatching { store.save(list) }.getOrDefault(false).also { if (it) changed() else message("Não foi possível salvar; organização preservada") }
     fun start() { runCatching { host.startListening() }; cleanup() }
     fun stop() { runCatching { host.stopListening() } }
-    fun close() { stop(); views.clear() }
+    fun close() { stop(); views.clear(); sizedViews.clear() }
+    fun hasWidgets(page: Int) = values()?.any { it.page.coerceAtMost(pageCount() - 1) == page } == true
     private fun providerLabel(info: AppWidgetProviderInfo): String {
         val origin = runCatching { activity.packageManager.getApplicationLabel(activity.packageManager.getApplicationInfo(info.provider.packageName, 0)).toString() }.getOrDefault(info.provider.packageName)
         return "${info.loadLabel(activity.packageManager)} • $origin"
@@ -48,7 +50,8 @@ internal class AndroidWidgetController(private val activity: Activity, private v
         val existing = values() ?: return
         if (existing.size >= 32 || prefs.getInt("widget_pending_id", 0) != 0) { message("Conclua o widget pendente ou remova um widget"); return }
         val available = (activity.resources.displayMetrics.widthPixels - dp(36)).coerceAtLeast(1)
-        if (info.minWidth > available || ceil(info.minHeight / activity.resources.displayMetrics.density).toInt() > 1200) {
+        val padding = AppWidgetHostView.getDefaultPaddingForWidget(activity, info.provider, null)
+        if (info.minWidth + padding.left + padding.right > available - dp(8) || ceil(info.minHeight / activity.resources.displayMetrics.density).toInt() > 1200) {
             message("Este widget exige área maior que a suportada nesta tela"); return
         }
         val id = runCatching { host.allocateAppWidgetId() }.getOrElse { message("O Android não permitiu criar widget"); return }
@@ -96,8 +99,10 @@ internal class AndroidWidgetController(private val activity: Activity, private v
         if (info.provider.flattenToString() != prefs.getString("widget_pending_provider", null)) { cancelPending(); return }
         if (list.any { it.id == id }) { clearPending(); return }
         val density = activity.resources.displayMetrics.density
-        val height = ceil(info.minHeight / density).toInt().coerceIn(80, 1200)
-        val target = if (pageCount() > 1) 1 else 0
+        val padding = AppWidgetHostView.getDefaultPaddingForWidget(activity, info.provider, null)
+        val height = ceil((info.minHeight + padding.top + padding.bottom) / density).toInt().coerceIn(80, 1200)
+        val weatherPage = prefs.getInt("weather_widget_page", 0)
+        val target = (0 until pageCount()).firstOrNull { it != weatherPage } ?: 0
         val item = HostedWidget(id, info.provider.flattenToString(), target, columns(), height, list.count { it.page == target })
         // Persist the instance and clear pending state atomically before notifying UI.
         val old = prefs.getString("hosted_widgets_v1", null)
@@ -108,10 +113,15 @@ internal class AndroidWidgetController(private val activity: Activity, private v
         }
         changed()
     }
-    private fun clearPending() { prefs.edit().remove("widget_pending_id").remove("widget_pending_provider").remove("widget_pending_stage").commit() }
-    internal fun cancelPending() { val id = prefs.getInt("widget_pending_id", 0); clearPending(); if (id > 0) deleteId(id) }
+    private fun clearPending(): Boolean = prefs.edit().remove("widget_pending_id").remove("widget_pending_provider").remove("widget_pending_stage").commit()
+    internal fun cancelPending() {
+        val id = prefs.getInt("widget_pending_id", 0)
+        val list = values() ?: return
+        if (!clearPending()) { message("Não foi possível cancelar; widget pendente preservado"); return }
+        if (id > 0 && list.none { it.id == id }) deleteId(id)
+    }
     private fun deleteId(id: Int) {
-        views.remove(id)
+        views.remove(id); sizedViews.remove(id)
         if (runCatching { host.deleteAppWidgetId(id) }.isFailure) {
             val old = prefs.getStringSet("widget_cleanup_ids", emptySet())!!.toMutableSet()
             old.add(id.toString()); prefs.edit().putStringSet("widget_cleanup_ids", old).commit()
@@ -147,7 +157,8 @@ internal class AndroidWidgetController(private val activity: Activity, private v
                 when (action) {
                     0 -> SmokeDialogBuilder(activity).setTitle("Página")
                         .setItems((1..pageCount()).map { "Página $it" }.toTypedArray()) { _, p ->
-                            save(list.map { if (it.id == id) it.copy(page = p, order = list.count { w -> w.page == p }) else it })
+                            if (p == prefs.getInt("weather_widget_page", 0) && prefs.getBoolean("gothic_moon_visible", true)) message("Escolha outra página: o clima usa esta área completa")
+                            else save(list.map { if (it.id == id) it.copy(page = p, order = list.count { w -> w.page == p }) else it })
                         }.show()
                     1, 2 -> {
                         val ordered = list.filter { it.page == widget.page }.sortedBy { it.order }.toMutableList()
@@ -170,8 +181,9 @@ internal class AndroidWidgetController(private val activity: Activity, private v
         if (!horizontal && !vertical) { message("Este aplicativo não permite redimensionar o widget"); return }
         val density = activity.resources.displayMetrics.density
         val availableDp = (activity.resources.displayMetrics.widthPixels - dp(36)) / density
-        val minW = (if (info.minResizeWidth > 0) info.minResizeWidth else info.minWidth) / density
-        val minH = ceil((if (info.minResizeHeight > 0) info.minResizeHeight else info.minHeight) / density).toInt().coerceAtLeast(40)
+        val padding = AppWidgetHostView.getDefaultPaddingForWidget(activity, info.provider, null)
+        val minW = ((if (info.minResizeWidth > 0) info.minResizeWidth else info.minWidth) + padding.left + padding.right + dp(8)) / density
+        val minH = ceil(((if (info.minResizeHeight > 0) info.minResizeHeight else info.minHeight) + padding.top + padding.bottom) / density).toInt().coerceAtLeast(40)
         val maxW = if (Build.VERSION.SDK_INT >= 31 && info.maxResizeWidth > 0) info.maxResizeWidth / density else availableDp
         val maxH = if (Build.VERSION.SDK_INT >= 31 && info.maxResizeHeight > 0) (info.maxResizeHeight / density).toInt().coerceAtMost(1200) else 1200
         val options = mutableListOf<Pair<String, HostedWidget>>()
@@ -201,7 +213,7 @@ internal class AndroidWidgetController(private val activity: Activity, private v
                 if (view != null) {
                     (view.parent as? ViewGroup)?.removeView(view)
                     box.addView(view, LinearLayout.LayoutParams(-1, dp(w.heightDp)))
-                    view.addOnLayoutChangeListener { _, l, t, r, b, oldL, oldT, oldR, oldB ->
+                    if (sizedViews.add(w.id)) view.addOnLayoutChangeListener { _, l, t, r, b, oldL, oldT, oldR, oldB ->
                         if (r - l != oldR - oldL || b - t != oldB - oldT) {
                             val density = activity.resources.displayMetrics.density
                             val width = ((r - l) / density).toInt(); val height = ((b - t) / density).toInt()

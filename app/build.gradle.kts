@@ -12,8 +12,8 @@ android {
         applicationId = "com.purplecharm.launcher"
         minSdk = 26
         targetSdk = 35
-        versionCode = providers.environmentVariable("PURPLE_VERSION_CODE").orElse("8").get().toInt()
-        versionName = "0.7.1"
+        versionCode = providers.environmentVariable("PURPLE_VERSION_CODE").orElse("9").get().toInt()
+        versionName = "0.7.2"
     }
 
     val signingPath = providers.environmentVariable("PURPLE_KEYSTORE_PATH").orNull

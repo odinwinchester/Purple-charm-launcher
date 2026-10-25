@@ -73,17 +73,17 @@ jobs:
           test "$PACKAGE_NAME" = "com.purplecharm.launcher"
           sha256sum "$APK"
           echo "DEBUG EPHEMERAL: chave de teste do runner; nao garante atualizacao da instalacao anterior."
-          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -q "versionCode='8'"
+          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -q "versionCode='9'"
 
       - name: Nomear APK para instalacao
         shell: bash
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Purple-Charm-Crystal-Class-v0.7.1-DEBUG-EPHEMERAL.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Purple-Charm-Crystal-Class-v0.7.2-DEBUG-EPHEMERAL.apk
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Purple-Charm-Crystal-Class-v0.7.1-DEBUG-EPHEMERAL
+          name: Purple-Charm-Crystal-Class-v0.7.2-DEBUG-EPHEMERAL
           path: dist/*.apk
           if-no-files-found: error

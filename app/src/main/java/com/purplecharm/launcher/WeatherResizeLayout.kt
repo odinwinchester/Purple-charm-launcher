@@ -114,7 +114,7 @@ internal class WeatherResizeLayout(
         val w = MeasureSpec.getSize(widthMeasureSpec)
         val h = MeasureSpec.getSize(heightMeasureSpec)
         setMeasuredDimension(w, h)
-        placement = WidgetResizeGeometry.place(w, h, columns, span, handleSize, sw, sh, border)
+        placement = WidgetResizeGeometry.place(w, h, columns, span, if (isEditing) handleSize else 0, sw, sh, border)
         art.resizedWidth = placement.artWidth
         art.measure(MeasureSpec.makeMeasureSpec(placement.artWidth, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(placement.artHeight, MeasureSpec.EXACTLY))
@@ -122,7 +122,7 @@ internal class WeatherResizeLayout(
             MeasureSpec.makeMeasureSpec(handleSize, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(handleSize, MeasureSpec.EXACTLY))
     }
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
-        val x = (placement.column * placement.cellWidth).toInt() + handleSize
+        val x = (placement.column * placement.cellWidth).toInt() + if (isEditing) handleSize else 0
         val y = ((height - art.measuredHeight) / 2).coerceAtLeast(0)
         art.layout(x, y, x + art.measuredWidth, y + art.measuredHeight)
         val handleTop = (y + art.measuredHeight / 2 - handleSize / 2).coerceIn(0, (height - handleSize).coerceAtLeast(0))
