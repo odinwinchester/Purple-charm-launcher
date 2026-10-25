@@ -1,0 +1,26 @@
+name: Testar criptografia do fluxo de assinatura
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/keystore_crypto.py'
+      - 'scripts/test_signing_crypto.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  crypto-selftest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Instalar dependência criptográfica fixada
+        run: python3 -m pip install --disable-pip-version-check --no-warn-script-location "cryptography==50.0.2"
+      - name: Round-trip com chave descartável
+        run: bash scripts/test_signing_crypto.sh
