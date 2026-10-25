@@ -61,7 +61,7 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
         cachedBody = null
         retryAfter = 0L
         prefs.edit().remove("met_forecast_json").remove("met_forecast_location")
-            .remove("gothic_weather_expires").remove("gothic_weather_last_modified").remove("met_forecast_received").apply()
+            .remove("gothic_weather_expires").remove("gothic_weather_last_modified").remove("met_forecast_received").remove("met_weather_error").apply()
     }
 
     fun current(now: Long = System.currentTimeMillis()): WeatherForecast? {
@@ -69,12 +69,12 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
         return cachedBody?.let { parse(it, now) }
     }
 
-    fun refresh(force: Boolean = false, onChanged: () -> Unit) {
-        val key = location() ?: return
+    fun refresh(force: Boolean = false, onChanged: () -> Unit): Boolean {
+        val key = location() ?: return false
         val now = System.currentTimeMillis()
         if (now < retryAfter || (!force && key == prefs.getString("met_forecast_location", null) &&
-                now < prefs.getLong("gothic_weather_expires", 0L))) return
-        if (!loading.compareAndSet(false, true)) return
+                now < prefs.getLong("gothic_weather_expires", 0L))) return false
+        if (!loading.compareAndSet(false, true)) return false
         Thread {
             var connection: HttpURLConnection? = null
             try {
@@ -94,7 +94,7 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                     .coerceAtLeast(System.currentTimeMillis() + 60_000L)
                 if (status == 304 && cachedBody != null) {
                     synchronized(this) {
-                        if (location() == key) prefs.edit().putLong("gothic_weather_expires", expires).putLong("met_forecast_received", System.currentTimeMillis()).apply()
+                        if (location() == key) prefs.edit().putLong("gothic_weather_expires", expires).putLong("met_forecast_received", System.currentTimeMillis()).remove("met_weather_error").apply()
                     }
                 } else if (status == 200 || status == 203) {
                     val body = connection.inputStream.bufferedReader().use { it.readText() }
@@ -107,25 +107,32 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                                 .putLong("met_forecast_received", System.currentTimeMillis())
                                 .putString("met_forecast_location", key)
                                 .putLong("gothic_weather_expires", expires)
-                                .remove("gothic_weather_last_modified")
+                                .remove("gothic_weather_last_modified").remove("met_weather_error")
                             connection.getHeaderField("Last-Modified")?.let {
                                 editor.putString("gothic_weather_last_modified", it)
                             }
                             editor.apply()
                         }
                     }
-                    onChanged()
                 } else {
                     val retry = connection.getHeaderField("Retry-After")?.toLongOrNull()
-                    if (location() == key) retryAfter = System.currentTimeMillis() + (retry ?: 900L).coerceAtLeast(60L) * 1000L
+                    if (location() == key) {
+                        retryAfter = System.currentTimeMillis() + (retry ?: 900L).coerceAtLeast(60L) * 1000L
+                        prefs.edit().putString("met_weather_error", "HTTP $status • mantendo somente previsão ainda válida").apply()
+                    }
                 }
             } catch (_: Exception) {
-                if (location() == key) retryAfter = System.currentTimeMillis() + 15 * 60_000L
+                if (location() == key) {
+                    retryAfter = System.currentTimeMillis() + 15 * 60_000L
+                    prefs.edit().putString("met_weather_error", "Rede ou resposta indisponível • retentativa automática em 15 minutos").apply()
+                }
             } finally {
                 connection?.disconnect()
                 loading.set(false)
+                onChanged()
             }
         }.start()
+        return true
     }
 
     companion object {

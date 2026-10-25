@@ -1900,7 +1900,7 @@ class MainActivity : Activity(), SensorEventListener {
             }
         }
         SmokeDialogBuilder(this).setTitle("Previsão real • MET Norway")
-            .setMessage("${weatherLocation.summary}\nCoordenadas: ${prefs.getString("gothic_weather_lat", "—")}, ${prefs.getString("gothic_weather_lon", "—")}\n$liveText\nRecebimento/validação: ${prefs.getLong("met_forecast_received", 0).takeIf { it > 0 }?.let { java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(it)) } ?: "não registrado"}.\nHorário da previsão no fuso do aparelho (${java.time.ZoneId.systemDefault()}). Temperatura instantânea prevista, não mínima/máxima nem observação de estação.\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.")
+            .setMessage("${weatherLocation.summary}\nCoordenadas: ${prefs.getString("gothic_weather_lat", "—")}, ${prefs.getString("gothic_weather_lon", "—")}\n$liveText\nEstado de rede: ${prefs.getString("met_weather_error", "sem erro registrado")}.\nRecebimento/validação: ${prefs.getLong("met_forecast_received", 0).takeIf { it > 0 }?.let { java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(it)) } ?: "não registrado"}.\nHorário da previsão no fuso do aparelho (${java.time.ZoneId.systemDefault()}). Temperatura instantânea prevista, não mínima/máxima nem observação de estação.\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.")
             .setPositiveButton("Fechar", null).show()
     }
 
@@ -1929,7 +1929,8 @@ class MainActivity : Activity(), SensorEventListener {
                     }
                     7 -> if (!prefs.contains("gothic_weather_lat")) gothicWeatherSettings() else {
                         Toast.makeText(this, "Consultando previsão • limites de rede respeitados", Toast.LENGTH_SHORT).show()
-                        weatherClient.refresh(force = true) { runOnUiThread { if (!isFinishing && !isDestroyed) { refreshCelestialView(); weatherDetails() } } }
+                        val started = weatherClient.refresh(force = true) { runOnUiThread { if (!isFinishing && !isDestroyed) { refreshCelestialView(); weatherDetails() } } }
+                        if (!started) weatherDetails()
                     }
                     8 -> SmokeDialogBuilder(this).setTitle("Página do clima")
                         .setItems((1..pageCount()).map { "Página $it" }.toTypedArray()) { _, p ->
