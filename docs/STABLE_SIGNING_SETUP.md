@@ -32,6 +32,7 @@ Secrets necessários:
 Variable pública:
 
 - PURPLE_SIGNING_CERT_SHA256: fingerprint de 64 caracteres hexadecimais, que será entregue como arquivo no artifact de geração.
+- PURPLE_SIGNING_ENVIRONMENT_PROTECTED: digite YES somente depois de configurar e salvar a proteção do environment.
 
 Crie credenciais longas e exclusivas e guarde-as em seu gerenciador de senhas. Não as envie pelo chat. Se não houver revisor independente ou controle manual disponível, não execute assinatura até definir um controle adequado.
 
@@ -39,7 +40,7 @@ Crie credenciais longas e exclusivas e guarde-as em seu gerenciador de senhas. N
 
 O GitHub não permite acionar workflow_dispatch de um workflow que só existe na branch desta PR. Por isso, não execute geração de chave nem build de release antes da integração aprovada; esta preparação não altera main nem faz merge. O workflow de criptografia é seguro para PR: não recebe secrets.
 
-1. Em Settings → Environments, configure android-signing e as proteções acima. Crie STORE_PASSWORD, KEY_PASSWORD, KEY_ALIAS e RECOVERY_PASSPHRASE como secrets no environment. Deixe KEYSTORE_CIPHERTEXT_B64 vazio até a geração.
+1. Em Settings → Environments, configure android-signing e as proteções acima. Crie a variável PURPLE_SIGNING_ENVIRONMENT_PROTECTED=YES apenas depois de salvar as proteções. Crie STORE_PASSWORD, KEY_PASSWORD, KEY_ALIAS e RECOVERY_PASSPHRASE como secrets no environment. Deixe KEYSTORE_CIPHERTEXT_B64 vazio até a geração.
 2. Depois que os workflows existirem em main, abra Actions → Preparar chave permanente → Run workflow, selecione main, digite exatamente CREATE_PERMANENT_KEY e execute.
 3. Aprove somente após conferir o commit/workflow. Baixe o artifact Purple-Charm-Encrypted-Signing-Backup.
 4. Copie o conteúdo de keystore-backup.base64.txt para o secret PURPLE_KEYSTORE_CIPHERTEXT_B64. Copie certificate.sha256 para a variable PURPLE_SIGNING_CERT_SHA256.

@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   stable:
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     environment: android-signing
     timeout-minutes: 30
@@ -48,8 +49,10 @@ jobs:
           KEY_ALIAS: ${{ secrets.PURPLE_KEY_ALIAS }}
           EXPECTED_CERT: ${{ vars.PURPLE_SIGNING_CERT_SHA256 }}
           VERSION_CODE: ${{ inputs.version_code }}
+          PROTECTION_ACK: ${{ vars.PURPLE_SIGNING_ENVIRONMENT_PROTECTED }}
         run: |
           set -euo pipefail
+          test "$PROTECTION_ACK" = "YES" || { echo "Environment não foi confirmado como protegido; assinatura bloqueada."; exit 1; }
           test -n "$KEYSTORE_CIPHERTEXT_B64" && test -n "$RECOVERY_PASSPHRASE" && test -n "$STORE_PASSWORD" && test -n "$KEY_PASSWORD" && test -n "$KEY_ALIAS" || {
             echo "Secrets necessários ausentes no environment android-signing."
             exit 1
