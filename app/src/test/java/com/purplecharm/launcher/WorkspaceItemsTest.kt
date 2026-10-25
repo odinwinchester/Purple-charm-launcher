@@ -158,6 +158,13 @@ class WorkspaceItemsTest {
         assertEquals(1, (after.pages.flatten() + after.dock).count { it == "external/Y" })
         val full = s.copy(pages = s.pages.map { it.map { key -> key.ifEmpty { "occupied/X" } } })
         assertNull(WorkspaceEdits.configureDock(full, "external/Y", 0))
+        val folderDock = WorkspaceItems(listOf(listOf("folder:source", ""), listOf("", ""), listOf("", "")),
+            listOf("folder:target", "", "", ""), mapOf("folder:source" to WorkspaceFolder("Origem", listOf(c)),
+                "folder:target" to WorkspaceFolder("Preservar", listOf(a, b))))
+        val replaced = WorkspaceEdits.configureDock(folderDock, c, 0)!!
+        assertEquals(c, replaced.dock[0]); assertEquals(listOf(a, b), replaced.folders.getValue("folder:target").apps)
+        assertTrue("folder:target" in replaced.pages.flatten()); assertFalse("folder:source" in replaced.folders)
+        assertEquals(apps(folderDock).sorted(), apps(replaced).sorted())
     }
 
 }

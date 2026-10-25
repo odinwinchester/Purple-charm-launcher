@@ -123,7 +123,7 @@ internal object WorkspaceEdits {
     }
     fun configureDock(s: WorkspaceItems, key: String, slot: Int): WorkspaceItems? {
         dock(s, key, slot)?.let { return it }
-        if (!s.valid() || slot !in 0..3 || origin(s, key) != null) return null
+        if (!s.valid() || slot !in 0..3) return null
         val previous = s.dock[slot]
         if (previous.isEmpty()) return null
         for (p in s.pages.indices) {
