@@ -50,6 +50,7 @@ import android.text.TextWatcher
 import android.text.Editable
 import android.view.inputmethod.InputMethodManager
 import android.content.Context
+import android.content.BroadcastReceiver
 import android.widget.Toast
 import android.widget.ViewFlipper
 import java.text.Normalizer
@@ -71,6 +72,7 @@ class MainActivity : Activity(), SensorEventListener {
     private val workspaceMime = "application/vnd.purplecharm.workspace-item"
     private var folderDialog: FolderSurface? = null
     private lateinit var homeHost: FrameLayout
+    private var cachedDrawerHost: FrameLayout? = null
     private var openFolderId: String? = null
     private var pendingDrawerDrag = false
     private var folderHomeDragArmed = false
@@ -126,13 +128,14 @@ class MainActivity : Activity(), SensorEventListener {
         if (editMode || drawerOpen || dragging) return
         editMode = true
         val dialog = SmokeDialogBuilder(this).setTitle("✦ Editar tela inicial")
-            .setItems(arrayOf("Wallpapers", "Ícones e organização", "Widgets", "Configurar dock", "Configurações", "Concluir")) { _, choice ->
+            .setItems(arrayOf("Wallpapers", "Ícones e organização", "Widgets", "Configurar dock", "Configurações", "Configurações do Android", "Concluir")) { _, choice ->
                 when (choice) {
                     0 -> wallpaperMenu()
                     1 -> shortcutEditor()
                     2 -> widgetCenter()
                     3 -> dockConfiguration()
                     4 -> settingsMenu()
+                    5 -> openSystemSettings()
                 }
             }.create()
         dialog.setOnDismissListener { editMode = false }
@@ -155,11 +158,10 @@ class MainActivity : Activity(), SensorEventListener {
                                             val next = state.copy(pages = state.pages.mapIndexed { p, cells -> if (p == pageIndex) cells.map { if (it == key) "" else it } else cells })
                                             saveWorkspaceEdit(next)
                                         }
-                                    } else SmokeDialogBuilder(this).setTitle("Página de destino")
-                                        .setItems((1..pageCount()).map { "Página $it" }.toTypedArray()) { _, page -> placeOnPage(key, page) }.show()
+                                    } else moveWorkspaceItemPageMenu(key, resolveKey(key)?.let(::appLabel) ?: workspaceStore.folders()[key]?.name ?: key)
                                 }.show()
                         }.show()
-                    1 -> Toast.makeText(this, "Segure um ícone para arrastar; solte no centro de outro para criar pasta. Voltar cancela.", Toast.LENGTH_LONG).show()
+                    1 -> Toast.makeText(this, "Toque longo no atalho e escolha ‘Mover por arraste / criar pasta’. Solte sobre outro ícone para criar uma pasta; Voltar cancela.", Toast.LENGTH_LONG).show()
                     2 -> managePages()
                 }
             }.show()
@@ -236,6 +238,8 @@ class MainActivity : Activity(), SensorEventListener {
     private var lastTapAt = 0L
     private var lastTapX = 0f
     private var lastTapY = 0f
+    private var swipeConsumed = false
+    private var pendingVerticalSwipe = false
 
     private var dragging = false
     private var switchingPage = false
@@ -248,12 +252,21 @@ class MainActivity : Activity(), SensorEventListener {
 
     // Grade inicial padrão 4 x 5; mantém preferências e atalhos já salvos.
     private fun homeCapacity(): Int = horizontalIconColumns() * 5
+    private fun homeTileHeight(): Int {
+        val fontScale = resources.configuration.fontScale.coerceAtLeast(1f)
+        // Frame, vertical padding and up to three scaled text lines with breathing room.
+        return dp((71f + kotlin.math.ceil(38f * fontScale)).toInt())
+    }
     private val maxPages = 8
 
     private fun pageCount(): Int = prefs.getInt("layout_page_count", 3).coerceIn(3, maxPages)
 
     private fun managePages() {
-        val options = arrayOf("＋ Adicionar página", "－ Excluir página atual (se vazia)")
+        val homePage = HomePageSelection.read(prefs, pageCount())
+        val options = arrayOf("＋ Adicionar página") +
+            (0 until pageCount()).map { index ->
+                (if (index == homePage) "✓ " else "") + "Definir Página ${index + 1} como principal"
+            } + "－ Excluir página atual (se vazia)"
         SmokeDialogBuilder(this)
             .setTitle("✦ Páginas Purple Charm • ${pageCount()} de $maxPages")
             .setItems(options) { _, which ->
@@ -268,6 +281,14 @@ class MainActivity : Activity(), SensorEventListener {
                         pageIndex = newPage
                         showHome()
                     }
+                } else if (which <= pageCount()) {
+                    val selectedPage = which - 1
+                    if (HomePageSelection.write(prefs, selectedPage, pageCount())) {
+                        pageIndex = selectedPage
+                        showHome()
+                    } else {
+                        Toast.makeText(this, "Não foi possível salvar a página principal", Toast.LENGTH_SHORT).show()
+                    }
                 } else {
                     if (pageCount() <= 3) {
                         Toast.makeText(this, "Mantenha pelo menos 3 páginas", Toast.LENGTH_SHORT).show()
@@ -275,6 +296,20 @@ class MainActivity : Activity(), SensorEventListener {
                         Toast.makeText(this, "Remova os atalhos desta página antes de excluir", Toast.LENGTH_LONG).show()
                     } else {
                         val count = pageCount()
+                        val removedPage = pageIndex
+                        val weatherPage = prefs.getInt("weather_widget_page", 0).coerceIn(0, count - 1)
+                        val externalRaw = prefs.getString("hosted_widgets_v1", null)
+                        val externalWidgets = try {
+                            HostedWidgetStore.decode(externalRaw)
+                        } catch (_: Exception) {
+                            Toast.makeText(this, "Widgets Android ilegíveis; página preservada", Toast.LENGTH_LONG).show()
+                            return@setItems
+                        }
+                        if ((prefs.getBoolean("gothic_moon_visible", true) && weatherPage == removedPage) ||
+                            externalWidgets.any { it.page == removedPage }) {
+                            Toast.makeText(this, "Mova ou oculte os widgets desta página antes de excluí-la", Toast.LENGTH_LONG).show()
+                            return@setItems
+                        }
                         val edit = prefs.edit()
                         for (i in pageIndex until count - 1) {
                             edit.putString("layout_page_$i", savedPage(i + 1).joinToString("|"))
@@ -282,10 +317,24 @@ class MainActivity : Activity(), SensorEventListener {
                             if (moved == null) edit.remove("layout_page_cells_$i")
                             else edit.putString("layout_page_cells_$i", moved)
                         }
+                        val newHomePage = HomePageSelection.afterRemoval(
+                            HomePageSelection.read(prefs, count), removedPage, count
+                        )
                         edit.remove("layout_page_cells_${count - 1}")
                         edit.remove("layout_page_${count - 1}")
-                            .putInt("layout_page_count", count - 1).apply()
-                        pageIndex = pageIndex.coerceAtMost(count - 2)
+                            .putInt("layout_page_count", count - 1)
+                            .putInt(HomePageSelection.KEY, newHomePage)
+                            .putInt("weather_widget_page", HomePageSelection.afterRemoval(weatherPage, removedPage, count))
+                        if (externalRaw != null) {
+                            edit.putString("hosted_widgets_v1", HostedWidgetStore.encode(externalWidgets.map {
+                                it.copy(page = if (it.page > removedPage) it.page - 1 else it.page)
+                            }))
+                        }
+                        if (!edit.commit()) {
+                            Toast.makeText(this, "Não foi possível salvar a remoção; dados preservados", Toast.LENGTH_LONG).show()
+                            return@setItems
+                        }
+                        pageIndex = newHomePage
                         showHome()
                     }
                 }
@@ -873,7 +922,7 @@ class MainActivity : Activity(), SensorEventListener {
             "search" -> showCrystalSearch()
             "settings" -> settingsMenu()
             "wallpaper" -> wallpaperMenu()
-            "home" -> { pageIndex = 0; showHome() }
+            "home" -> { pageIndex = HomePageSelection.read(prefs, pageCount()); showHome() }
             else -> return false
         }
         return true
@@ -894,6 +943,7 @@ class MainActivity : Activity(), SensorEventListener {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
+        pageIndex = HomePageSelection.read(prefs, pageCount())
         loadApps()
         showHome()
     }
@@ -901,13 +951,25 @@ class MainActivity : Activity(), SensorEventListener {
     private fun dp(n: Int): Int =
         (n * resources.displayMetrics.density).toInt()
 
-    private var appsLoadedAt = 0L
+    private var appsLoaded = false
+
+    private val packageChanges = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.data?.schemeSpecificPart == packageName) return
+            appsLoaded = false
+            labelCache.evictAll()
+            iconCache.evictAll()
+            cachedDrawerHost = null
+            loadApps()
+            if (::pages.isInitialized) {
+                if (drawerOpen) showDrawer() else refreshWorkspaceSafely()
+            }
+        }
+    }
 
     private fun loadApps() {
-        // Evita consultar e ordenar todos os aplicativos a cada retorno à Home.
-        val now = android.os.SystemClock.uptimeMillis()
-        if (apps.isNotEmpty() && now - appsLoadedAt < 10_000L) return
-        appsLoadedAt = now
+        // O catálogo muda por eventos do PackageManager; reutilize-o entre Home/gaveta.
+        if (appsLoaded) return
         labelCache.evictAll(); iconCache.evictAll()
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
@@ -926,6 +988,7 @@ class MainActivity : Activity(), SensorEventListener {
                     .toString().lowercase(Locale.ROOT)
             }
         )
+        appsLoaded = true
     }
 
     private fun appKey(app: ResolveInfo): String =
@@ -1120,6 +1183,7 @@ class MainActivity : Activity(), SensorEventListener {
     private val wallpaperOptions = listOf(
         Triple("Floral original", "floral", R.drawable.purple_original_wallpaper),
         Triple("Olho de Crystal", "eye_crystal", R.drawable.purple_eye_crystal),
+        Triple("Olho de Crystal • Real", "eye_royal", R.drawable.purple_eye_royal),
         Triple("Ghost Fire", "ghost_fire", R.drawable.wallpaper_ghost_fire)
     )
 
@@ -1152,6 +1216,7 @@ class MainActivity : Activity(), SensorEventListener {
                 setPadding(dp(5), dp(9), dp(5), dp(9))
             }
             val picture = ImageView(this).apply {
+                tag = "wallpaper_option_$key"
                 setImageDrawable(packagedImage(res, wallpaper = true))
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 background = wallpaperGlass()
@@ -1161,6 +1226,25 @@ class MainActivity : Activity(), SensorEventListener {
             }
             tile.addView(picture, LinearLayout.LayoutParams(-1, dp(238)))
             tile.addView(label(name, 13f))
+            grid.addView(tile, GridLayout.LayoutParams().apply {
+                width = 0
+                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+            })
+        }
+        prefs.getString("wallpaper_uri", null)?.let { savedUri ->
+            val uri = Uri.parse(savedUri)
+            val tile = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(5), dp(9), dp(5), dp(9)) }
+            val picture = ImageView(this).apply {
+                tag = "wallpaper_option_gallery"
+                setImageURI(uri)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                background = wallpaperGlass()
+                clipToOutline = true
+                setOnClickListener { wallpaperPreview("gallery", null, uri) }
+                setOnLongClickListener { wallpaperDestination("gallery", null, uri); true }
+            }
+            tile.addView(picture, LinearLayout.LayoutParams(-1, dp(238)))
+            tile.addView(label("Imagem da galeria", 13f))
             grid.addView(tile, GridLayout.LayoutParams().apply {
                 width = 0
                 columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
@@ -1207,6 +1291,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         layout.addView(image, LinearLayout.LayoutParams(-1, 0, 1f))
         layout.addView(glassButton("✦ Aplicar papel de parede", 17f).apply {
+            tag = "wallpaper_preview_apply"
             setOnClickListener { dialog.dismiss(); wallpaperDestination(key, res, uri) }
         })
         layout.addView(glassButton("Voltar", 14f).apply {
@@ -1227,6 +1312,7 @@ class MainActivity : Activity(), SensorEventListener {
         panel.addView(label("✧ Aplicar plano de fundo a", 19f))
         listOf("♙ Tela de bloqueio", "⌂ Tela inicial", "⌂♙ Ambos").forEachIndexed { index, title ->
             panel.addView(glassButton(title, 17f).apply {
+                tag = "wallpaper_destination_$index"
                 setOnClickListener {
                     dialog.dismiss()
                     applyWallpaperDestination(key, res, uri, index)
@@ -1683,8 +1769,31 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private val androidWidgets by lazy { AndroidWidgetController(this, prefs, { pageCount() }, { horizontalIconColumns() }, { refreshWorkspaceSafely() }, { page -> pageIndex = page; refreshWorkspaceSafely() }) }
-    override fun onStart() { super.onStart(); androidWidgets.start() }
-    override fun onStop() { androidWidgets.stop(); super.onStop() }
+    private var packageReceiverRegistered = false
+    override fun onStart() {
+        super.onStart()
+        androidWidgets.start()
+        if (!packageReceiverRegistered) {
+            val filter = android.content.IntentFilter().apply {
+                addAction(Intent.ACTION_PACKAGE_ADDED)
+                addAction(Intent.ACTION_PACKAGE_REMOVED)
+                addAction(Intent.ACTION_PACKAGE_CHANGED)
+                addAction(Intent.ACTION_PACKAGE_REPLACED)
+                addDataScheme("package")
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(packageChanges, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(packageChanges, filter)
+            }
+            packageReceiverRegistered = true
+        }
+    }
+    override fun onStop() {
+        androidWidgets.stop()
+        super.onStop()
+    }
     private fun widgetCenter() {
         SmokeDialogBuilder(this).setTitle("✦ Central de widgets")
             .setItems(arrayOf("Purple Charm • clima gótico", "Adicionar widget Android", "Gerenciar widgets adicionados")) { _, choice ->
@@ -1731,10 +1840,15 @@ class MainActivity : Activity(), SensorEventListener {
             level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
             level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
             graphicCache.clear(); iconCache.evictAll(); labelCache.evictAll()
+            if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) cachedDrawerHost = null
             androidWidgets.releaseHiddenViews()
         }
     }
     override fun onDestroy() {
+        if (packageReceiverRegistered) {
+            unregisterReceiver(packageChanges)
+            packageReceiverRegistered = false
+        }
         weatherHandler.removeCallbacks(weatherTick)
         weatherLocation.close()
         androidWidgets.close()
@@ -1757,7 +1871,6 @@ class MainActivity : Activity(), SensorEventListener {
     private var widgetEditor: WeatherResizeLayout? = null
     private var widgetResizeActive = false
     private var widgetResizeGesture = false
-    private var iconViewportGesture = false
     private var externalWidgetGesture = false
 
     // Replace only the widget, preserving pages, scroll state and drag/drop.
@@ -1988,7 +2101,7 @@ class MainActivity : Activity(), SensorEventListener {
             val app = resolveKey(key)
             val tile = when {
                 WorkspaceItems.isFolder(key) -> folderTile(key, false)
-                app != null -> appTile(app, false, false)
+                app != null -> appTile(app, false, false, homeShortcut = true)
                 else -> View(this).apply { setOnLongClickListener { enterEditMode(); true } }
             }
             tile.tag = "workspace_cell_${index}_$position"
@@ -1999,7 +2112,7 @@ class MainActivity : Activity(), SensorEventListener {
             }
             grid.addView(tile, GridLayout.LayoutParams().apply {
                 width = 0
-                height = dp(86)
+                height = homeTileHeight()
                 rowSpec = GridLayout.spec(position / horizontalIconColumns())
                 columnSpec = GridLayout.spec(position % horizontalIconColumns(), 1f)
             })
@@ -2026,7 +2139,7 @@ class MainActivity : Activity(), SensorEventListener {
                     if (key != null) {
                         val columns = horizontalIconColumns()
                         val cellWidth = (grid.width / columns).coerceAtLeast(1)
-                        val cellHeight = (grid.getChildAt(0)?.height ?: dp(86)).coerceAtLeast(1)
+                        val cellHeight = (grid.getChildAt(0)?.height ?: homeTileHeight()).coerceAtLeast(1)
                         val x = event.x.coerceAtLeast(0f)
                         val y = (event.y + scroll.scrollY - grid.top).coerceAtLeast(0f)
                         val column = (x.toInt() / cellWidth).coerceIn(0, columns - 1)
@@ -2146,13 +2259,7 @@ class MainActivity : Activity(), SensorEventListener {
             { editWorkspaceMenu() },
             { wallpaperMenu() },
             { settingsMenu() },
-            {
-                try {
-                    startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
-                } catch (_: Exception) {
-                    Toast.makeText(this, "Configurações indisponíveis", Toast.LENGTH_SHORT).show()
-                }
-            },
+            { openSystemSettings() },
             {
                 SmokeDialogBuilder(this)
                     .setTitle("Purple Charm • Ajuda")
@@ -2194,6 +2301,14 @@ class MainActivity : Activity(), SensorEventListener {
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             setGravity(Gravity.BOTTOM)
             attributes = attributes.apply { y = dp(90) }
+        }
+    }
+
+    private fun openSystemSettings() {
+        try {
+            startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
+        } catch (_: Exception) {
+            Toast.makeText(this, "Configurações indisponíveis", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -2290,13 +2405,17 @@ class MainActivity : Activity(), SensorEventListener {
         }
 
     // Substitui os alvos permanentes da gaveta por um menu no toque longo.
-    private fun homeAppActions(app: ResolveInfo) {
+    private fun homeAppActions(app: ResolveInfo, sourceTile: View) {
         val name = appLabel(app)
         SmokeDialogBuilder(this)
             .setTitle(name)
-            .setItems(arrayOf("Mover para outra página", "Remover atalho da tela inicial")) { _, choice ->
+            .setItems(arrayOf("Mover para outra página", "Mover por arraste / criar pasta", "Remover atalho da tela inicial")) { _, choice ->
                 if (choice == 0) {
-                    appPlacementMenu(app)
+                    moveShortcutPageMenu(app)
+                } else if (choice == 1) {
+                    if (!startAppDrag(sourceTile, app)) {
+                        Toast.makeText(this, "Não foi possível iniciar o arraste", Toast.LENGTH_SHORT).show()
+                    }
                 } else {
                     SmokeDialogBuilder(this)
                         .setTitle("Remover atalho?")
@@ -2306,6 +2425,30 @@ class MainActivity : Activity(), SensorEventListener {
                         .show()
                 }
             }.show()
+    }
+
+    private fun moveShortcutPageMenu(app: ResolveInfo) {
+        moveWorkspaceItemPageMenu(appKey(app), appLabel(app))
+    }
+
+    private fun moveWorkspaceItemPageMenu(key: String, name: String) {
+        val sourcePage = pageCells(pageIndex).indexOf(key).takeIf { it >= 0 }?.let { pageIndex }
+            ?: (0 until pageCount()).firstOrNull { key in pageCells(it) }
+        val destinations = (0 until pageCount()).filter { it != sourcePage }
+        if (destinations.isEmpty()) {
+            Toast.makeText(this, "Crie outra página antes de mover este atalho", Toast.LENGTH_SHORT).show()
+            return
+        }
+        SmokeDialogBuilder(this)
+            .setTitle("Mover $name")
+            .setItems(destinations.map { "Página ${it + 1}" }.toTypedArray()) { _, choice ->
+                val destination = destinations.getOrNull(choice) ?: return@setItems
+                if (!placeOnPage(key, destination)) {
+                    Toast.makeText(this, "Não foi possível mover; confira se a página tem espaço", Toast.LENGTH_SHORT).show()
+                } else showHome()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     private fun drawerAppActions(app: ResolveInfo) {
@@ -2384,7 +2527,13 @@ class MainActivity : Activity(), SensorEventListener {
     private fun showDrawer() {
         drawerOpen = true
         loadApps()
+        cachedDrawerHost?.let { cached ->
+            homeHost = cached
+            setContentView(cached)
+            return
+        }
         val root = buildRoot(R.drawable.wallpaper_neon)
+        cachedDrawerHost = homeHost
         val categories = listOf("Tudo", "Comunicação", "Entretenimento", "Outros")
         var selected = "Tudo"
         val tabs = LinearLayout(this).apply {
@@ -2525,7 +2674,8 @@ class MainActivity : Activity(), SensorEventListener {
         app: ResolveInfo,
         allowFavorite: Boolean,
         compact: Boolean,
-        dense: Boolean = false
+        dense: Boolean = false,
+        homeShortcut: Boolean = false
     ): View {
         val tile = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2576,9 +2726,9 @@ class MainActivity : Activity(), SensorEventListener {
             tile.addView(
                 label(
                     appLabel(app),
-                    10f
+                    if (homeShortcut) 9f else 10f
                 ).apply {
-                    maxLines = 2
+                    maxLines = if (homeShortcut) 3 else 2
                     minLines = 2
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     includeFontPadding = false
@@ -2621,6 +2771,9 @@ class MainActivity : Activity(), SensorEventListener {
                     }
                 }
                 true
+            } else if (homeShortcut) {
+                homeAppActions(app, tile)
+                true
             } else {
                 // O primeiro toque longo inicia o arraste com o mesmo dedo.
                 // Não reconstruir a tela com enterEditMode() enquanto o dedo
@@ -2633,60 +2786,73 @@ class MainActivity : Activity(), SensorEventListener {
         return tile
     }
 
-    override fun dispatchTouchEvent(
-        event: MotionEvent
-    ): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN && ::pages.isInitialized) {
+    private fun cancelDispatchedTouch(event: MotionEvent) {
+        val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
+        try { super.dispatchTouchEvent(cancel) } finally { cancel.recycle() }
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        val action = event.actionMasked
+        if (action == MotionEvent.ACTION_DOWN && ::pages.isInitialized) {
             val external = pages.currentView?.findViewWithTag<View>("external_widgets_scroll")
             val bounds = android.graphics.Rect()
-            externalWidgetGesture = external != null && external.getGlobalVisibleRect(bounds) && bounds.contains(event.rawX.toInt(), event.rawY.toInt())
+            externalWidgetGesture = external != null && external.getGlobalVisibleRect(bounds) &&
+                bounds.contains(event.rawX.toInt(), event.rawY.toInt())
         }
         if (externalWidgetGesture) {
-            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) externalWidgetGesture = false
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) externalWidgetGesture = false
             return super.dispatchTouchEvent(event)
         }
         if (pendingDrawerDrag) return super.dispatchTouchEvent(event)
         if (widgetResizeActive || widgetResizeGesture) {
-            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            if (action == MotionEvent.ACTION_DOWN) {
                 widgetResizeGesture = true
                 val bounds = android.graphics.Rect()
                 val editor = widgetEditor
                 if (editor == null || !editor.getGlobalVisibleRect(bounds) ||
-                    !bounds.contains(event.rawX.toInt(), event.rawY.toInt())) {
-                    editor?.endEditing()
-                }
+                    !bounds.contains(event.rawX.toInt(), event.rawY.toInt())) editor?.endEditing()
             }
-            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)
-                widgetResizeGesture = false
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) widgetResizeGesture = false
             return super.dispatchTouchEvent(event)
         }
         if (!drawerOpen && !dragging) {
-            when (event.actionMasked) {
+            when (action) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.x
                     downY = event.y
-                    val iconScroll = if (::pages.isInitialized) pages.getChildAt(pageIndex)
-                        ?.findViewWithTag<ScrollView>("home_icons_scroll") else null
-                    val bounds = android.graphics.Rect()
-                    iconViewportGesture = iconScroll != null && iconScroll.getGlobalVisibleRect(bounds) &&
-                        bounds.contains(event.rawX.toInt(), event.rawY.toInt()) &&
-                        (iconScroll.canScrollVertically(1) || iconScroll.canScrollVertically(-1))
+                    swipeConsumed = false
+                    pendingVerticalSwipe = false
                 }
-
-                MotionEvent.ACTION_MOVE -> {
-                    // Intercepta o gesto horizontal antes que o ScrollView vertical o consuma.
+                MotionEvent.ACTION_MOVE -> if (!swipeConsumed) {
                     val dx = event.x - downX
                     val dy = event.y - downY
-                    if (!downX.isNaN() && abs(dx) > dp(85) &&
-                        abs(dx) > abs(dy) * 1.6f) {
-                        downX = Float.NaN // apenas uma troca por gesto
-                        changePage(pageIndex + if (dx < 0) 1 else -1)
-                        return true
+                    when (WorkspaceGestureClassifier.classify(dx, dy, dp(65).toFloat())) {
+                        WorkspaceSwipe.HORIZONTAL -> {
+                            swipeConsumed = true
+                            cancelDispatchedTouch(event)
+                            changePage(pageIndex + if (dx < 0) 1 else -1)
+                            return true
+                        }
+                        WorkspaceSwipe.VERTICAL -> {
+                            swipeConsumed = true
+                            pendingVerticalSwipe = true
+                            cancelDispatchedTouch(event)
+                            return true
+                        }
+                        WorkspaceSwipe.NONE -> Unit
                     }
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (downX.isNaN()) {
-                        downX = event.x
+                    if (swipeConsumed) {
+                        val runVertical = pendingVerticalSwipe
+                        pendingVerticalSwipe = false
+                        swipeConsumed = false
+                        if (runVertical) {
+                            val dy = event.y - downY
+                            val configured = if (dy < 0) setting("swipe_up", "drawer")
+                                else setting("swipe_down", "none")
+                            runGesture(configured)
+                        }
                         return true
                     }
                     val dx = event.x - downX
@@ -2694,53 +2860,33 @@ class MainActivity : Activity(), SensorEventListener {
                     if (abs(dx) < dp(22) && abs(dy) < dp(22)) {
                         val now = android.os.SystemClock.uptimeMillis()
                         val doubleAction = setting("double_tap", "none")
-                        if (doubleAction != "none" &&
-                            now - lastTapAt in 50..350 &&
-                            abs(event.x - lastTapX) < dp(48) &&
-                            abs(event.y - lastTapY) < dp(48)) {
+                        if (doubleAction != "none" && now - lastTapAt in 50..350 &&
+                            abs(event.x - lastTapX) < dp(48) && abs(event.y - lastTapY) < dp(48)) {
                             lastTapAt = 0L
+                            cancelDispatchedTouch(event)
                             if (runGesture(doubleAction)) return true
                         }
-                        lastTapAt = now
-                        lastTapX = event.x
-                        lastTapY = event.y
+                        lastTapAt = now; lastTapX = event.x; lastTapY = event.y
                     }
-
-                    if (
-                        abs(dx) > dp(65) &&
-                        abs(dx) > abs(dy) * 1.3f
-                    ) {
-                        changePage(pageIndex + if (dx < 0) 1 else -1)
-                        return true
-                    }
-
-                    // A vertical scroll begun in the bounded icon viewport belongs to it.
-                    // Horizontal page gestures and bottom-menu gestures remain available elsewhere.
-                    if (iconViewportGesture && abs(dy) > abs(dx)) return super.dispatchTouchEvent(event)
-                    if (
-                        dy < -dp(95) &&
-                        abs(dy) > abs(dx) * 1.5f
-                    ) {
-                        // Deslizar para cima começando na área inferior abre o menu Purple Charm.
-                        // Em outras áreas, preserva o gesto configurável (gaveta por padrão).
-                        val screenHeight = resources.displayMetrics.heightPixels
-                        if (downY >= screenHeight - dp(260)) {
-                            showClassicCustomizationMenu()
+                    when (WorkspaceGestureClassifier.classify(dx, dy, dp(65).toFloat())) {
+                        WorkspaceSwipe.HORIZONTAL -> {
+                            cancelDispatchedTouch(event)
+                            changePage(pageIndex + if (dx < 0) 1 else -1)
                             return true
                         }
-                        if (runGesture(setting("swipe_up", "drawer"))) return true
-                    }
-
-                    if (
-                        dy > dp(95) &&
-                        abs(dy) > abs(dx) * 1.5f
-                    ) {
-                        if (runGesture(setting("swipe_down", "none"))) return true
+                        WorkspaceSwipe.VERTICAL -> {
+                            val configured = if (dy < 0) setting("swipe_up", "drawer")
+                                else setting("swipe_down", "none")
+                            cancelDispatchedTouch(event)
+                            runGesture(configured)
+                            return true
+                        }
+                        WorkspaceSwipe.NONE -> Unit
                     }
                 }
+                MotionEvent.ACTION_CANCEL -> { swipeConsumed = false; pendingVerticalSwipe = false }
             }
         }
-
         return super.dispatchTouchEvent(event)
     }
 
@@ -2753,8 +2899,9 @@ class MainActivity : Activity(), SensorEventListener {
             leaveEditMode()
             return
         }
-        if (drawerOpen || pageIndex != 0) {
-            pageIndex = 0
+        val homePage = HomePageSelection.read(prefs, pageCount())
+        if (drawerOpen || pageIndex != homePage) {
+            pageIndex = homePage
             showHome()
         } else {
             super.onBackPressed()
