@@ -247,14 +247,16 @@ class WorkMission2RegressionTest {
     }
 
     @Test fun normalTapOnDestinationPageStillOpensItsAppAfterSwipeRelease() {
-        seedAppOnFirstTwoPages()
+        val appPackage = RuntimeEnvironment.getApplication().packageName
+        val appClass = MainActivity::class.java.name
+        seedAppOnFirstTwoPages("$appPackage/$appClass")
         // This assertion concerns touch handling after navigation, independent of ViewFlipper animation timing.
         prefs().edit().putString("pc_transition", "none").commit()
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get()
         @Suppress("UNCHECKED_CAST")
         val apps = field(a, "apps") as MutableList<ResolveInfo>
-        apps.add(fake(a))
+        apps.add(fake(a, packageName = appPackage).apply { activityInfo.name = appClass })
         call(a, "showHome"); layout(a)
         val source = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
         val sourcePos = IntArray(2); source.getLocationInWindow(sourcePos)
@@ -268,7 +270,7 @@ class WorkMission2RegressionTest {
         val tx = destPos[0] + destination.width / 2f; val ty = destPos[1] + destination.height / 2f
         send(a, MotionEvent.ACTION_DOWN, tx, ty, 100)
         send(a, MotionEvent.ACTION_UP, tx, ty, 110)
-        assertEquals("test.purple.app", shadowOf(a).nextStartedActivity?.component?.packageName)
+        assertEquals(appPackage, shadowOf(a).nextStartedActivity?.component?.packageName)
         controller.pause().stop().destroy()
     }
 
