@@ -357,6 +357,35 @@ class WorkMission2RegressionTest {
         controller.pause().stop().destroy()
     }
 
+    @Test fun configuredBottomEdgeSwipeUpOpensWallpapersAndHorizontalSwipeStillOnlyChangesPage() {
+        seedApp()
+        prefs().edit().putString("pc_swipe_up", "wallpaper")
+            .putString("pc_wallpaper_choice", "eye_royal").commit()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get(); layout(a)
+        val width = a.window.decorView.width.toFloat()
+        val height = a.window.decorView.height.toFloat()
+        send(a, MotionEvent.ACTION_DOWN, width / 2f, height - 24f, 1)
+        send(a, MotionEvent.ACTION_MOVE, width / 2f + 3f, height - 170f, 30)
+        send(a, MotionEvent.ACTION_UP, width / 2f + 3f, height - 170f, 60)
+
+        val wallpaperDialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        assertNotNull(wallpaperDialog)
+        assertNotNull(wallpaperDialog.window!!.decorView.findViewWithTag<View>("wallpaper_option_eye_royal"))
+        assertEquals("wallpaper", prefs().getString("pc_swipe_up", null))
+        assertEquals("eye_royal", prefs().getString("pc_wallpaper_choice", null))
+        wallpaperDialog.dismiss()
+
+        send(a, MotionEvent.ACTION_DOWN, width / 2f + 130f, height - 24f, 100)
+        send(a, MotionEvent.ACTION_MOVE, width / 2f - 10f, height - 20f, 130)
+        send(a, MotionEvent.ACTION_UP, width / 2f - 10f, height - 20f, 160)
+        assertEquals(1, MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }.getInt(a))
+        assertFalse(field(a, "drawerOpen") as Boolean)
+        assertNull(field(a, "optionsDialog"))
+        assertEquals("wallpaper", prefs().getString("pc_swipe_up", null))
+        controller.pause().stop().destroy()
+    }
+
     @Test fun preferredHomePagePersistsBackNavigationAndPageDeletionRemapping() {
         seedApp()
         assertTrue(HomePageSelection.write(prefs(), 2, 3))
