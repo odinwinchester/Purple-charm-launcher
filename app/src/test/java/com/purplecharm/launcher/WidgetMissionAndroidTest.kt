@@ -123,6 +123,32 @@ class WidgetMissionAndroidTest {
         c.pause().stop().destroy()
     }
 
+    @Test fun homeAndBackPageNavigationReuseTheExistingWorkspaceViews() {
+        seed(); assertTrue(HomePageSelection.write(prefs(), 1, 3))
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        val dock = a.window.decorView.findViewWithTag<View>("home_dock")!!
+        val workspace = a.window.decorView.findViewWithTag<View>("workspace_drag_surface")!!
+        val pages = field(a, "pages")
+        val pageIndex = MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }
+        val changePage = MainActivity::class.java.getDeclaredMethod("changePage", Int::class.javaPrimitiveType)
+            .apply { isAccessible = true }
+        val runHome = MainActivity::class.java.getDeclaredMethod("runGesture", String::class.java)
+            .apply { isAccessible = true }
+        changePage.invoke(a, 0)
+        assertTrue(runHome.invoke(a, "home") as Boolean)
+        assertEquals(1, pageIndex.getInt(a))
+        assertSame(dock, a.window.decorView.findViewWithTag<View>("home_dock"))
+        assertSame(workspace, a.window.decorView.findViewWithTag<View>("workspace_drag_surface"))
+        assertSame(pages, field(a, "pages"))
+
+        changePage.invoke(a, 2)
+        a.onBackPressed()
+        assertEquals(1, pageIndex.getInt(a))
+        assertSame(dock, a.window.decorView.findViewWithTag<View>("home_dock"))
+        assertSame(workspace, a.window.decorView.findViewWithTag<View>("workspace_drag_surface"))
+        c.pause().stop().destroy()
+    }
+
     @Test fun approvedDefaultSwipesOpenOptionsUpAndDrawerDownWithinWorkspace() {
         seed()
         val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get(); layout(a)
