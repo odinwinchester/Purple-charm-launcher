@@ -2185,7 +2185,16 @@ class MainActivity : Activity(), SensorEventListener {
         acceptDrop(add) { key -> dialog.dismiss(); placeOnPage(key, page) }
         panel.addView(add)
         val remove = glassButton("× Arraste um ícone para remover o atalho", 12f)
-        acceptDrop(remove) { key -> dialog.dismiss(); removeShortcutFromPage(key, page) }
+        acceptDrop(remove) { key ->
+            dialog.dismiss()
+
+            val state = runCatching { workspaceItems() }.getOrNull()
+            val cell = state?.pages?.getOrNull(page)?.indexOf(key) ?: -1
+
+            if (cell >= 0) {
+                removeShortcutFromPage(key, page, cell)
+            }
+        }
         panel.addView(remove)
         panel.addView(glassButton("✦ Gerenciar páginas", 13f).apply {
             setOnClickListener { dialog.dismiss(); managePages() }
