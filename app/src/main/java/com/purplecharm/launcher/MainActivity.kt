@@ -1749,7 +1749,7 @@ class MainActivity : Activity(), SensorEventListener {
         root.addView(dots)
         updateDots()
 
-        root.addView(dock())
+        root.addView(dock().apply { tag = "home_dock" })
         // A edição permanece acessível pelo menu de personalização do gesto inferior.
         // A antiga faixa duplicada não é adicionada à tela inicial.
     }
@@ -1982,7 +1982,8 @@ class MainActivity : Activity(), SensorEventListener {
         val editor = WeatherResizeLayout(this, artwork, columns, initialSpan,
             { active -> widgetResizeActive = active },
             { span -> prefs.edit().putInt(spanKey, span).apply() },
-            { moonWidgetOptions() })
+            { weatherDetails() })
+        editor.contentDescription = "Widget meteorológico Purple Charm. Toque para ver os detalhes; toque longo para redimensionar. Para configurar, abra Widgets no modo de edição."
         widgetEditor = editor
         panel.addView(editor, LinearLayout.LayoutParams(-1, 0, 1f))
         liveWeatherLabel = label(liveText, 11f).apply {
@@ -1992,7 +1993,7 @@ class MainActivity : Activity(), SensorEventListener {
             setOnClickListener { weatherDetails() }
         }
         panel.addView(liveWeatherLabel, LinearLayout.LayoutParams(-1, -2))
-        panel.setOnClickListener { moonWidgetOptions() }
+        panel.setOnClickListener { weatherDetails() }
         panel.setOnLongClickListener { editor.beginEditing(); true }
         celestialView = panel
         return panel.apply { layoutParams = ViewGroup.LayoutParams(-1, -1) }
