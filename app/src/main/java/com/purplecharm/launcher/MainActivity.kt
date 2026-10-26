@@ -2848,6 +2848,7 @@ class MainActivity : Activity(), SensorEventListener {
                     when (WorkspaceGestureClassifier.classify(dx, dy, dp(65).toFloat())) {
                         WorkspaceSwipe.HORIZONTAL -> {
                             swipeConsumed = true
+                            lastTapAt = 0L
                             cancelDispatchedTouch(event)
                             changePage(pageIndex + if (dx < 0) 1 else -1)
                             return true
@@ -2889,6 +2890,7 @@ class MainActivity : Activity(), SensorEventListener {
                     }
                     when (WorkspaceGestureClassifier.classify(dx, dy, dp(65).toFloat())) {
                         WorkspaceSwipe.HORIZONTAL -> {
+                            lastTapAt = 0L
                             cancelDispatchedTouch(event)
                             changePage(pageIndex + if (dx < 0) 1 else -1)
                             return true

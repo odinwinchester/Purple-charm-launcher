@@ -22,6 +22,8 @@ import java.io.ByteArrayOutputStream
 import org.robolectric.Robolectric
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowSystemClock
+import java.util.concurrent.TimeUnit
 import org.robolectric.annotation.Config
 
 @RunWith(org.robolectric.RobolectricTestRunner::class)
@@ -76,6 +78,15 @@ class WorkMission2RegressionTest {
         ))
     }
 
+    private fun seedAppOnFirstTwoPages(key: String = "test.purple.app/Main") {
+        prefs().edit().clear().commit()
+        val appCell = List(20) { index -> if (index == 0) key else "" }
+        val emptyPage = List(20) { "" }
+        assertTrue(WorkspaceItemsStore(prefs()).save(
+            WorkspaceItems(listOf(appCell, appCell, emptyPage), List(4) { "" }, emptyMap())
+        ))
+    }
+
     private fun layout(a: MainActivity, width: Int = 1080, height: Int = 1920) {
         val root = a.window.decorView
         root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
@@ -107,6 +118,7 @@ class WorkMission2RegressionTest {
         val confirmation = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
         assertTrue(shadowOf(confirmation).message.toString().contains("continuará instalado"))
         confirmation.getButton(-1).performClick()
+        shadowOf(RuntimeEnvironment.getApplication().mainLooper).idle()
         val afterRemoval = call(a, "workspaceItems") as WorkspaceItems
         assertFalse(afterRemoval.pages.flatten().contains("test.purple.app/Main"))
         assertEquals("test.purple.app/Main", afterRemoval.dock[0])
@@ -198,6 +210,129 @@ class WorkMission2RegressionTest {
         send(a, MotionEvent.ACTION_UP, 1000f, 890f, 160)
         assertEquals(1, MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }.getInt(a))
         assertNull(field(a, "optionsDialog"))
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun horizontalSwipeInBothDirectionsConsumesReleaseWithoutClickingOrOpeningMenus() {
+        seedAppOnFirstTwoPages()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get()
+        @Suppress("UNCHECKED_CAST")
+        val apps = field(a, "apps") as MutableList<ResolveInfo>
+        apps.add(fake(a))
+        call(a, "showHome"); layout(a)
+
+        val first = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
+        val firstPosition = IntArray(2); first.getLocationOnScreen(firstPosition)
+        val x = firstPosition[0] + first.width / 2f
+        val y = firstPosition[1] + first.height / 2f
+        send(a, MotionEvent.ACTION_DOWN, x, y, 1)
+        send(a, MotionEvent.ACTION_MOVE, x - 140, y + 4, 30)
+        send(a, MotionEvent.ACTION_UP, x - 140, y + 4, 60)
+        assertEquals(1, MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }.getInt(a))
+        assertNull(shadowOf(a).nextStartedActivity)
+        assertNull(field(a, "optionsDialog"))
+
+        // Exercise the ACTION_UP-only recognition path in the reverse direction.
+        val second = a.window.decorView.findViewWithTag<View>("workspace_cell_1_0")!!
+        val secondPosition = IntArray(2); second.getLocationOnScreen(secondPosition)
+        val sx = secondPosition[0] + second.width / 2f
+        val sy = secondPosition[1] + second.height / 2f
+        send(a, MotionEvent.ACTION_DOWN, sx, sy, 100)
+        send(a, MotionEvent.ACTION_UP, sx + 140, sy + 4, 160)
+        assertEquals(0, MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }.getInt(a))
+        assertNull(shadowOf(a).nextStartedActivity)
+        assertNull(field(a, "optionsDialog"))
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun normalTapOnDestinationPageStillOpensItsAppAfterSwipeRelease() {
+        seedAppOnFirstTwoPages()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get()
+        @Suppress("UNCHECKED_CAST")
+        val apps = field(a, "apps") as MutableList<ResolveInfo>
+        apps.add(fake(a))
+        call(a, "showHome"); layout(a)
+        val source = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
+        val sourcePos = IntArray(2); source.getLocationOnScreen(sourcePos)
+        val x = sourcePos[0] + source.width / 2f; val y = sourcePos[1] + source.height / 2f
+        send(a, MotionEvent.ACTION_DOWN, x, y, 1)
+        send(a, MotionEvent.ACTION_MOVE, x - 140, y, 30)
+        send(a, MotionEvent.ACTION_UP, x - 140, y, 60)
+        assertNull(shadowOf(a).nextStartedActivity)
+
+        val destination = a.window.decorView.findViewWithTag<View>("workspace_cell_1_0")!!
+        val destPos = IntArray(2); destination.getLocationOnScreen(destPos)
+        val tx = destPos[0] + destination.width / 2f; val ty = destPos[1] + destination.height / 2f
+        send(a, MotionEvent.ACTION_DOWN, tx, ty, 100)
+        send(a, MotionEvent.ACTION_UP, tx, ty, 110)
+        assertEquals("test.purple.app", shadowOf(a).nextStartedActivity?.component?.packageName)
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun horizontalSwipeBreaksPendingDoubleTapSequenceWithoutOpeningMenuOnNextTap() {
+        seedApp()
+        prefs().edit().putString("pc_double_tap", "settings").commit()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get(); call(a, "showHome"); layout(a)
+        val empty = a.window.decorView.findViewWithTag<View>("workspace_cell_0_5")!!
+        val pos = IntArray(2); empty.getLocationOnScreen(pos)
+        val x = pos[0] + empty.width / 2f; val y = pos[1] + empty.height / 2f
+        ShadowSystemClock.advanceBy(1000, TimeUnit.MILLISECONDS)
+        send(a, MotionEvent.ACTION_DOWN, x, y, 1)
+        send(a, MotionEvent.ACTION_UP, x, y, 10)
+        assertNull(field(a, "optionsDialog"))
+        ShadowSystemClock.advanceBy(100, TimeUnit.MILLISECONDS)
+
+        send(a, MotionEvent.ACTION_DOWN, x, y, 20)
+        send(a, MotionEvent.ACTION_MOVE, x - 140, y + 4, 40)
+        send(a, MotionEvent.ACTION_UP, x - 140, y + 4, 60)
+        assertEquals(1, MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }.getInt(a))
+        assertEquals(0L, field(a, "lastTapAt"))
+        assertNull(field(a, "optionsDialog"))
+
+        send(a, MotionEvent.ACTION_DOWN, x, y, 70)
+        send(a, MotionEvent.ACTION_UP, x, y, 80)
+        assertNull(field(a, "optionsDialog"))
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun configuredDoubleTapStillRunsWithoutAnInterveningSwipe() {
+        seedApp()
+        prefs().edit().putString("pc_double_tap", "settings").commit()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get(); call(a, "showHome"); layout(a)
+        val empty = a.window.decorView.findViewWithTag<View>("workspace_cell_0_5")!!
+        val pos = IntArray(2); empty.getLocationOnScreen(pos)
+        val x = pos[0] + empty.width / 2f; val y = pos[1] + empty.height / 2f
+        ShadowSystemClock.advanceBy(1000, TimeUnit.MILLISECONDS)
+        send(a, MotionEvent.ACTION_DOWN, x, y, 1)
+        send(a, MotionEvent.ACTION_UP, x, y, 10)
+        ShadowSystemClock.advanceBy(100, TimeUnit.MILLISECONDS)
+        send(a, MotionEvent.ACTION_DOWN, x, y, 20)
+        send(a, MotionEvent.ACTION_UP, x, y, 30)
+        assertTrue((field(a, "optionsDialog") as Dialog).isShowing)
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun horizontalSwipeDoesNotStealAnActiveWeatherWidgetResizeGesture() {
+        seedApp()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get(); call(a, "showHome"); layout(a)
+        val editor = field(a, "widgetEditor") as WeatherResizeLayout
+        editor.beginEditing()
+        assertTrue(field(a, "widgetResizeActive") as Boolean)
+        val bounds = android.graphics.Rect()
+        assertTrue(editor.getGlobalVisibleRect(bounds))
+        val x = bounds.centerX().toFloat(); val y = bounds.centerY().toFloat()
+        send(a, MotionEvent.ACTION_DOWN, x, y, 1)
+        send(a, MotionEvent.ACTION_MOVE, x + 130, y + 2, 30)
+        send(a, MotionEvent.ACTION_UP, x + 130, y + 2, 60)
+        assertEquals(0, MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }.getInt(a))
+        assertTrue(editor.isEditing)
+        assertTrue(field(a, "widgetResizeActive") as Boolean)
+        editor.endEditing()
         controller.pause().stop().destroy()
     }
 
@@ -366,7 +501,7 @@ class WorkMission2RegressionTest {
         call(a, "wallpaperMenu")
         val menu = org.robolectric.shadows.ShadowDialog.getLatestDialog()
         assertNotNull(menu.window!!.decorView.findViewWithTag<View>("wallpaper_option_gallery"))
-        call(a, "applyWallpaperDestination", String::class.java, Int::class.javaPrimitiveType!!,
+        call(a, "applyWallpaperDestination", String::class.java, java.lang.Integer::class.java,
             android.net.Uri::class.java, Int::class.javaPrimitiveType!!,
             args = arrayOf("gallery", null, uri, 1))
         assertEquals(uri.toString(), prefs().getString("wallpaper_uri", null))
