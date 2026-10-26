@@ -928,7 +928,7 @@ class MainActivity : Activity(), SensorEventListener {
             "search" -> showCrystalSearch()
             "settings" -> settingsMenu()
             "wallpaper" -> wallpaperMenu()
-            "home" -> { pageIndex = HomePageSelection.read(prefs, pageCount()); showHome() }
+            "home" -> changePage(HomePageSelection.read(prefs, pageCount()))
             else -> return false
         }
         return true
@@ -2956,9 +2956,11 @@ class MainActivity : Activity(), SensorEventListener {
             return
         }
         val homePage = HomePageSelection.read(prefs, pageCount())
-        if (drawerOpen || pageIndex != homePage) {
+        if (drawerOpen) {
             pageIndex = homePage
             showHome()
+        } else if (pageIndex != homePage) {
+            changePage(homePage)
         } else {
             super.onBackPressed()
         }
