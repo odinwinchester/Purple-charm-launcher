@@ -255,7 +255,7 @@ class WorkMission2RegressionTest {
         apps.add(fake(a))
         call(a, "showHome"); layout(a)
         val source = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
-        val sourcePos = IntArray(2); source.getLocationOnScreen(sourcePos)
+        val sourcePos = IntArray(2); source.getLocationInWindow(sourcePos)
         val x = sourcePos[0] + source.width / 2f; val y = sourcePos[1] + source.height / 2f
         send(a, MotionEvent.ACTION_DOWN, x, y, 1)
         send(a, MotionEvent.ACTION_MOVE, x - 140, y, 30)
@@ -267,7 +267,7 @@ class WorkMission2RegressionTest {
         shadowOf(RuntimeEnvironment.getApplication().mainLooper).idle()
 
         val destination = a.window.decorView.findViewWithTag<View>("workspace_cell_1_0")!!
-        val destPos = IntArray(2); destination.getLocationOnScreen(destPos)
+        val destPos = IntArray(2); destination.getLocationInWindow(destPos)
         val tx = destPos[0] + destination.width / 2f; val ty = destPos[1] + destination.height / 2f
         send(a, MotionEvent.ACTION_DOWN, tx, ty, 100)
         send(a, MotionEvent.ACTION_UP, tx, ty, 110)
