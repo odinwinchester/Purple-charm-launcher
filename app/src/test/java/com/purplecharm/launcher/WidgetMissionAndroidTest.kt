@@ -74,12 +74,61 @@ class WidgetMissionAndroidTest {
     }
     @Test fun dockCenterOpensDrawerAndEmptySlotsHaveManualConfiguration() {
         seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        val initialDock = a.window.decorView.findViewWithTag<View>("home_dock")
+        assertNotNull(initialDock)
+        assertEquals(View.VISIBLE, initialDock!!.visibility)
         for (i in 0..3) assertNotNull(a.window.decorView.findViewWithTag<View>("dock_slot_$i"))
         call(a, "dockConfiguration")
         val menu = ShadowAlertDialog.getLatestAlertDialog()
         assertEquals(4, menu.listView.adapter.count); menu.dismiss()
         a.window.decorView.findViewWithTag<View>("dock_drawer")!!.performClick()
         assertEquals(true, field(a, "drawerOpen")); assertNotNull(a.window.decorView.findViewWithTag<View>("drawer_grid"))
+        assertNull(a.window.decorView.findViewWithTag<View>("home_dock"))
+        a.onBackPressed()
+        val restoredDock = a.window.decorView.findViewWithTag<View>("home_dock")
+        assertNotNull(restoredDock)
+        assertEquals(View.VISIBLE, restoredDock!!.visibility)
+        c.pause().stop().destroy()
+    }
+
+    @Test fun dockStaysAttachedAndVisibleAcrossEveryHomePageChange() {
+        seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        val originalDock = a.window.decorView.findViewWithTag<View>("home_dock")
+        assertNotNull(originalDock)
+        val changePage = MainActivity::class.java.getDeclaredMethod("changePage", Int::class.javaPrimitiveType)
+            .apply { isAccessible = true }
+        for (page in 0..2) {
+            changePage.invoke(a, page)
+            val dock = a.window.decorView.findViewWithTag<View>("home_dock")
+            assertSame("dock should not be rebuilt while changing pages", originalDock, dock)
+            assertEquals(View.VISIBLE, dock!!.visibility)
+        }
+        c.pause().stop().destroy()
+    }
+
+    @Test fun weatherWidgetTapOpensDetailsLongPressEntersResizeAndOptionsRemainExplicit() {
+        seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        val editor = field(a, "widgetEditor") as WeatherResizeLayout
+        assertTrue(editor.performClick())
+        var details = ShadowAlertDialog.getLatestAlertDialog()
+        assertEquals("Previsão real • MET Norway", shadowOf(details).title.toString())
+        details.dismiss()
+
+        assertTrue(editor.performLongClick())
+        assertTrue(editor.isEditing)
+        val left = WeatherResizeLayout::class.java.getDeclaredField("leftHandle").apply { isAccessible = true }.get(editor) as View
+        val right = WeatherResizeLayout::class.java.getDeclaredField("rightHandle").apply { isAccessible = true }.get(editor) as View
+        assertEquals(View.VISIBLE, left.visibility)
+        assertEquals(View.VISIBLE, right.visibility)
+        editor.endEditing()
+
+        call(a, "widgetCenter")
+        val center = ShadowAlertDialog.getLatestAlertDialog()
+        center.listView.performItemClick(null, 0, 0L)
+        val options = ShadowAlertDialog.getLatestAlertDialog()
+        val labels = (0 until options.listView.adapter.count).map { options.listView.adapter.getItem(it).toString() }
+        assertTrue("weather settings stay available from the explicit widget action", "Localização e clima" in labels)
+        assertTrue("manual art options stay available", "Personalizar arte (opcional)" in labels)
         c.pause().stop().destroy()
     }
     @Test fun widgetCenterExposesExclusiveAndOfficialAndroidChoices() {
