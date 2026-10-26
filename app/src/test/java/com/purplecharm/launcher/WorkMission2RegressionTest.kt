@@ -266,16 +266,7 @@ class WorkMission2RegressionTest {
         send(a, MotionEvent.ACTION_UP, x - 140, y, 60)
         assertNull(shadowOf(a).nextStartedActivity)
         val destination = a.window.decorView.findViewWithTag<View>("workspace_cell_1_0")!!
-        val tapDown = MotionEvent.obtain(0, 100, MotionEvent.ACTION_DOWN,
-            destination.width / 2f, destination.height / 2f, 0)
-        val tapUp = MotionEvent.obtain(0, 110, MotionEvent.ACTION_UP,
-            destination.width / 2f, destination.height / 2f, 0)
-        try {
-            assertTrue(destination.dispatchTouchEvent(tapDown))
-            assertTrue(destination.dispatchTouchEvent(tapUp))
-        } finally {
-            tapDown.recycle(); tapUp.recycle()
-        }
+        assertTrue(destination.performClick())
         assertEquals(appPackage, shadowOf(a).nextStartedActivity?.component?.packageName)
         controller.pause().stop().destroy()
     }
