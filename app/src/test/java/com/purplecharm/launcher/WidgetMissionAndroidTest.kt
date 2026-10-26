@@ -127,7 +127,9 @@ class WidgetMissionAndroidTest {
         seed()
         val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get(); layout(a)
         val workspace = a.window.decorView.findViewWithTag<View>("workspace_drag_surface")!!
-        val bounds = android.graphics.Rect(); assertTrue(workspace.getGlobalVisibleRect(bounds))
+        val bounds = android.graphics.Rect(); assertTrue(workspace.getGlobalVisibleRect(android.graphics.Rect()))
+        val location = IntArray(2); workspace.getLocationInWindow(location)
+        bounds.set(location[0], location[1], location[0] + workspace.width, location[1] + workspace.height)
         val x = bounds.centerX().toFloat(); val bottom = bounds.bottom - 16f
         send(a, MotionEvent.ACTION_DOWN, x, bottom, 1)
         send(a, MotionEvent.ACTION_MOVE, x + 2f, bottom - 140f, 30)
@@ -168,6 +170,7 @@ class WidgetMissionAndroidTest {
             .first { it.text?.toString()?.contains("Restaurar gestos e grade") == true }.performClick()
         val confirmation = ShadowAlertDialog.getLatestAlertDialog()
         confirmation.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(RuntimeEnvironment.getApplication().mainLooper).idle()
         assertFalse(prefs().contains("pc_swipe_up"))
         assertFalse(prefs().contains("pc_swipe_down"))
         assertEquals("options", read.invoke(a, "swipe_up", "options"))
