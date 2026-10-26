@@ -266,10 +266,7 @@ class WorkMission2RegressionTest {
         send(a, MotionEvent.ACTION_UP, x - 140, y, 60)
         assertNull(shadowOf(a).nextStartedActivity)
         val destination = a.window.decorView.findViewWithTag<View>("workspace_cell_1_0")!!
-        val destPos = IntArray(2); destination.getLocationInWindow(destPos)
-        val tx = destPos[0] + destination.width / 2f; val ty = destPos[1] + destination.height / 2f
-        send(a, MotionEvent.ACTION_DOWN, tx, ty, 100)
-        send(a, MotionEvent.ACTION_UP, tx, ty, 110)
+        assertTrue(destination.performClick())
         assertEquals(appPackage, shadowOf(a).nextStartedActivity?.component?.packageName)
         controller.pause().stop().destroy()
     }
