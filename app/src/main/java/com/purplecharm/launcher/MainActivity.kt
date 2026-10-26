@@ -2817,8 +2817,13 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun gestureStartedInWorkspace(event: MotionEvent): Boolean {
         val workspace = window.decorView.findViewWithTag<View>("workspace_drag_surface") ?: return false
-        val bounds = android.graphics.Rect()
-        if (!workspace.getGlobalVisibleRect(bounds)) return false
+        val visibleBounds = android.graphics.Rect()
+        if (!workspace.getGlobalVisibleRect(visibleBounds)) return false
+        val location = IntArray(2)
+        workspace.getLocationInWindow(location)
+        val bounds = android.graphics.Rect(
+            location[0], location[1], location[0] + workspace.width, location[1] + workspace.height
+        )
         val rootInsets = window.decorView.rootWindowInsets
         val gestureInsets = when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
@@ -2830,7 +2835,7 @@ class MainActivity : Activity(), SensorEventListener {
             else -> null
         }
         gestureInsets?.let { bounds.inset(it.left, it.top, it.right, it.bottom) }
-        return bounds.contains(event.rawX.toInt(), event.rawY.toInt())
+        return bounds.contains(event.x.toInt(), event.y.toInt())
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
