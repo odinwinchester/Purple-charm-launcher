@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.ResolveInfo
+import android.graphics.Bitmap
+import android.net.Uri
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -15,6 +17,8 @@ import android.widget.TextView
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import org.robolectric.Robolectric
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
@@ -25,6 +29,17 @@ import org.robolectric.annotation.Config
 class WorkMission2RegressionTest {
     private fun prefs() = RuntimeEnvironment.getApplication()
         .getSharedPreferences("purple_charm_favorites", Context.MODE_PRIVATE)
+
+    private fun registerReadableWallpaper(uri: Uri) {
+        val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+        val bytes = ByteArrayOutputStream().use { output ->
+            assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+            output.toByteArray()
+        }
+        bitmap.recycle()
+        shadowOf(RuntimeEnvironment.getApplication().contentResolver)
+            .registerInputStreamSupplier(uri) { ByteArrayInputStream(bytes) }
+    }
 
     private fun call(a: MainActivity, name: String, vararg types: Class<*>, args: Array<out Any?> = emptyArray()): Any? =
         MainActivity::class.java.getDeclaredMethod(name, *types).apply { isAccessible = true }.invoke(a, *args)
@@ -329,8 +344,8 @@ class WorkMission2RegressionTest {
         val options = field(a, "wallpaperOptions") as List<Triple<String, String, Int>>
         assertEquals(setOf("floral", "eye_crystal", "eye_royal", "ghost_fire"), options.map { it.second }.toSet())
         val royal = options.first { it.second == "eye_royal" }
-        call(a, "wallpaperPreview", String::class.java, Int::class.javaPrimitiveType!!,
-            android.net.Uri::class.java, args = arrayOf(royal.second, royal.third, null))
+        call(a, "wallpaperPreview", String::class.java, java.lang.Integer::class.java,
+            Uri::class.java, args = arrayOf(royal.second, royal.third, null))
         val preview = org.robolectric.shadows.ShadowDialog.getLatestDialog()
         assertNotNull(preview.window!!.decorView.findViewWithTag<View>("wallpaper_preview_apply"))
         preview.window!!.decorView.findViewWithTag<View>("wallpaper_preview_apply")!!.performClick()
@@ -343,7 +358,8 @@ class WorkMission2RegressionTest {
 
     @Test fun previouslySelectedGalleryWallpaperRemainsAvailableAndItsUriIsPreserved() {
         seedApp()
-        val uri = android.net.Uri.parse("content://purple-test/wallpaper")
+        val uri = Uri.parse("content://purple-test/wallpaper")
+        registerReadableWallpaper(uri)
         prefs().edit().putString("wallpaper_uri", uri.toString()).commit()
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get()

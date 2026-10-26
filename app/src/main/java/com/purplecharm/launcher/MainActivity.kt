@@ -576,14 +576,15 @@ class MainActivity : Activity(), SensorEventListener {
         return saveWorkspaceEdit(WorkspaceEdits.dock(state, key, position.coerceIn(0, 3)))
     }
 
-    private fun removeShortcutFromPage(key: String, page: Int): Boolean {
+    private fun removeShortcutFromPage(key: String, page: Int, cell: Int): Boolean {
         if (WorkspaceItems.isFolder(key)) {
             Toast.makeText(this, "Abra a pasta para editar seus aplicativos com segurança", Toast.LENGTH_SHORT).show()
             return false
         }
         val state = runCatching { workspaceItems() }.getOrNull() ?: return false
-        val cell = state.pages.getOrNull(page)?.indexOf(key) ?: -1
-        if (cell < 0) return false
+        // The confirmation is bound to the exact shortcut location that opened it.
+        // If that cell changed while the dialog was open, leave the workspace untouched.
+        if (state.pages.getOrNull(page)?.getOrNull(cell) != key) return false
         return saveWorkspaceEdit(WorkspaceEdits.removeFromPage(state, key, page, cell))
     }
 
@@ -2409,6 +2410,9 @@ class MainActivity : Activity(), SensorEventListener {
     // Substitui os alvos permanentes da gaveta por um menu no toque longo.
     private fun homeAppActions(app: ResolveInfo, sourceTile: View) {
         val name = appLabel(app)
+        val sourceKey = appKey(app)
+        val sourcePage = pageIndex
+        val sourceCell = pageCells(sourcePage).indexOf(sourceKey)
         SmokeDialogBuilder(this)
             .setTitle(name)
             .setItems(arrayOf("Mover para outra página", "Mover por arraste / criar pasta", "Remover atalho da tela inicial")) { _, choice ->
@@ -2423,7 +2427,9 @@ class MainActivity : Activity(), SensorEventListener {
                         .setTitle("Remover atalho?")
                         .setMessage("Remover $name da tela inicial? O aplicativo continuará instalado.")
                         .setNegativeButton("Cancelar", null)
-                        .setPositiveButton("Remover") { _, _ -> removeShortcutFromPage(appKey(app), pageIndex) }
+                        .setPositiveButton("Remover") { _, _ ->
+                            removeShortcutFromPage(sourceKey, sourcePage, sourceCell)
+                        }
                         .show()
                 }
             }.show()
