@@ -2193,6 +2193,8 @@ class MainActivity : Activity(), SensorEventListener {
 
             if (cell >= 0) {
                 removeShortcutFromPage(key, page, cell)
+            } else {
+                false
             }
         }
         panel.addView(remove)
