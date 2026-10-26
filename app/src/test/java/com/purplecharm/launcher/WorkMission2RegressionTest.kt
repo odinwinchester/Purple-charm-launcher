@@ -90,7 +90,7 @@ class WorkMission2RegressionTest {
         assertEquals(listOf("Mover para outra página", "Mover por arraste / criar pasta", "Remover atalho da tela inicial"), labels)
         menu.listView.performItemClick(null, 2, menu.listView.adapter.getItemId(2))
         val confirmation = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
-        assertTrue(confirmation.message.toString().contains("continuará instalado"))
+        assertTrue(shadowOf(confirmation).message.toString().contains("continuará instalado"))
         confirmation.getButton(-1).performClick()
         val afterRemoval = call(a, "workspaceItems") as WorkspaceItems
         assertFalse(afterRemoval.pages.flatten().contains("test.purple.app/Main"))
