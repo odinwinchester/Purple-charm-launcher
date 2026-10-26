@@ -223,7 +223,7 @@ class WorkMission2RegressionTest {
         call(a, "showHome"); layout(a)
 
         val first = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
-        val firstPosition = IntArray(2); first.getLocationOnScreen(firstPosition)
+        val firstPosition = IntArray(2); first.getLocationInWindow(firstPosition)
         val x = firstPosition[0] + first.width / 2f
         val y = firstPosition[1] + first.height / 2f
         send(a, MotionEvent.ACTION_DOWN, x, y, 1)
@@ -235,7 +235,7 @@ class WorkMission2RegressionTest {
 
         // Exercise the ACTION_UP-only recognition path in the reverse direction.
         val second = a.window.decorView.findViewWithTag<View>("workspace_cell_1_0")!!
-        val secondPosition = IntArray(2); second.getLocationOnScreen(secondPosition)
+        val secondPosition = IntArray(2); second.getLocationInWindow(secondPosition)
         val sx = secondPosition[0] + second.width / 2f
         val sy = secondPosition[1] + second.height / 2f
         send(a, MotionEvent.ACTION_DOWN, sx, sy, 100)
@@ -277,7 +277,7 @@ class WorkMission2RegressionTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get(); call(a, "showHome"); layout(a)
         val empty = a.window.decorView.findViewWithTag<View>("workspace_cell_0_5")!!
-        val pos = IntArray(2); empty.getLocationOnScreen(pos)
+        val pos = IntArray(2); empty.getLocationInWindow(pos)
         val x = pos[0] + empty.width / 2f; val y = pos[1] + empty.height / 2f
         ShadowSystemClock.advanceBy(1000, TimeUnit.MILLISECONDS)
         send(a, MotionEvent.ACTION_DOWN, x, y, 1)
@@ -304,7 +304,7 @@ class WorkMission2RegressionTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get(); call(a, "showHome"); layout(a)
         val empty = a.window.decorView.findViewWithTag<View>("workspace_cell_0_5")!!
-        val pos = IntArray(2); empty.getLocationOnScreen(pos)
+        val pos = IntArray(2); empty.getLocationInWindow(pos)
         val x = pos[0] + empty.width / 2f; val y = pos[1] + empty.height / 2f
         ShadowSystemClock.advanceBy(1000, TimeUnit.MILLISECONDS)
         send(a, MotionEvent.ACTION_DOWN, x, y, 1)
@@ -341,7 +341,7 @@ class WorkMission2RegressionTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get(); layout(a)
         val tile = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
-        val location = IntArray(2); tile.getLocationOnScreen(location)
+        val location = IntArray(2); tile.getLocationInWindow(location)
         val x = location[0] + tile.width / 2f; val y = location[1] + tile.height / 2f
         send(a, MotionEvent.ACTION_DOWN, x, y, 1)
         send(a, MotionEvent.ACTION_MOVE, x + 2, y - 130, 30)
@@ -350,7 +350,9 @@ class WorkMission2RegressionTest {
         (field(a, "optionsDialog") as Dialog).dismiss()
         val workspace = a.window.decorView.findViewWithTag<View>("workspace_drag_surface")!!
         val workspaceBounds = android.graphics.Rect()
-        assertTrue(workspace.getGlobalVisibleRect(workspaceBounds))
+        assertTrue(workspace.getGlobalVisibleRect(android.graphics.Rect()))
+        val emptyLocation = IntArray(2); workspace.getLocationInWindow(emptyLocation)
+        workspaceBounds.set(emptyLocation[0], emptyLocation[1], emptyLocation[0] + workspace.width, emptyLocation[1] + workspace.height)
         val xEmpty = (workspaceBounds.right - 24).toFloat()
         val yEmpty = workspaceBounds.centerY().toFloat()
         send(a, MotionEvent.ACTION_DOWN, xEmpty, yEmpty, 100)
@@ -369,7 +371,9 @@ class WorkMission2RegressionTest {
         val a = controller.get(); layout(a)
         val workspace = a.window.decorView.findViewWithTag<View>("workspace_drag_surface")!!
         val bounds = android.graphics.Rect()
-        assertTrue(workspace.getGlobalVisibleRect(bounds))
+        assertTrue(workspace.getGlobalVisibleRect(android.graphics.Rect()))
+        val location = IntArray(2); workspace.getLocationInWindow(location)
+        bounds.set(location[0], location[1], location[0] + workspace.width, location[1] + workspace.height)
         val x = bounds.centerX().toFloat()
         val yBottom = (bounds.bottom - 12).toFloat()
         send(a, MotionEvent.ACTION_DOWN, x, yBottom, 1)
@@ -400,7 +404,9 @@ class WorkMission2RegressionTest {
         val a = controller.get(); layout(a)
         val workspace = a.window.decorView.findViewWithTag<View>("workspace_drag_surface")!!
         val bounds = android.graphics.Rect()
-        assertTrue(workspace.getGlobalVisibleRect(bounds))
+        assertTrue(workspace.getGlobalVisibleRect(android.graphics.Rect()))
+        val location = IntArray(2); workspace.getLocationInWindow(location)
+        bounds.set(location[0], location[1], location[0] + workspace.width, location[1] + workspace.height)
         val outsideY = bounds.bottom + 2f
         if (outsideY < a.window.decorView.height - 20f) {
             val x = bounds.centerX().toFloat()
