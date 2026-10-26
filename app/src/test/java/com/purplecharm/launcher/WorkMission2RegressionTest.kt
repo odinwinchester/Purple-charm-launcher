@@ -248,6 +248,8 @@ class WorkMission2RegressionTest {
 
     @Test fun normalTapOnDestinationPageStillOpensItsAppAfterSwipeRelease() {
         seedAppOnFirstTwoPages()
+        // This assertion concerns touch handling after navigation, independent of ViewFlipper animation timing.
+        prefs().edit().putString("pc_transition", "none").commit()
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get()
         @Suppress("UNCHECKED_CAST")
@@ -261,11 +263,6 @@ class WorkMission2RegressionTest {
         send(a, MotionEvent.ACTION_MOVE, x - 140, y, 30)
         send(a, MotionEvent.ACTION_UP, x - 140, y, 60)
         assertNull(shadowOf(a).nextStartedActivity)
-        // Let ViewFlipper's configured 260 ms page animation and its callbacks finish
-        // before testing a separate tap on the destination page.
-        ShadowSystemClock.advanceBy(300, TimeUnit.MILLISECONDS)
-        shadowOf(RuntimeEnvironment.getApplication().mainLooper).idle()
-
         val destination = a.window.decorView.findViewWithTag<View>("workspace_cell_1_0")!!
         val destPos = IntArray(2); destination.getLocationInWindow(destPos)
         val tx = destPos[0] + destination.width / 2f; val ty = destPos[1] + destination.height / 2f
