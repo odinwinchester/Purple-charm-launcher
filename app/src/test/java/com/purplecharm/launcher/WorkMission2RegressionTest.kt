@@ -348,10 +348,14 @@ class WorkMission2RegressionTest {
         send(a, MotionEvent.ACTION_UP, x + 2, y - 130, 60)
         assertTrue((field(a, "optionsDialog") as Dialog).isShowing)
         (field(a, "optionsDialog") as Dialog).dismiss()
-        val width = a.window.decorView.width.toFloat()
-        send(a, MotionEvent.ACTION_DOWN, width - 4, 800f, 100)
-        send(a, MotionEvent.ACTION_MOVE, width - 4, 660f, 130)
-        send(a, MotionEvent.ACTION_UP, width - 4, 660f, 160)
+        val workspace = a.window.decorView.findViewWithTag<View>("workspace_drag_surface")!!
+        val workspaceBounds = android.graphics.Rect()
+        assertTrue(workspace.getGlobalVisibleRect(workspaceBounds))
+        val xEmpty = (workspaceBounds.right - 24).toFloat()
+        val yEmpty = workspaceBounds.centerY().toFloat()
+        send(a, MotionEvent.ACTION_DOWN, xEmpty, yEmpty, 100)
+        send(a, MotionEvent.ACTION_MOVE, xEmpty + 2, yEmpty - 140, 130)
+        send(a, MotionEvent.ACTION_UP, xEmpty + 2, yEmpty - 140, 160)
         assertTrue((field(a, "optionsDialog") as Dialog).isShowing)
         assertEquals(0, MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }.getInt(a))
         controller.pause().stop().destroy()
@@ -363,11 +367,14 @@ class WorkMission2RegressionTest {
             .putString("pc_wallpaper_choice", "eye_royal").commit()
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get(); layout(a)
-        val width = a.window.decorView.width.toFloat()
-        val height = a.window.decorView.height.toFloat()
-        send(a, MotionEvent.ACTION_DOWN, width / 2f, height - 24f, 1)
-        send(a, MotionEvent.ACTION_MOVE, width / 2f + 3f, height - 170f, 30)
-        send(a, MotionEvent.ACTION_UP, width / 2f + 3f, height - 170f, 60)
+        val workspace = a.window.decorView.findViewWithTag<View>("workspace_drag_surface")!!
+        val bounds = android.graphics.Rect()
+        assertTrue(workspace.getGlobalVisibleRect(bounds))
+        val x = bounds.centerX().toFloat()
+        val yBottom = (bounds.bottom - 12).toFloat()
+        send(a, MotionEvent.ACTION_DOWN, x, yBottom, 1)
+        send(a, MotionEvent.ACTION_MOVE, x + 3f, yBottom - 146f, 30)
+        send(a, MotionEvent.ACTION_UP, x + 3f, yBottom - 146f, 60)
 
         val wallpaperDialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
         assertNotNull(wallpaperDialog)
@@ -376,13 +383,33 @@ class WorkMission2RegressionTest {
         assertEquals("eye_royal", prefs().getString("pc_wallpaper_choice", null))
         wallpaperDialog.dismiss()
 
-        send(a, MotionEvent.ACTION_DOWN, width / 2f + 130f, height - 24f, 100)
-        send(a, MotionEvent.ACTION_MOVE, width / 2f - 10f, height - 20f, 130)
-        send(a, MotionEvent.ACTION_UP, width / 2f - 10f, height - 20f, 160)
+        send(a, MotionEvent.ACTION_DOWN, x + 140f, bounds.centerY().toFloat(), 100)
+        send(a, MotionEvent.ACTION_MOVE, x - 10f, bounds.centerY().toFloat() + 3f, 130)
+        send(a, MotionEvent.ACTION_UP, x - 10f, bounds.centerY().toFloat() + 3f, 160)
         assertEquals(1, MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }.getInt(a))
         assertFalse(field(a, "drawerOpen") as Boolean)
         assertNull(field(a, "optionsDialog"))
         assertEquals("wallpaper", prefs().getString("pc_swipe_up", null))
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun gestureStartingOutsideWorkspaceDoesNotConsumeSystemReservedArea() {
+        seedApp()
+        prefs().edit().putString("pc_swipe_down", "drawer").commit()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get(); layout(a)
+        val workspace = a.window.decorView.findViewWithTag<View>("workspace_drag_surface")!!
+        val bounds = android.graphics.Rect()
+        assertTrue(workspace.getGlobalVisibleRect(bounds))
+        val outsideY = bounds.bottom + 2f
+        if (outsideY < a.window.decorView.height - 20f) {
+            val x = bounds.centerX().toFloat()
+            send(a, MotionEvent.ACTION_DOWN, x, outsideY, 1)
+            send(a, MotionEvent.ACTION_MOVE, x + 2f, outsideY + 140f, 30)
+            send(a, MotionEvent.ACTION_UP, x + 2f, outsideY + 140f, 60)
+            assertFalse(field(a, "drawerOpen") as Boolean)
+            assertNull(field(a, "optionsDialog"))
+        }
         controller.pause().stop().destroy()
     }
 
