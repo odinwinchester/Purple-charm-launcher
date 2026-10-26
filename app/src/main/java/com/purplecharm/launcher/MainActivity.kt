@@ -240,6 +240,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var lastTapY = 0f
     private var swipeConsumed = false
     private var pendingVerticalSwipe = false
+    private var workspaceGestureCandidate = false
 
     private var dragging = false
     private var switchingPage = false
@@ -840,11 +841,11 @@ class MainActivity : Activity(), SensorEventListener {
         }
         option("✦ Papéis de parede Purple Charm") { wallpaperMenu() }
         } else {
-        option("✦ Deslizar para cima: " + gestureName(setting("swipe_up", "drawer"))) {
-            gestureSetting("Deslizar para cima", "swipe_up", "drawer")
+        option("✦ Deslizar para cima: " + gestureName(setting("swipe_up", "options"))) {
+            gestureSetting("Deslizar para cima", "swipe_up", "options")
         }
-        option("✦ Deslizar para baixo: " + gestureName(setting("swipe_down", "none"))) {
-            gestureSetting("Deslizar para baixo", "swipe_down", "none")
+        option("✦ Deslizar para baixo: " + gestureName(setting("swipe_down", "drawer"))) {
+            gestureSetting("Deslizar para baixo", "swipe_down", "drawer")
         }
         option("✦ Toque duplo: " + gestureName(setting("double_tap", "none"))) {
             gestureSetting("Toque duplo", "double_tap", "none")
@@ -906,6 +907,7 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun gestureName(value: String): String = when (value) {
+        "options" -> "Dock de opções"
         "drawer" -> "Abrir aplicativos"
         "search" -> "Pesquisa Crystal Glass"
         "settings" -> "Configurações"
@@ -915,12 +917,13 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun gestureSetting(title: String, key: String, default: String) {
-        val values = arrayOf("drawer", "search", "settings", "wallpaper", "home", "none")
+        val values = arrayOf("options", "drawer", "search", "settings", "wallpaper", "home", "none")
         chooseSetting(title, key, values.map { gestureName(it) }.toTypedArray(), values, default)
     }
 
     private fun runGesture(action: String): Boolean {
         when (action) {
+            "options" -> showClassicCustomizationMenu()
             "drawer" -> showDrawer()
             "search" -> showCrystalSearch()
             "settings" -> settingsMenu()
@@ -2233,11 +2236,12 @@ class MainActivity : Activity(), SensorEventListener {
                     setPadding(dp(10), dp(10), dp(10), dp(10))
                     scaleType = ImageView.ScaleType.FIT_CENTER
                     setOnClickListener {
-                        showDrawer()
+                        val homePage = HomePageSelection.read(prefs, pageCount())
+                        if (pageIndex != homePage) changePage(homePage)
                     }
-                    contentDescription = "Abrir gaveta de aplicativos"
+                    contentDescription = "Voltar à página principal configurada"
                     tag = "dock_drawer"
-                    // Toque longo reservado: personalização permanece no gesto de deslizar para cima.
+                    // A gaveta permanece acessível pelo gesto configurado para baixo.
                 }
             } else {
                 val dockIndex = if (slot < 2) slot else slot - 1
@@ -2811,8 +2815,33 @@ class MainActivity : Activity(), SensorEventListener {
         try { super.dispatchTouchEvent(cancel) } finally { cancel.recycle() }
     }
 
+    private fun gestureStartedInWorkspace(event: MotionEvent): Boolean {
+        val workspace = window.decorView.findViewWithTag<View>("workspace_drag_surface") ?: return false
+        val bounds = android.graphics.Rect()
+        if (!workspace.getGlobalVisibleRect(bounds)) return false
+        val rootInsets = window.decorView.rootWindowInsets
+        val gestureInsets = when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
+                rootInsets?.getInsets(WindowInsets.Type.systemGestures())
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                @Suppress("DEPRECATION")
+                rootInsets?.systemGestureInsets
+            }
+            else -> null
+        }
+        gestureInsets?.let { bounds.inset(it.left, it.top, it.right, it.bottom) }
+        return bounds.contains(event.rawX.toInt(), event.rawY.toInt())
+    }
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         val action = event.actionMasked
+        if (action == MotionEvent.ACTION_DOWN) {
+            workspaceGestureCandidate = gestureStartedInWorkspace(event)
+        }
+        val workspaceGesture = workspaceGestureCandidate
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            workspaceGestureCandidate = false
+        }
         if (action == MotionEvent.ACTION_DOWN && ::pages.isInitialized) {
             val external = pages.currentView?.findViewWithTag<View>("external_widgets_scroll")
             val bounds = android.graphics.Rect()
@@ -2835,7 +2864,7 @@ class MainActivity : Activity(), SensorEventListener {
             if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) widgetResizeGesture = false
             return super.dispatchTouchEvent(event)
         }
-        if (!drawerOpen && !dragging) {
+        if (!drawerOpen && !dragging && workspaceGesture) {
             when (action) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.x
@@ -2870,8 +2899,8 @@ class MainActivity : Activity(), SensorEventListener {
                         swipeConsumed = false
                         if (runVertical) {
                             val dy = event.y - downY
-                            val configured = if (dy < 0) setting("swipe_up", "drawer")
-                                else setting("swipe_down", "none")
+                            val configured = if (dy < 0) setting("swipe_up", "options")
+                                else setting("swipe_down", "drawer")
                             runGesture(configured)
                         }
                         return true
@@ -2897,8 +2926,8 @@ class MainActivity : Activity(), SensorEventListener {
                             return true
                         }
                         WorkspaceSwipe.VERTICAL -> {
-                            val configured = if (dy < 0) setting("swipe_up", "drawer")
-                                else setting("swipe_down", "none")
+                            val configured = if (dy < 0) setting("swipe_up", "options")
+                                else setting("swipe_down", "drawer")
                             cancelDispatchedTouch(event)
                             runGesture(configured)
                             return true
