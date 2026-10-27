@@ -124,22 +124,58 @@ class MainActivity : Activity(), SensorEventListener {
     private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
     private var accelerometer: Sensor? = null
 
+    // Modo de edição visual: a tela inicial permanece visível atrás das ferramentas.
+    // O dock normal não é recriado nem alterado por esta interface.
     private fun enterEditMode() {
         if (editMode || drawerOpen || dragging) return
         editMode = true
-        val dialog = SmokeDialogBuilder(this).setTitle("✦ Editar tela inicial")
-            .setItems(arrayOf("Wallpapers", "Ícones e organização", "Widgets", "Configurar dock", "Configurações", "Configurações do Android", "Concluir")) { _, choice ->
-                when (choice) {
-                    0 -> wallpaperMenu()
-                    1 -> shortcutEditor()
-                    2 -> widgetCenter()
-                    3 -> dockConfiguration()
-                    4 -> settingsMenu()
-                    5 -> openSystemSettings()
-                }
-            }.create()
+        val dialog = Dialog(this)
+        val surface = FrameLayout(this)
+        val top = glassButton("Concluído", 16f).apply {
+            setOnClickListener { dialog.dismiss() }
+        }
+        surface.addView(top, FrameLayout.LayoutParams(dp(130), dp(54), Gravity.TOP or Gravity.END).apply {
+            setMargins(dp(12), dp(48), dp(16), 0)
+        })
+        val tools = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(6), dp(10), dp(6), dp(12))
+            background = glass(18, true)
+        }
+        listOf(
+            "▧\\nPlano de fundo" to { wallpaperMenu() },
+            "✧\\nEfeitos" to { showWallpaperEffects() },
+            "▦\\nWidgets" to { widgetCenter() },
+            "⚙\\nConfigurações" to { settingsMenu() }
+        ).forEach { (caption, action) ->
+            val control = glassButton(caption.replace("\\n", "\n"), 12f).apply {
+                setOnClickListener { dialog.dismiss(); action() }
+            }
+            tools.addView(control, LinearLayout.LayoutParams(0, dp(86), 1f).apply {
+                setMargins(dp(2), 0, dp(2), 0)
+            })
+        }
+        surface.addView(tools, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        dialog.setContentView(surface)
         dialog.setOnDismissListener { editMode = false }
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            attributes = attributes.apply { dimAmount = 0f }
+            setLayout(-1, -1)
+        }
         dialog.show()
+        dialog.window?.setLayout(-1, -1)
+    }
+
+    private fun showWallpaperEffects() {
+        val enabled = prefs.getBoolean("pc_wallpaper_blur", false)
+        SmokeDialogBuilder(this).setTitle("✧ Efeitos")
+            .setItems(arrayOf(if (enabled) "Desfoque do wallpaper: ligado" else "Desfoque do wallpaper: desligado")) { _, _ ->
+                prefs.edit().putBoolean("pc_wallpaper_blur", !enabled).apply()
+                applyWallpaper()
+            }.show()
     }
     private fun shortcutEditor() {
         val keys = pageCells(pageIndex).filter { it.isNotEmpty() }
@@ -1186,7 +1222,6 @@ class MainActivity : Activity(), SensorEventListener {
     private val wallpaperOptions = listOf(
         Triple("Floral original", "floral", R.drawable.purple_original_wallpaper),
         Triple("Olho de Crystal", "eye_crystal", R.drawable.purple_eye_crystal),
-        Triple("Olho de Crystal • Real", "eye_royal", R.drawable.purple_eye_royal),
         Triple("Ghost Fire", "ghost_fire", R.drawable.wallpaper_ghost_fire)
     )
 
