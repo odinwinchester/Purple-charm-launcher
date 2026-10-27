@@ -92,9 +92,6 @@ class WidgetMissionAndroidTest {
         val menu = ShadowAlertDialog.getLatestAlertDialog()
         assertEquals(4, menu.listView.adapter.count); menu.dismiss()
         a.window.decorView.findViewWithTag<View>("dock_drawer")!!.performClick()
-        assertFalse(field(a, "drawerOpen") as Boolean)
-        assertEquals(0, MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }.getInt(a))
-        call(a, "showDrawer")
         assertEquals(true, field(a, "drawerOpen")); assertNotNull(a.window.decorView.findViewWithTag<View>("drawer_grid"))
         assertNull(a.window.decorView.findViewWithTag<View>("home_dock"))
         a.onBackPressed()
@@ -104,22 +101,25 @@ class WidgetMissionAndroidTest {
         c.pause().stop().destroy()
     }
 
-    @Test fun centralDockButtonReturnsToConfiguredHomeAndIsInertWhenAlreadyThere() {
+    @Test fun centralDockButtonOpensDrawerFromAnyHomePage() {
         seed()
         assertTrue(HomePageSelection.write(prefs(), 1, 3))
         val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
         val pageIndex = MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }
-        val homeButton = a.window.decorView.findViewWithTag<View>("dock_drawer")!!
         assertEquals(1, pageIndex.getInt(a))
-        homeButton.performClick()
-        assertEquals(1, pageIndex.getInt(a))
+        a.window.decorView.findViewWithTag<View>("dock_drawer")!!.performClick()
+        assertTrue(field(a, "drawerOpen") as Boolean)
+        assertNotNull(a.window.decorView.findViewWithTag<View>("drawer_grid"))
+        assertNull(a.window.decorView.findViewWithTag<View>("home_dock"))
+        a.onBackPressed()
         assertFalse(field(a, "drawerOpen") as Boolean)
         MainActivity::class.java.getDeclaredMethod("changePage", Int::class.javaPrimitiveType)
             .apply { isAccessible = true }.invoke(a, 0)
         assertEquals(0, pageIndex.getInt(a))
-        homeButton.performClick()
-        assertEquals(1, pageIndex.getInt(a))
-        assertFalse(field(a, "drawerOpen") as Boolean)
+        a.window.decorView.findViewWithTag<View>("dock_drawer")!!.performClick()
+        assertTrue(field(a, "drawerOpen") as Boolean)
+        assertNotNull(a.window.decorView.findViewWithTag<View>("drawer_grid"))
+        a.onBackPressed()
         c.pause().stop().destroy()
     }
 
