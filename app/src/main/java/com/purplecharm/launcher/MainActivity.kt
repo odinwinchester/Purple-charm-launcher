@@ -2236,12 +2236,11 @@ class MainActivity : Activity(), SensorEventListener {
                     setPadding(dp(10), dp(10), dp(10), dp(10))
                     scaleType = ImageView.ScaleType.FIT_CENTER
                     setOnClickListener {
-                        val homePage = HomePageSelection.read(prefs, pageCount())
-                        if (pageIndex != homePage) changePage(homePage)
+                        showDrawer()
                     }
-                    contentDescription = "Voltar à página principal configurada"
+                    contentDescription = "Abrir gaveta de aplicativos"
                     tag = "dock_drawer"
-                    // A gaveta permanece acessível pelo gesto configurado para baixo.
+                    // Botão central abre a gaveta; navegação da página inicial permanece independente.
                 }
             } else {
                 val dockIndex = if (slot < 2) slot else slot - 1
