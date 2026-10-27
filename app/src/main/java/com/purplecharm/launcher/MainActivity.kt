@@ -8,6 +8,12 @@ import android.app.Activity
 import android.app.Dialog
 import android.app.WallpaperManager
 import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.Paint
+import android.graphics.drawable.BitmapDrawable
 import java.io.IOException
 import android.graphics.Camera
 import android.graphics.Matrix
@@ -1417,6 +1423,36 @@ class MainActivity : Activity(), SensorEventListener {
             if (bytes <= iconCache.maxSize()) icon.constantState?.let { iconCache.put(key, CachedIcon(it, bytes)) }
         }
     }
+    // Original GO-style theme layers are applied only to unthemed application icons.
+    // All three PNG resources are reused unchanged; themed icons keep their own artwork.
+    private fun originalThemeFallback(icon: Drawable): Drawable {
+        val size = 144
+        fun paintResource(id: Int, canvas: Canvas) {
+            val drawable = resources.getDrawable(id, theme).mutate()
+            drawable.setBounds(0, 0, size, size)
+            drawable.draw(canvas)
+        }
+        val result = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(result)
+        paintResource(R.drawable.iconback, canvas)
+        val foreground = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val foregroundCanvas = Canvas(foreground)
+        icon.mutate().apply { setBounds(0, 0, size, size) }.draw(foregroundCanvas)
+        val mask = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        paintResource(R.drawable.iconmask, Canvas(mask))
+        val maskedCanvas = Canvas(foreground)
+        val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+        }
+        maskedCanvas.drawBitmap(mask, 0f, 0f, maskPaint)
+        maskPaint.xfermode = null
+        canvas.drawBitmap(foreground, 0f, 0f, null)
+        paintResource(R.drawable.iconupon, canvas)
+        mask.recycle()
+        foreground.recycle()
+        return BitmapDrawable(resources, result)
+    }
+
     private fun uncachedIcon(app: ResolveInfo, includeFallbackFrame: Boolean): Drawable {
         val pkg = app.activityInfo.packageName
             .lowercase(Locale.ROOT)
@@ -1559,7 +1595,9 @@ class MainActivity : Activity(), SensorEventListener {
         }
 
         val original = app.loadIcon(packageManager)
-        if (!includeFallbackFrame || setting("fallback_skin", "original") != "ghost") return original
+        if (!includeFallbackFrame || setting("fallback_skin", "original") != "ghost") {
+            return originalThemeFallback(original)
+        }
 
         // Usa o fundo autêntico recuperado do Purple Charm original.
         // Os ícones personalizados existentes permanecem intocados.
