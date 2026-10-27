@@ -99,31 +99,23 @@ class WorkMission2RegressionTest {
         try { a.dispatchTouchEvent(event) } finally { event.recycle() }
     }
 
-    @Test fun homeAppLongPressShowsContextMenuWithoutStartingDragAndRemovalOnlyRemovesShortcut() {
+    @Test fun homeAppLongPressStartsDragDirectlyAndCancelPreservesOtherCopies() {
         seedApp(preserveOtherCopies = true)
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get()
         @Suppress("UNCHECKED_CAST")
         val apps = field(a, "apps") as MutableList<ResolveInfo>
-        val app = fake(a)
-        apps.add(app)
-        call(a, "showHome")
+        apps.add(fake(a))
+        call(a, "showHome"); layout(a)
+        val before = call(a, "workspaceItems") as WorkspaceItems
         val tile = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
         assertTrue(tile.performLongClick())
-        assertFalse(field(a, "dragging") as Boolean)
-        val menu = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
-        val labels = (0 until menu.listView.adapter.count).map { menu.listView.adapter.getItem(it).toString() }
-        assertEquals(listOf("Mover para outra página", "Mover por arraste / criar pasta", "Remover atalho da tela inicial"), labels)
-        menu.listView.performItemClick(null, 2, menu.listView.adapter.getItemId(2))
-        val confirmation = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
-        assertTrue(shadowOf(confirmation).message.toString().contains("continuará instalado"))
-        confirmation.getButton(-1).performClick()
+        assertTrue(field(a, "dragging") as Boolean)
+        assertNotNull(field(a, "dragSession"))
+        assertNull(org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog())
+        a.onBackPressed()
         shadowOf(RuntimeEnvironment.getApplication().mainLooper).idle()
-        val afterRemoval = call(a, "workspaceItems") as WorkspaceItems
-        assertFalse(afterRemoval.pages.flatten().contains("test.purple.app/Main"))
-        assertEquals("test.purple.app/Main", afterRemoval.dock[0])
-        assertEquals(listOf("test.purple.app/Main"), afterRemoval.folders.getValue("folder:duplicate").apps)
-        assertNull(shadowOf(a).nextStartedActivity)
+        assertEquals(before, call(a, "workspaceItems") as WorkspaceItems)
         controller.pause().stop().destroy()
     }
 
@@ -142,21 +134,16 @@ class WorkMission2RegressionTest {
         assertEquals(listOf(key), updated.folders.getValue(folderId).apps)
     }
 
-    @Test fun longPressMoveMenuHasExplicitDragAndPageFlows() {
+    @Test fun pageMoveRemainsAvailableWithoutLongPressDialog() {
         seedApp()
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get()
         @Suppress("UNCHECKED_CAST")
         val apps = field(a, "apps") as MutableList<ResolveInfo>
         apps.add(fake(a))
-        call(a, "showHome")
-        val tile = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
-        tile.performLongClick()
-        val menu = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
-        assertEquals("Mover para outra página", menu.listView.adapter.getItem(0))
-        assertEquals("Mover por arraste / criar pasta", menu.listView.adapter.getItem(1))
-        assertFalse(field(a, "dragging") as Boolean)
-        menu.listView.performItemClick(null, 0, menu.listView.adapter.getItemId(0))
+        call(a, "showHome"); layout(a)
+        call(a, "moveWorkspaceItemPageMenu", String::class.java, String::class.java,
+            args = arrayOf("test.purple.app/Main", "Chrome"))
         val pages = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
         assertEquals(2, pages.listView.adapter.count)
         pages.listView.performItemClick(null, 0, pages.listView.adapter.getItemId(0))
@@ -166,7 +153,7 @@ class WorkMission2RegressionTest {
         controller.pause().stop().destroy()
     }
 
-    @Test fun dragStartsOnlyAfterExplicitContextMenuChoiceAndCancelPreservesWorkspace() {
+    @Test fun dragStartsOnFirstLongPressAndCancelPreservesWorkspace() {
         seedApp()
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get()
@@ -176,15 +163,12 @@ class WorkMission2RegressionTest {
         call(a, "showHome"); layout(a)
         val before = prefs().all.toMap()
         val tile = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
-        tile.performLongClick()
-        assertFalse(field(a, "dragging") as Boolean)
-        org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog().listView
-            .performItemClick(null, 1, 1L)
+        assertTrue(tile.performLongClick())
         assertTrue(field(a, "dragging") as Boolean)
         assertNotNull(field(a, "dragSession"))
         assertEquals(before, prefs().all)
         a.onBackPressed()
-        org.robolectric.Shadows.shadowOf(org.robolectric.RuntimeEnvironment.getApplication().mainLooper).idle()
+        shadowOf(RuntimeEnvironment.getApplication().mainLooper).idle()
         assertFalse(field(a, "dragging") as Boolean)
         assertEquals(before, prefs().all)
         controller.pause().stop().destroy()
