@@ -12,8 +12,37 @@ android {
         applicationId = "com.purplecharm.launcher"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.7.0"
+        versionCode = providers.environmentVariable("PURPLE_VERSION_CODE").orElse("9").get().toInt()
+        versionName = "0.7.2"
+        testInstrumentationRunner = "com.purplecharm.launcher.UpgradeProbe"
+    }
+
+    val signingPath = providers.environmentVariable("PURPLE_KEYSTORE_PATH").orNull
+    if (!signingPath.isNullOrBlank()) {
+        signingConfigs.create("stable") {
+            storeFile = file(signingPath)
+            val signingPassword = providers.environmentVariable("PURPLE_STORE_PASSWORD").get()
+            storePassword = signingPassword
+            keyAlias = "purple-charm-release"
+            keyPassword = signingPassword
+        }
+        buildTypes.getByName("release").signingConfig = signingConfigs.getByName("stable")
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.maxHeapSize = "1g"
+            it.jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED",
+                "--add-opens=java.base/java.util=ALL-UNNAMED",
+                "--add-opens=java.base/java.io=ALL-UNNAMED",
+                "--add-opens=java.base/java.net=ALL-UNNAMED",
+                "--add-opens=java.base/java.security=ALL-UNNAMED",
+                "--add-opens=java.base/java.text=ALL-UNNAMED",
+                "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+                "--add-opens=java.desktop/java.awt.font=ALL-UNNAMED",
+                "--add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED")
+        }
     }
 
     // Compilação única Purple Charm Crystal Class v0.7.0.
@@ -26,4 +55,10 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("org.json:json:20240303")
 }

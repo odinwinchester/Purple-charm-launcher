@@ -1,0 +1,34 @@
+name: Testar criptografia e bot de lançamentos
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/keystore_crypto.py'
+      - 'scripts/test_signing_crypto.sh'
+      - 'scripts/test_signing_workflow_policy.py'
+      - 'app/build.gradle.kts'
+      - 'docs/STABLE_SIGNING_SETUP.md'
+      - 'scripts/discord_release_bot.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safe-selftests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Instalar dependência criptográfica fixada sem secrets
+        run: python3 -m pip install --disable-pip-version-check --no-warn-script-location "cryptography==50.0.2"
+      - name: Round-trip do backup com chave descartável
+        run: bash scripts/test_signing_crypto.sh
+      - name: Validar política de assinatura sem secrets
+        run: python3 scripts/test_signing_workflow_policy.py
+      - name: Testes de elegibilidade e idempotência Discord sem rede ou webhook
+        run: python3 scripts/discord_release_bot.py --self-test

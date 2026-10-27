@@ -1,0 +1,80 @@
+[
+  {
+    "path": "app/src/main/res/drawable-nodpi/sol_dia_chuvoso.png",
+    "width": 867,
+    "height": 453,
+    "mode": "RGB",
+    "format": "PNG",
+    "bytes": 696823,
+    "sha256": "2823f7a3ca116d19a15eda0c8846c8aef5d9d9efb68397f7c50fc42618ee73e5",
+    "git_blob_sha": "4a425b4bfe8619b07044d928618375ef22226007",
+    "source_commit": "5b1474c03b59a0ccaf0486a1ad42576d2048e9ff",
+    "classification": "Solar meteorológico",
+    "selection": "Automático diurno quando o grupo da previsão MET é chuva/trovoada; manual também disponível"
+  },
+  {
+    "path": "app/src/main/res/drawable-nodpi/sol_dia_frio.png",
+    "width": 867,
+    "height": 453,
+    "mode": "RGB",
+    "format": "PNG",
+    "bytes": 703226,
+    "sha256": "f54c33c37926efa6dd5ba4042e866f669542ae760c20e5dcaaa3eb2cd308cee5",
+    "git_blob_sha": "bb0e42bde7b5635ae4ad9fa80cd03292e5cd4c35",
+    "source_commit": "5b1474c03b59a0ccaf0486a1ad42576d2048e9ff",
+    "classification": "Solar meteorológico",
+    "selection": "Automático diurno quando há neve/neve e chuva ou temperatura <= 12 °C; prioridade sobre chuva quando frio; manual disponível"
+  },
+  {
+    "path": "app/src/main/res/drawable-nodpi/lua_noite_chuvosa.png",
+    "width": 1942,
+    "height": 396,
+    "mode": "RGB",
+    "format": "PNG",
+    "bytes": 1333375,
+    "sha256": "25f1845f92c3a3db6ddd6341e17d265b7add4bdf77409b984f47c4454b93af77",
+    "git_blob_sha": "2583e93067226ef98c5884eade44634109d50076",
+    "source_commit": "5b1474c03b59a0ccaf0486a1ad42576d2048e9ff",
+    "classification": "Lunar alternativo panorâmico",
+    "selection": "Somente manual nesta etapa; não substitui o mapeamento automático das quatro fases"
+  },
+  {
+    "path": "app/src/main/res/drawable-nodpi/lua_noite_fria.png",
+    "width": 1942,
+    "height": 413,
+    "mode": "RGB",
+    "format": "PNG",
+    "bytes": 1349297,
+    "sha256": "10e5b8666aec19b2998c9dfd47d02b9a3ae82f3d0b01d470bccf8a17c924b965",
+    "git_blob_sha": "b5edb7227fa5baa329e61082d2f838af0c5d05ba",
+    "source_commit": "5b1474c03b59a0ccaf0486a1ad42576d2048e9ff",
+    "classification": "Lunar alternativo panorâmico",
+    "selection": "Somente manual nesta etapa; não substitui o mapeamento automático das quatro fases"
+  },
+  {
+    "path": "app/src/main/res/drawable-nodpi/eclipse_solar_frio.png",
+    "width": 867,
+    "height": 454,
+    "mode": "RGB",
+    "format": "PNG",
+    "bytes": 650530,
+    "sha256": "19f018616756262a7a28c84552ad044ec9c3a5a8224b416877a0683cbd98ce33",
+    "git_blob_sha": "92aa7e0974e88c41109b45fb9efdceba9713ffa3",
+    "source_commit": "5b1474c03b59a0ccaf0486a1ad42576d2048e9ff",
+    "classification": "Evento astronômico ilustrativo",
+    "selection": "Somente manual; não confirma ocorrência ou visibilidade de eclipse"
+  },
+  {
+    "path": "app/src/main/res/drawable-nodpi/eclipse_lunar_limpo.png",
+    "width": 867,
+    "height": 454,
+    "mode": "RGB",
+    "format": "PNG",
+    "bytes": 633453,
+    "sha256": "adb3bc52d0a80c68971834925ce37e7e759a082a01c9c15c9dd4992177638a48",
+    "git_blob_sha": "3731699a5ce3e8d6fd18380098ddae73c0b1b650",
+    "source_commit": "5b1474c03b59a0ccaf0486a1ad42576d2048e9ff",
+    "classification": "Evento astronômico ilustrativo",
+    "selection": "Somente manual; não confirma ocorrência ou visibilidade de eclipse"
+  }
+]
