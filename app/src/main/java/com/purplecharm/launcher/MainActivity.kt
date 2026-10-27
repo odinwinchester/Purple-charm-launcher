@@ -124,22 +124,79 @@ class MainActivity : Activity(), SensorEventListener {
     private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
     private var accelerometer: Sensor? = null
 
+    // Editor Crystal Glass: a tela inicial permanece visível atrás das ferramentas.
     private fun enterEditMode() {
         if (editMode || drawerOpen || dragging) return
         editMode = true
-        val dialog = SmokeDialogBuilder(this).setTitle("✦ Editar tela inicial")
-            .setItems(arrayOf("Wallpapers", "Ícones e organização", "Widgets", "Configurar dock", "Configurações", "Configurações do Android", "Concluir")) { _, choice ->
-                when (choice) {
-                    0 -> wallpaperMenu()
-                    1 -> shortcutEditor()
-                    2 -> widgetCenter()
-                    3 -> dockConfiguration()
-                    4 -> settingsMenu()
-                    5 -> openSystemSettings()
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(20))
+            background = glass(24, true)
+        }
+        val done = glassButton("Concluído  ✓", 14f).apply {
+            setOnClickListener { dialog.dismiss() }
+        }
+        panel.addView(done)
+        val tools = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val actions = listOf(
+            "Plano de fundo" to 0,
+            "Efeitos" to 1,
+            "Widgets" to 2,
+            "Configurações" to 3
+        )
+        actions.forEach { (name, action) ->
+            val button = glassButton(name, 11f).apply {
+                setPadding(dp(2), dp(12), dp(2), dp(12))
+                setOnClickListener {
+                    dialog.dismiss()
+                    when (action) {
+                        0 -> wallpaperMenu()
+                        1 -> wallpaperEffectsMenu()
+                        2 -> widgetCenter()
+                        3 -> settingsMenu()
+                    }
                 }
-            }.create()
+            }
+            tools.addView(button, LinearLayout.LayoutParams(0, dp(64), 1f))
+        }
+        panel.addView(tools)
+        dialog.setContentView(panel)
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setDimAmount(0f)
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            setGravity(Gravity.BOTTOM)
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
         dialog.setOnDismissListener { editMode = false }
         dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+    }
+
+    private fun wallpaperEffectsMenu() {
+        val enabled = prefs.getBoolean("pc_wallpaper_blur", false)
+        SmokeDialogBuilder(this)
+            .setTitle("✦ Efeitos do plano de fundo")
+            .setSingleChoiceItems(arrayOf("Sem desfoque", "Desfocar plano de fundo"), if (enabled) 1 else 0) { dialog, choice ->
+                prefs.edit().putBoolean("pc_wallpaper_blur", choice == 1).apply()
+                applyWallpaperEffects()
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun applyWallpaperEffects() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val effect = if (prefs.getBoolean("pc_wallpaper_blur", false))
+                android.graphics.RenderEffect.createBlurEffect(dp(12).toFloat(), dp(12).toFloat(), android.graphics.Shader.TileMode.CLAMP)
+            else null
+            backgroundImage.setRenderEffect(effect)
+        }
     }
     private fun shortcutEditor() {
         val keys = pageCells(pageIndex).filter { it.isNotEmpty() }
@@ -1116,6 +1173,7 @@ class MainActivity : Activity(), SensorEventListener {
 
         if (backgroundResource != null) backgroundImage.setImageDrawable(packagedImage(backgroundResource, wallpaper = true))
         else applyWallpaper()
+        applyWallpaperEffects()
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1186,7 +1244,6 @@ class MainActivity : Activity(), SensorEventListener {
     private val wallpaperOptions = listOf(
         Triple("Floral original", "floral", R.drawable.purple_original_wallpaper),
         Triple("Olho de Crystal", "eye_crystal", R.drawable.purple_eye_crystal),
-        Triple("Olho de Crystal • Real", "eye_royal", R.drawable.purple_eye_royal),
         Triple("Ghost Fire", "ghost_fire", R.drawable.wallpaper_ghost_fire)
     )
 
