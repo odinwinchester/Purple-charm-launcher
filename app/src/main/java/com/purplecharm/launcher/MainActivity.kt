@@ -2795,7 +2795,11 @@ class MainActivity : Activity(), SensorEventListener {
                 }
                 true
             } else if (homeShortcut) {
-                homeAppActions(app, tile)
+                // Keep the same touch sequence alive: a dialog would consume the
+                // long press and make the user lift their finger before dragging.
+                if (!startAppDrag(tile, app)) {
+                    Toast.makeText(this, "Não foi possível iniciar o arraste. Tente novamente.", Toast.LENGTH_SHORT).show()
+                }
                 true
             } else {
                 // O primeiro toque longo inicia o arraste com o mesmo dedo.
