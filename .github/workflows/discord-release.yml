@@ -1,0 +1,87 @@
+name: Anunciar versao aprovada no Discord
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  discord:
+    if: ${{ !github.event.release.draft }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Confirmar release com APK e compilacao aprovada na main
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_ID: ${{ github.event.release.id }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          repo = os.environ["REPO"]
+          headers = {"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+          def get(path):
+              req = urllib.request.Request(f"https://api.github.com/repos/{repo}/{path}", headers=headers)
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  return json.load(response)
+          release = get(f"releases/{os.environ['RELEASE_ID']}")
+          if release["tag_name"] != os.environ["RELEASE_TAG"] or release["draft"]:
+              raise SystemExit("Release nao publicada ou tag divergente.")
+          apks = [a for a in release["assets"] if a["name"].lower().endswith(".apk") and a["size"] > 0]
+          if not apks:
+              raise SystemExit("Release sem APK anexado: anuncio bloqueado.")
+          tag = get(f"git/ref/tags/{os.environ['RELEASE_TAG']}")
+          obj = tag["object"]
+          if obj["type"] == "tag":
+              obj = get(f"git/tags/{obj['sha']}")["object"]
+          if obj["type"] != "commit":
+              raise SystemExit("Tag nao aponta para commit.")
+          sha = obj["sha"]
+          main_sha = get("branches/main")["commit"]["sha"]
+          compare = get(f"compare/{sha}...{main_sha}")
+          if compare["status"] not in ("identical", "ahead"):
+              raise SystemExit("Tag nao pertence ao historico da main: anuncio bloqueado.")
+          runs = get(f"actions/runs?head_sha={sha}&per_page=100")["workflow_runs"]
+          approved = any(r["name"] == "Compilar Purple Charm Launcher" and r["conclusion"] == "success" and r["head_branch"] == "main" for r in runs)
+          if not approved:
+              raise SystemExit("Nenhuma compilacao aprovada na main para o commit da tag.")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write("approved=true\n")
+          print(f"Release {release['tag_name']} aprovada; {len(apks)} APK(s) anexado(s).")
+          PY
+
+      - name: Publicar anuncio no Discord
+        if: steps.verify.outputs.approved == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          url = os.environ.get("DISCORD_WEBHOOK_URL", "")
+          if not url:
+              raise SystemExit("Configure o secret DISCORD_WEBHOOK_URL para ativar anuncios.")
+          title = os.environ.get("RELEASE_NAME") or os.environ["RELEASE_TAG"]
+          message = (
+              f"💜 **Purple Charm Crystal Class — {title}**\n"
+              "✅ Nova versão aprovada e disponível para download!\n"
+              "📥 **APK e notas da versão:** " + os.environ["RELEASE_URL"] + "\n"
+              "⚠️ **Problemas conhecidos:** os widgets meteorológicos ainda podem apresentar "
+              "limitações de interação, configuração e atualização dos dados climáticos. "
+              "Essas funcionalidades continuam em desenvolvimento.\n"
+              "🧪 Consulte as notas da versão antes de instalar."
+          )
+          data = json.dumps({"content": message, "allowed_mentions": {"parse": []}}, ensure_ascii=False).encode("utf-8")
+          request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", "User-Agent": "PurpleCharmReleaseBot/1.0"}, method="POST")
+          with urllib.request.urlopen(request, timeout=30) as response:
+              if response.status not in (200, 204):
+                  raise SystemExit(f"Discord retornou HTTP {response.status}")
+          print("Anuncio enviado ao Discord.")
+          PY

@@ -2,7 +2,7 @@ name: Compilar Purple Charm Launcher
 
 on:
   push:
-    branches: [main, "codex/work-mission2-fixes"]
+    branches: [main, "codex/work-mission2-fixes", "codex/poco-072-behavior-fixes", "codex/purple-unified-navigation-performance"]
   pull_request:
     branches: [main, "codex/weather-widgets"]
   workflow_dispatch:

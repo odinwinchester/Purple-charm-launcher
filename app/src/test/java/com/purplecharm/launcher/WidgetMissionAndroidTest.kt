@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.view.View
 import android.view.ViewGroup
+import android.view.MotionEvent
 import android.widget.ImageView
 import android.widget.TextView
 import org.junit.Assert.*
@@ -28,6 +29,15 @@ class WidgetMissionAndroidTest {
     private fun field(a: MainActivity, key: String) = MainActivity::class.java.getDeclaredField(key).apply { isAccessible = true }.get(a)
     private fun call(a: MainActivity, key: String) = MainActivity::class.java.getDeclaredMethod(key).apply { isAccessible = true }.invoke(a)
     private fun views(v: View): List<View> = listOf(v) + if (v is ViewGroup) (0 until v.childCount).flatMap { views(v.getChildAt(it)) } else emptyList()
+    private fun layout(a: MainActivity, width: Int = 1080, height: Int = 1920) {
+        val root = a.window.decorView
+        root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+        root.layout(0, 0, width, height)
+    }
+    private fun send(a: MainActivity, action: Int, x: Float, y: Float, time: Long) {
+        val event = MotionEvent.obtain(0, time, action, x, y, 0)
+        try { a.dispatchTouchEvent(event) } finally { event.recycle() }
+    }
     private fun provider() = AppWidgetProviderInfo().apply { provider = ComponentName("test.clock", "Provider"); label = "Clock"; minWidth = 60; minHeight = 80; initialLayout = android.R.layout.simple_list_item_1 }
     @Test fun hourlyDetailsScrollAndPreserveUtcConversionAndLocationCacheIsolation() {
         seed()
@@ -72,14 +82,166 @@ class WidgetMissionAndroidTest {
         assertEquals(before, prefs().all)
         dialog.dismiss(); c.pause().stop().destroy()
     }
-    @Test fun dockCenterOpensDrawerAndEmptySlotsHaveManualConfiguration() {
+    @Test fun dockSlotsRemainConfiguredAndDrawerIsTheOnlyStateWithoutTheFixedBar() {
         seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        val initialDock = a.window.decorView.findViewWithTag<View>("home_dock")
+        assertNotNull(initialDock)
+        assertEquals(View.VISIBLE, initialDock!!.visibility)
         for (i in 0..3) assertNotNull(a.window.decorView.findViewWithTag<View>("dock_slot_$i"))
         call(a, "dockConfiguration")
         val menu = ShadowAlertDialog.getLatestAlertDialog()
         assertEquals(4, menu.listView.adapter.count); menu.dismiss()
         a.window.decorView.findViewWithTag<View>("dock_drawer")!!.performClick()
         assertEquals(true, field(a, "drawerOpen")); assertNotNull(a.window.decorView.findViewWithTag<View>("drawer_grid"))
+        assertNull(a.window.decorView.findViewWithTag<View>("home_dock"))
+        a.onBackPressed()
+        val restoredDock = a.window.decorView.findViewWithTag<View>("home_dock")
+        assertNotNull(restoredDock)
+        assertEquals(View.VISIBLE, restoredDock!!.visibility)
+        c.pause().stop().destroy()
+    }
+
+    @Test fun centralDockButtonOpensDrawerFromAnyHomePage() {
+        seed()
+        assertTrue(HomePageSelection.write(prefs(), 1, 3))
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        val pageIndex = MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }
+        assertEquals(1, pageIndex.getInt(a))
+        a.window.decorView.findViewWithTag<View>("dock_drawer")!!.performClick()
+        assertTrue(field(a, "drawerOpen") as Boolean)
+        assertNotNull(a.window.decorView.findViewWithTag<View>("drawer_grid"))
+        assertNull(a.window.decorView.findViewWithTag<View>("home_dock"))
+        a.onBackPressed()
+        assertFalse(field(a, "drawerOpen") as Boolean)
+        MainActivity::class.java.getDeclaredMethod("changePage", Int::class.javaPrimitiveType)
+            .apply { isAccessible = true }.invoke(a, 0)
+        assertEquals(0, pageIndex.getInt(a))
+        a.window.decorView.findViewWithTag<View>("dock_drawer")!!.performClick()
+        assertTrue(field(a, "drawerOpen") as Boolean)
+        assertNotNull(a.window.decorView.findViewWithTag<View>("drawer_grid"))
+        a.onBackPressed()
+        c.pause().stop().destroy()
+    }
+
+    @Test fun homeAndBackPageNavigationReuseTheExistingWorkspaceViews() {
+        seed(); assertTrue(HomePageSelection.write(prefs(), 1, 3))
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        val dock = a.window.decorView.findViewWithTag<View>("home_dock")!!
+        val workspace = a.window.decorView.findViewWithTag<View>("workspace_drag_surface")!!
+        val pages = field(a, "pages")
+        val pageIndex = MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }
+        val changePage = MainActivity::class.java.getDeclaredMethod("changePage", Int::class.javaPrimitiveType)
+            .apply { isAccessible = true }
+        val runHome = MainActivity::class.java.getDeclaredMethod("runGesture", String::class.java)
+            .apply { isAccessible = true }
+        changePage.invoke(a, 0)
+        assertTrue(runHome.invoke(a, "home") as Boolean)
+        assertEquals(1, pageIndex.getInt(a))
+        assertSame(dock, a.window.decorView.findViewWithTag<View>("home_dock"))
+        assertSame(workspace, a.window.decorView.findViewWithTag<View>("workspace_drag_surface"))
+        assertSame(pages, field(a, "pages"))
+
+        changePage.invoke(a, 2)
+        a.onBackPressed()
+        assertEquals(1, pageIndex.getInt(a))
+        assertSame(dock, a.window.decorView.findViewWithTag<View>("home_dock"))
+        assertSame(workspace, a.window.decorView.findViewWithTag<View>("workspace_drag_surface"))
+        c.pause().stop().destroy()
+    }
+
+    @Test fun approvedDefaultSwipesOpenOptionsUpAndDrawerDownWithinWorkspace() {
+        seed()
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get(); layout(a)
+        val workspace = a.window.decorView.findViewWithTag<View>("workspace_drag_surface")!!
+        val bounds = android.graphics.Rect(); assertTrue(workspace.getGlobalVisibleRect(android.graphics.Rect()))
+        val location = IntArray(2); workspace.getLocationInWindow(location)
+        bounds.set(location[0], location[1], location[0] + workspace.width, location[1] + workspace.height)
+        val x = bounds.centerX().toFloat(); val bottom = bounds.bottom - 16f
+        send(a, MotionEvent.ACTION_DOWN, x, bottom, 1)
+        send(a, MotionEvent.ACTION_MOVE, x + 2f, bottom - 140f, 30)
+        send(a, MotionEvent.ACTION_UP, x + 2f, bottom - 140f, 60)
+        val options = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        val optionLabels = views(options.window!!.decorView).filterIsInstance<TextView>().mapNotNull { it.text?.toString() }
+        assertTrue("Organizar" in optionLabels)
+        assertTrue("Papel de parede" in optionLabels)
+        assertTrue("Configurações" in optionLabels)
+        assertFalse(field(a, "drawerOpen") as Boolean)
+        assertFalse(prefs().contains("pc_swipe_up"))
+        options.dismiss()
+
+        val top = bounds.top + 20f
+        send(a, MotionEvent.ACTION_DOWN, x, top, 100)
+        send(a, MotionEvent.ACTION_MOVE, x + 2f, top + 140f, 130)
+        send(a, MotionEvent.ACTION_UP, x + 2f, top + 140f, 160)
+        assertTrue(field(a, "drawerOpen") as Boolean)
+        assertNull(a.window.decorView.findViewWithTag<View>("home_dock"))
+        assertFalse(prefs().contains("pc_swipe_down"))
+        a.onBackPressed()
+        assertNotNull(a.window.decorView.findViewWithTag<View>("home_dock"))
+        c.pause().stop().destroy()
+    }
+
+    @Test fun gesturePreferencesPersistAndResetToApprovedDefaults() {
+        seed()
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        val save = MainActivity::class.java.getDeclaredMethod("saveSetting", String::class.java, String::class.java).apply { isAccessible = true }
+        save.invoke(a, "swipe_up", "wallpaper"); save.invoke(a, "swipe_down", "search")
+        val read = MainActivity::class.java.getDeclaredMethod("setting", String::class.java, String::class.java).apply { isAccessible = true }
+        assertEquals("wallpaper", read.invoke(a, "swipe_up", "options"))
+        assertEquals("search", read.invoke(a, "swipe_down", "drawer"))
+
+        MainActivity::class.java.getDeclaredMethod("settingsCategory", String::class.java).apply { isAccessible = true }.invoke(a, "Launcher")
+        val settings = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        views(settings.window!!.decorView).filterIsInstance<TextView>()
+            .first { it.text?.toString()?.contains("Restaurar gestos e grade") == true }.performClick()
+        val confirmation = ShadowAlertDialog.getLatestAlertDialog()
+        confirmation.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(RuntimeEnvironment.getApplication().mainLooper).idle()
+        assertFalse(prefs().contains("pc_swipe_up"))
+        assertFalse(prefs().contains("pc_swipe_down"))
+        assertEquals("options", read.invoke(a, "swipe_up", "options"))
+        assertEquals("drawer", read.invoke(a, "swipe_down", "drawer"))
+        c.pause().stop().destroy()
+    }
+
+    @Test fun dockStaysAttachedAndVisibleAcrossEveryHomePageChange() {
+        seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        val originalDock = a.window.decorView.findViewWithTag<View>("home_dock")
+        assertNotNull(originalDock)
+        val changePage = MainActivity::class.java.getDeclaredMethod("changePage", Int::class.javaPrimitiveType)
+            .apply { isAccessible = true }
+        for (page in 0..2) {
+            changePage.invoke(a, page)
+            val dock = a.window.decorView.findViewWithTag<View>("home_dock")
+            assertSame("dock should not be rebuilt while changing pages", originalDock, dock)
+            assertEquals(View.VISIBLE, dock!!.visibility)
+        }
+        c.pause().stop().destroy()
+    }
+
+    @Test fun weatherWidgetTapOpensDetailsLongPressEntersResizeAndOptionsRemainExplicit() {
+        seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
+        val editor = field(a, "widgetEditor") as WeatherResizeLayout
+        assertTrue(editor.performClick())
+        var details = ShadowAlertDialog.getLatestAlertDialog()
+        assertEquals("Previsão real • MET Norway", shadowOf(details).title.toString())
+        details.dismiss()
+
+        assertTrue(editor.performLongClick())
+        assertTrue(editor.isEditing)
+        val left = WeatherResizeLayout::class.java.getDeclaredField("leftHandle").apply { isAccessible = true }.get(editor) as View
+        val right = WeatherResizeLayout::class.java.getDeclaredField("rightHandle").apply { isAccessible = true }.get(editor) as View
+        assertEquals(View.VISIBLE, left.visibility)
+        assertEquals(View.VISIBLE, right.visibility)
+        editor.endEditing()
+
+        call(a, "widgetCenter")
+        val center = ShadowAlertDialog.getLatestAlertDialog()
+        center.listView.performItemClick(null, 0, 0L)
+        val options = ShadowAlertDialog.getLatestAlertDialog()
+        val labels = (0 until options.listView.adapter.count).map { options.listView.adapter.getItem(it).toString() }
+        assertTrue("weather settings stay available from the explicit widget action", "Localização e clima" in labels)
+        assertTrue("manual art options stay available", "Personalizar arte (opcional)" in labels)
         c.pause().stop().destroy()
     }
     @Test fun widgetCenterExposesExclusiveAndOfficialAndroidChoices() {

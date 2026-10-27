@@ -99,31 +99,23 @@ class WorkMission2RegressionTest {
         try { a.dispatchTouchEvent(event) } finally { event.recycle() }
     }
 
-    @Test fun homeAppLongPressShowsContextMenuWithoutStartingDragAndRemovalOnlyRemovesShortcut() {
+    @Test fun homeAppLongPressStartsDragDirectlyAndCancelPreservesOtherCopies() {
         seedApp(preserveOtherCopies = true)
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get()
         @Suppress("UNCHECKED_CAST")
         val apps = field(a, "apps") as MutableList<ResolveInfo>
-        val app = fake(a)
-        apps.add(app)
-        call(a, "showHome")
+        apps.add(fake(a))
+        call(a, "showHome"); layout(a)
+        val before = call(a, "workspaceItems") as WorkspaceItems
         val tile = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
         assertTrue(tile.performLongClick())
-        assertFalse(field(a, "dragging") as Boolean)
-        val menu = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
-        val labels = (0 until menu.listView.adapter.count).map { menu.listView.adapter.getItem(it).toString() }
-        assertEquals(listOf("Mover para outra página", "Mover por arraste / criar pasta", "Remover atalho da tela inicial"), labels)
-        menu.listView.performItemClick(null, 2, menu.listView.adapter.getItemId(2))
-        val confirmation = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
-        assertTrue(shadowOf(confirmation).message.toString().contains("continuará instalado"))
-        confirmation.getButton(-1).performClick()
+        assertTrue(field(a, "dragging") as Boolean)
+        assertNotNull(field(a, "dragSession"))
+        assertNull(org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog())
+        a.onBackPressed()
         shadowOf(RuntimeEnvironment.getApplication().mainLooper).idle()
-        val afterRemoval = call(a, "workspaceItems") as WorkspaceItems
-        assertFalse(afterRemoval.pages.flatten().contains("test.purple.app/Main"))
-        assertEquals("test.purple.app/Main", afterRemoval.dock[0])
-        assertEquals(listOf("test.purple.app/Main"), afterRemoval.folders.getValue("folder:duplicate").apps)
-        assertNull(shadowOf(a).nextStartedActivity)
+        assertEquals(before, call(a, "workspaceItems") as WorkspaceItems)
         controller.pause().stop().destroy()
     }
 
@@ -142,21 +134,16 @@ class WorkMission2RegressionTest {
         assertEquals(listOf(key), updated.folders.getValue(folderId).apps)
     }
 
-    @Test fun longPressMoveMenuHasExplicitDragAndPageFlows() {
+    @Test fun pageMoveRemainsAvailableWithoutLongPressDialog() {
         seedApp()
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get()
         @Suppress("UNCHECKED_CAST")
         val apps = field(a, "apps") as MutableList<ResolveInfo>
         apps.add(fake(a))
-        call(a, "showHome")
-        val tile = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
-        tile.performLongClick()
-        val menu = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
-        assertEquals("Mover para outra página", menu.listView.adapter.getItem(0))
-        assertEquals("Mover por arraste / criar pasta", menu.listView.adapter.getItem(1))
-        assertFalse(field(a, "dragging") as Boolean)
-        menu.listView.performItemClick(null, 0, menu.listView.adapter.getItemId(0))
+        call(a, "showHome"); layout(a)
+        call(a, "moveWorkspaceItemPageMenu", String::class.java, String::class.java,
+            args = arrayOf("test.purple.app/Main", "Chrome"))
         val pages = org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog()
         assertEquals(2, pages.listView.adapter.count)
         pages.listView.performItemClick(null, 0, pages.listView.adapter.getItemId(0))
@@ -166,7 +153,7 @@ class WorkMission2RegressionTest {
         controller.pause().stop().destroy()
     }
 
-    @Test fun dragStartsOnlyAfterExplicitContextMenuChoiceAndCancelPreservesWorkspace() {
+    @Test fun dragStartsOnFirstLongPressAndCancelPreservesWorkspace() {
         seedApp()
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get()
@@ -176,15 +163,12 @@ class WorkMission2RegressionTest {
         call(a, "showHome"); layout(a)
         val before = prefs().all.toMap()
         val tile = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
-        tile.performLongClick()
-        assertFalse(field(a, "dragging") as Boolean)
-        org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog().listView
-            .performItemClick(null, 1, 1L)
+        assertTrue(tile.performLongClick())
         assertTrue(field(a, "dragging") as Boolean)
         assertNotNull(field(a, "dragSession"))
         assertEquals(before, prefs().all)
         a.onBackPressed()
-        org.robolectric.Shadows.shadowOf(org.robolectric.RuntimeEnvironment.getApplication().mainLooper).idle()
+        shadowOf(RuntimeEnvironment.getApplication().mainLooper).idle()
         assertFalse(field(a, "dragging") as Boolean)
         assertEquals(before, prefs().all)
         controller.pause().stop().destroy()
@@ -223,7 +207,7 @@ class WorkMission2RegressionTest {
         call(a, "showHome"); layout(a)
 
         val first = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
-        val firstPosition = IntArray(2); first.getLocationOnScreen(firstPosition)
+        val firstPosition = IntArray(2); first.getLocationInWindow(firstPosition)
         val x = firstPosition[0] + first.width / 2f
         val y = firstPosition[1] + first.height / 2f
         send(a, MotionEvent.ACTION_DOWN, x, y, 1)
@@ -235,7 +219,7 @@ class WorkMission2RegressionTest {
 
         // Exercise the ACTION_UP-only recognition path in the reverse direction.
         val second = a.window.decorView.findViewWithTag<View>("workspace_cell_1_0")!!
-        val secondPosition = IntArray(2); second.getLocationOnScreen(secondPosition)
+        val secondPosition = IntArray(2); second.getLocationInWindow(secondPosition)
         val sx = secondPosition[0] + second.width / 2f
         val sy = secondPosition[1] + second.height / 2f
         send(a, MotionEvent.ACTION_DOWN, sx, sy, 100)
@@ -277,7 +261,7 @@ class WorkMission2RegressionTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get(); call(a, "showHome"); layout(a)
         val empty = a.window.decorView.findViewWithTag<View>("workspace_cell_0_5")!!
-        val pos = IntArray(2); empty.getLocationOnScreen(pos)
+        val pos = IntArray(2); empty.getLocationInWindow(pos)
         val x = pos[0] + empty.width / 2f; val y = pos[1] + empty.height / 2f
         ShadowSystemClock.advanceBy(1000, TimeUnit.MILLISECONDS)
         send(a, MotionEvent.ACTION_DOWN, x, y, 1)
@@ -304,7 +288,7 @@ class WorkMission2RegressionTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get(); call(a, "showHome"); layout(a)
         val empty = a.window.decorView.findViewWithTag<View>("workspace_cell_0_5")!!
-        val pos = IntArray(2); empty.getLocationOnScreen(pos)
+        val pos = IntArray(2); empty.getLocationInWindow(pos)
         val x = pos[0] + empty.width / 2f; val y = pos[1] + empty.height / 2f
         ShadowSystemClock.advanceBy(1000, TimeUnit.MILLISECONDS)
         send(a, MotionEvent.ACTION_DOWN, x, y, 1)
@@ -341,19 +325,81 @@ class WorkMission2RegressionTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get(); layout(a)
         val tile = a.window.decorView.findViewWithTag<View>("workspace_cell_0_0")!!
-        val location = IntArray(2); tile.getLocationOnScreen(location)
+        val location = IntArray(2); tile.getLocationInWindow(location)
         val x = location[0] + tile.width / 2f; val y = location[1] + tile.height / 2f
         send(a, MotionEvent.ACTION_DOWN, x, y, 1)
         send(a, MotionEvent.ACTION_MOVE, x + 2, y - 130, 30)
         send(a, MotionEvent.ACTION_UP, x + 2, y - 130, 60)
         assertTrue((field(a, "optionsDialog") as Dialog).isShowing)
         (field(a, "optionsDialog") as Dialog).dismiss()
-        val width = a.window.decorView.width.toFloat()
-        send(a, MotionEvent.ACTION_DOWN, width - 4, 800f, 100)
-        send(a, MotionEvent.ACTION_MOVE, width - 4, 660f, 130)
-        send(a, MotionEvent.ACTION_UP, width - 4, 660f, 160)
+        val workspace = a.window.decorView.findViewWithTag<View>("workspace_drag_surface")!!
+        val workspaceBounds = android.graphics.Rect()
+        assertTrue(workspace.getGlobalVisibleRect(android.graphics.Rect()))
+        val emptyLocation = IntArray(2); workspace.getLocationInWindow(emptyLocation)
+        workspaceBounds.set(emptyLocation[0], emptyLocation[1], emptyLocation[0] + workspace.width, emptyLocation[1] + workspace.height)
+        val xEmpty = (workspaceBounds.right - 24).toFloat()
+        val yEmpty = workspaceBounds.centerY().toFloat()
+        send(a, MotionEvent.ACTION_DOWN, xEmpty, yEmpty, 100)
+        send(a, MotionEvent.ACTION_MOVE, xEmpty + 2, yEmpty - 140, 130)
+        send(a, MotionEvent.ACTION_UP, xEmpty + 2, yEmpty - 140, 160)
         assertTrue((field(a, "optionsDialog") as Dialog).isShowing)
         assertEquals(0, MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }.getInt(a))
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun configuredBottomEdgeSwipeUpOpensWallpapersAndHorizontalSwipeStillOnlyChangesPage() {
+        seedApp()
+        prefs().edit().putString("pc_swipe_up", "wallpaper")
+            .putString("pc_wallpaper_choice", "eye_royal").commit()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get(); layout(a)
+        val workspace = a.window.decorView.findViewWithTag<View>("workspace_drag_surface")!!
+        val bounds = android.graphics.Rect()
+        assertTrue(workspace.getGlobalVisibleRect(android.graphics.Rect()))
+        val location = IntArray(2); workspace.getLocationInWindow(location)
+        bounds.set(location[0], location[1], location[0] + workspace.width, location[1] + workspace.height)
+        val x = bounds.centerX().toFloat()
+        val yBottom = (bounds.bottom - 12).toFloat()
+        send(a, MotionEvent.ACTION_DOWN, x, yBottom, 1)
+        send(a, MotionEvent.ACTION_MOVE, x + 3f, yBottom - 146f, 30)
+        send(a, MotionEvent.ACTION_UP, x + 3f, yBottom - 146f, 60)
+
+        val wallpaperDialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        assertNotNull(wallpaperDialog)
+        assertNotNull(wallpaperDialog.window!!.decorView.findViewWithTag<View>("wallpaper_option_eye_royal"))
+        assertEquals("wallpaper", prefs().getString("pc_swipe_up", null))
+        assertEquals("eye_royal", prefs().getString("pc_wallpaper_choice", null))
+        wallpaperDialog.dismiss()
+
+        send(a, MotionEvent.ACTION_DOWN, x + 140f, bounds.centerY().toFloat(), 100)
+        send(a, MotionEvent.ACTION_MOVE, x - 10f, bounds.centerY().toFloat() + 3f, 130)
+        send(a, MotionEvent.ACTION_UP, x - 10f, bounds.centerY().toFloat() + 3f, 160)
+        assertEquals(1, MainActivity::class.java.getDeclaredField("pageIndex").apply { isAccessible = true }.getInt(a))
+        assertFalse(field(a, "drawerOpen") as Boolean)
+        assertNull(field(a, "optionsDialog"))
+        assertEquals("wallpaper", prefs().getString("pc_swipe_up", null))
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun gestureStartingOutsideWorkspaceDoesNotConsumeSystemReservedArea() {
+        seedApp()
+        prefs().edit().putString("pc_swipe_down", "drawer").commit()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val a = controller.get(); layout(a)
+        val workspace = a.window.decorView.findViewWithTag<View>("workspace_drag_surface")!!
+        val bounds = android.graphics.Rect()
+        assertTrue(workspace.getGlobalVisibleRect(android.graphics.Rect()))
+        val location = IntArray(2); workspace.getLocationInWindow(location)
+        bounds.set(location[0], location[1], location[0] + workspace.width, location[1] + workspace.height)
+        val outsideY = bounds.bottom + 2f
+        if (outsideY < a.window.decorView.height - 20f) {
+            val x = bounds.centerX().toFloat()
+            send(a, MotionEvent.ACTION_DOWN, x, outsideY, 1)
+            send(a, MotionEvent.ACTION_MOVE, x + 2f, outsideY + 140f, 30)
+            send(a, MotionEvent.ACTION_UP, x + 2f, outsideY + 140f, 60)
+            assertFalse(field(a, "drawerOpen") as Boolean)
+            assertNull(field(a, "optionsDialog"))
+        }
         controller.pause().stop().destroy()
     }
 
