@@ -170,6 +170,10 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun showWallpaperEffects() {
+        if (android.os.Build.VERSION.SDK_INT < 31) {
+            android.widget.Toast.makeText(this, "Desfoque disponível no Android 12 ou superior", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
         val enabled = prefs.getBoolean("pc_wallpaper_blur", false)
         SmokeDialogBuilder(this).setTitle("✧ Efeitos")
             .setItems(arrayOf(if (enabled) "Desfoque do wallpaper: ligado" else "Desfoque do wallpaper: desligado")) { _, _ ->
@@ -1195,6 +1199,11 @@ class MainActivity : Activity(), SensorEventListener {
 
     // A escolha do wallpaper do launcher não altera o wallpaper do sistema.
     private fun applyWallpaper() {
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            if (prefs.getBoolean("pc_wallpaper_blur", false)) {
+                backgroundImage.setRenderEffect(android.graphics.RenderEffect.createBlurEffect(dp(18).toFloat(), dp(18).toFloat(), android.graphics.Shader.TileMode.CLAMP))
+            } else backgroundImage.setRenderEffect(null)
+        }
         when (prefs.getString("pc_wallpaper_choice", "floral")) {
             "eye_crystal" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_eye_crystal, wallpaper = true))
             "eye_royal" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_eye_royal, wallpaper = true))
