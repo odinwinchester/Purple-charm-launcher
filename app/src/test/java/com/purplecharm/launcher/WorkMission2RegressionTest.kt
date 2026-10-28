@@ -532,7 +532,7 @@ class WorkMission2RegressionTest {
         preview.window!!.decorView.findViewWithTag<View>("wallpaper_preview_apply")!!.performClick()
         val destination = org.robolectric.shadows.ShadowDialog.getLatestDialog()
         destination.window!!.decorView.findViewWithTag<View>("wallpaper_destination_1")!!.performClick()
-        assertEquals("eye_royal", prefs().getString("pc_wallpaper_choice", null))
+        assertEquals("cosmic_azathoth", prefs().getString("pc_wallpaper_choice", null))
         assertNotNull((field(a, "backgroundImage") as ImageView).drawable)
         controller.pause().stop().destroy()
     }
