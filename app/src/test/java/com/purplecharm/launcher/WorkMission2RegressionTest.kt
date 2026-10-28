@@ -368,7 +368,7 @@ class WorkMission2RegressionTest {
         assertNotNull(wallpaperDialog)
         assertNotNull(wallpaperDialog.window!!.decorView.findViewWithTag<View>("wallpaper_option_eye_royal"))
         assertEquals("wallpaper", prefs().getString("pc_swipe_up", null))
-        assertEquals("eye_royal", prefs().getString("pc_wallpaper_choice", null))
+        assertEquals("cosmic_azathoth", prefs().getString("pc_wallpaper_choice", null))
         wallpaperDialog.dismiss()
 
         send(a, MotionEvent.ACTION_DOWN, x + 140f, bounds.centerY().toFloat(), 100)
@@ -517,16 +517,16 @@ class WorkMission2RegressionTest {
         controller.pause().stop().destroy()
     }
 
-    @Test fun royalEyeWallpaperIsListedPreviewedAppliedAndPersisted() {
+    @Test fun azathothWallpaperIsListedPreviewedAppliedAndPersisted() {
         seedApp()
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get()
         @Suppress("UNCHECKED_CAST")
         val options = field(a, "wallpaperOptions") as List<Triple<String, String, Int>>
-        assertEquals(setOf("floral", "eye_crystal", "eye_royal", "ghost_fire"), options.map { it.second }.toSet())
-        val royal = options.first { it.second == "eye_royal" }
+        assertEquals(setOf("floral", "eye_crystal", "ghost_fire", "cosmic_azathoth"), options.map { it.second }.toSet())
+        val azathoth = options.first { it.second == "cosmic_azathoth" }
         call(a, "wallpaperPreview", String::class.java, java.lang.Integer::class.java,
-            Uri::class.java, args = arrayOf(royal.second, royal.third, null))
+            Uri::class.java, args = arrayOf(azathoth.second, azathoth.third, null))
         val preview = org.robolectric.shadows.ShadowDialog.getLatestDialog()
         assertNotNull(preview.window!!.decorView.findViewWithTag<View>("wallpaper_preview_apply"))
         preview.window!!.decorView.findViewWithTag<View>("wallpaper_preview_apply")!!.performClick()
