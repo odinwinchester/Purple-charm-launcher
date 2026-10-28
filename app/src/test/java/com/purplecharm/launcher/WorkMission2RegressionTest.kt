@@ -523,7 +523,7 @@ class WorkMission2RegressionTest {
         val a = controller.get()
         @Suppress("UNCHECKED_CAST")
         val options = field(a, "wallpaperOptions") as List<Triple<String, String, Int>>
-        assertEquals(setOf("floral", "eye_crystal", "ghost_fire", "cosmic_azathoth", "geometrico_neon"), options.map { it.second }.toSet())
+        assertEquals(setOf("floral", "eye_crystal", "ghost_fire", "cosmic_azathoth", "cosmic_nyarlathotep", "geometrico_neon"), options.map { it.second }.toSet())
         val azathoth = options.first { it.second == "cosmic_azathoth" }
         call(a, "wallpaperPreview", String::class.java, java.lang.Integer::class.java,
             Uri::class.java, args = arrayOf(azathoth.second, azathoth.third, null))
