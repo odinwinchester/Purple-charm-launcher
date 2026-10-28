@@ -86,14 +86,13 @@ class ConsolidationAndroidTest {
             dialog.dismiss(); c.pause().stop().destroy()
         }
     }
-    @Test fun folderHandoffIsArmedExplicitlyAndCancelKeepsAllMembers() {
+    @Test fun folderCancelWithoutDragKeepsAllMembersAndNoTutorial() {
         seed(8); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
         val before = prefs().all.toMap()
         MainActivity::class.java.getDeclaredMethod("showFolder", String::class.java).apply { isAccessible = true }.invoke(a, "folder:test")
         val dialog = field(a, "folderDialog") as FolderSurface
-        assertEquals(false, field(a, "folderHomeDragArmed"))
-        dialog.content.findViewWithTag<View>("folder_drag_home")!!.performClick()
-        assertEquals(true, field(a, "folderHomeDragArmed"))
+        assertEquals(null, dialog.content.findViewWithTag<View>("folder_drag_home"))
+        assertNotNull(dialog.content.findViewWithTag<View>("folder_member_0"))
         dialog.cancel(); shadowOf(Looper.getMainLooper()).idle()
         assertEquals(before, prefs().all)
         assertEquals(8, WorkspaceItemsStore(prefs()).folders().getValue("folder:test").apps.size)
@@ -184,7 +183,7 @@ class ConsolidationAndroidTest {
         val dialog = field(a, "folderDialog") as FolderSurface
         layout(a) // Native DragShadowBuilder requires measured source bounds.
         val before = prefs().all.toMap()
-        dialog.content.findViewWithTag<View>("folder_drag_home")!!.performClick()
+        assertEquals(null, dialog.content.findViewWithTag<View>("folder_drag_home"))
         assertTrue(dialog.content.findViewWithTag<View>("folder_member_0")!!.performLongClick())
         assertTrue(dialog.collapsed)
         shadowOf(Looper.getMainLooper()).idle()
