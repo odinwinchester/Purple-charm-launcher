@@ -78,7 +78,7 @@ class ConsolidationAndroidTest {
             val panel = dialog.content as LinearLayout
             val grid = panel.findViewWithTag<GridLayout>("folder_grid")!!
             assertEquals(3, grid.columnCount); assertEquals(count, grid.childCount)
-            assertEquals(Color.argb(179, 18, 8, 29), (panel.background as GradientDrawable).color!!.defaultColor)
+            assertEquals(Color.argb(242, 18, 8, 29), (panel.background as GradientDrawable).color!!.defaultColor)
             val viewport = grid.parent as ScrollView
             val rows = ((count + 2) / 3).coerceIn(1, 2)
             assertEquals((rows * 88 * a.resources.displayMetrics.density).toInt(), viewport.layoutParams.height)
