@@ -642,7 +642,7 @@ class MainActivity : Activity(), SensorEventListener {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(14), dp(14), dp(14))
             background = GradientDrawable().apply {
-                setColor(Color.TRANSPARENT); cornerRadius = dp(16).toFloat()
+                setColor(Color.argb(242, 18, 8, 29)); cornerRadius = dp(16).toFloat()
                 setStroke(dp(1).coerceAtLeast(1), Color.argb(130, 171, 107, 213))
             }
             tag = "folder_panel"
@@ -1595,10 +1595,10 @@ class MainActivity : Activity(), SensorEventListener {
         }
 
         val original = app.loadIcon(packageManager)
-        // The original app icon is the default fallback. Apply the Gothic frame
-        // only when explicitly requested, avoiding a second iconback layer.
+        // Automatically skin every unthemed app using the authentic original layers.
+        // The pre-existing PNG themed icons above remain completely unchanged.
         if (setting("fallback_skin", "original") != "ghost") {
-            return original
+            return originalThemeFallback(original)
         }
         if (!includeFallbackFrame) {
             return originalThemeFallback(original)
@@ -2753,7 +2753,8 @@ class MainActivity : Activity(), SensorEventListener {
         val iconSize = if (compact) 35 else 43
 
         val iconFrame = FrameLayout(this).apply {
-            background = resources.getDrawable(R.drawable.purple_original_iconback, theme)
+            // The icon itself supplies its original art or the fallback frame.
+            background = null
             elevation = dp(2).toFloat()
         }
 
