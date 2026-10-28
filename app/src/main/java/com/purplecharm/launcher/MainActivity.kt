@@ -81,7 +81,6 @@ class MainActivity : Activity(), SensorEventListener {
     private var cachedDrawerHost: FrameLayout? = null
     private var openFolderId: String? = null
     private var pendingDrawerDrag = false
-    private var folderHomeDragArmed = false
     private val graphicCache by lazy { GraphicResourceCache(resources) }
     private data class CachedIcon(val state: Drawable.ConstantState, val bytes: Int)
     private val iconCache = object : android.util.LruCache<String, CachedIcon>(4 * 1024 * 1024) {
@@ -636,7 +635,6 @@ class MainActivity : Activity(), SensorEventListener {
             return
         }
         folderDialog?.dismiss()
-        folderHomeDragArmed = false
         openFolderId = id
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -653,7 +651,7 @@ class MainActivity : Activity(), SensorEventListener {
             val app = resolveKey(key)
             val tile = if (app != null) appTile(app, false, false, dense = true) else label(key.substringAfterLast('/'), 10f)
             tile.tag = "folder_member_$index"
-            tile.setOnLongClickListener { if (folderHomeDragArmed) startFolderHomeDrag(tile, key) else startItemDrag(tile, key) }
+            tile.setOnLongClickListener { startFolderHomeDrag(tile, key) }
             acceptDrop(tile) { incoming ->
                 val state = runCatching { workspaceItems() }.getOrNull()
                 state != null && saveWorkspaceEdit(WorkspaceEdits.intoFolder(state, incoming, id, index))
@@ -665,20 +663,6 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val scroll = ScrollView(this).apply { addView(grid) }
         panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(((folder.apps.size + 2) / 3).coerceIn(1, 2) * 88)))
-        val extractTarget = label("Arrastar para início", 12f).apply {
-            tag = "folder_drag_home"
-            setPadding(0, dp(8), 0, dp(8))
-            background = optionHighlight()
-            setOnClickListener {
-                folderHomeDragArmed = true
-                text = "Segure um aplicativo para arrastar à tela inicial"
-            }
-        }
-        acceptDrop(extractTarget) { incoming ->
-            val state = runCatching { workspaceItems() }.getOrNull()
-            state != null && saveWorkspaceEdit(WorkspaceEdits.extract(state, id, incoming, pageIndex))
-        }
-        panel.addView(extractTarget)
         val tools = LinearLayout(this)
         listOf("Adicionar" to { addFolderApps(id) }, "Renomear" to { renameFolder(id) },
             "Organizar" to { folderAppActions(id) }).forEach { (title, action) ->
