@@ -636,7 +636,7 @@ class MainActivity : Activity(), SensorEventListener {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(14), dp(14), dp(14))
             background = GradientDrawable().apply {
-                setColor(Color.argb(179, 18, 8, 29)); cornerRadius = dp(16).toFloat()
+                setColor(Color.argb(242, 18, 8, 29)); cornerRadius = dp(16).toFloat()
                 setStroke(dp(1).coerceAtLeast(1), Color.argb(130, 171, 107, 213))
             }
             tag = "folder_panel"
