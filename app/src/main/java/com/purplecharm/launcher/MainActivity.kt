@@ -1157,6 +1157,7 @@ class MainActivity : Activity(), SensorEventListener {
             "eye_royal" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_eye_crystal, wallpaper = true))
             "ghost_fire" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.wallpaper_ghost_fire, wallpaper = true))
             "cosmic_azathoth" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.cosmic_horror_azathoth, wallpaper = true))
+            "geometrico_neon" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.wallpaper_neon, wallpaper = true))
             "gallery" -> {
                 val saved = prefs.getString("wallpaper_uri", null)
                 if (!saved.isNullOrEmpty()) {
@@ -1181,7 +1182,8 @@ class MainActivity : Activity(), SensorEventListener {
         Triple("Floral original", "floral", R.drawable.purple_original_wallpaper),
         Triple("Olho de Crystal", "eye_crystal", R.drawable.purple_eye_crystal),
         Triple("Ghost Fire", "ghost_fire", R.drawable.wallpaper_ghost_fire),
-        Triple("Azathoth — O Caos Primordial", "cosmic_azathoth", R.drawable.cosmic_horror_azathoth)
+        Triple("Azathoth — O Caos Primordial", "cosmic_azathoth", R.drawable.cosmic_horror_azathoth),
+        Triple("Geométrico Purple Charm", "geometrico_neon", R.drawable.wallpaper_neon)
     )
 
     private fun wallpaperGlass(): GradientDrawable =
