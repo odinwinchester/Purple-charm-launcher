@@ -1157,6 +1157,7 @@ class MainActivity : Activity(), SensorEventListener {
             "eye_royal" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_eye_crystal, wallpaper = true))
             "ghost_fire" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.wallpaper_ghost_fire, wallpaper = true))
             "cosmic_azathoth" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.cosmic_horror_azathoth, wallpaper = true))
+            "cosmic_nyarlathotep" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.wallpaper_nyarlathotep, wallpaper = true))
             "geometrico_neon" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.wallpaper_neon, wallpaper = true))
             "gallery" -> {
                 val saved = prefs.getString("wallpaper_uri", null)
@@ -1183,6 +1184,7 @@ class MainActivity : Activity(), SensorEventListener {
         Triple("Olho de Crystal", "eye_crystal", R.drawable.purple_eye_crystal),
         Triple("Ghost Fire", "ghost_fire", R.drawable.wallpaper_ghost_fire),
         Triple("Azathoth — O Caos Primordial", "cosmic_azathoth", R.drawable.cosmic_horror_azathoth),
+        Triple("Nyarlathotep", "cosmic_nyarlathotep", R.drawable.wallpaper_nyarlathotep),
         Triple("Geométrico Purple Charm", "geometrico_neon", R.drawable.wallpaper_neon)
     )
 
@@ -2590,7 +2592,7 @@ class MainActivity : Activity(), SensorEventListener {
             setContentView(cached)
             return
         }
-        val root = buildRoot(R.drawable.wallpaper_neon)
+        val root = buildRoot(R.drawable.funbg)
         cachedDrawerHost = homeHost
         val categories = listOf("Tudo", "Comunicação", "Entretenimento", "Outros")
         var selected = "Tudo"
