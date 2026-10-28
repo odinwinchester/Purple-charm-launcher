@@ -2406,12 +2406,16 @@ class MainActivity : Activity(), SensorEventListener {
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         fun refresh(query: String) {
             results.removeAllViews()
-            if (query.isBlank()) return
             val term = normalize(query.trim())
             val filtered = apps.filter {
-                normalize(appLabel(it)).startsWith(term)
+                term.isEmpty() || normalize(appLabel(it)).contains(term)
             }.sortedWith(compareBy<ResolveInfo> {
-                normalize(appLabel(it)) != term
+                val name = normalize(appLabel(it))
+                when {
+                    term.isEmpty() || name == term -> 0
+                    name.startsWith(term) -> 1
+                    else -> 2
+                }
             }.thenBy {
                 normalize(appLabel(it))
             })
@@ -2437,6 +2441,7 @@ class MainActivity : Activity(), SensorEventListener {
             }
             override fun afterTextChanged(s: Editable?) {}
         })
+        refresh("")
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         input.requestFocus()
         input.post {
