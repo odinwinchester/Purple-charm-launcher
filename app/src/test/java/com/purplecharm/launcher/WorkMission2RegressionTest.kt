@@ -366,9 +366,9 @@ class WorkMission2RegressionTest {
 
         val wallpaperDialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
         assertNotNull(wallpaperDialog)
-        assertNotNull(wallpaperDialog.window!!.decorView.findViewWithTag<View>("wallpaper_option_eye_royal"))
+        assertNotNull(wallpaperDialog.window!!.decorView.findViewWithTag<View>("wallpaper_option_cosmic_azathoth"))
         assertEquals("wallpaper", prefs().getString("pc_swipe_up", null))
-        assertEquals("cosmic_azathoth", prefs().getString("pc_wallpaper_choice", null))
+        assertEquals("eye_royal", prefs().getString("pc_wallpaper_choice", null))
         wallpaperDialog.dismiss()
 
         send(a, MotionEvent.ACTION_DOWN, x + 140f, bounds.centerY().toFloat(), 100)
