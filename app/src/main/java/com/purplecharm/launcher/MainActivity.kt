@@ -1489,7 +1489,9 @@ class MainActivity : Activity(), SensorEventListener {
             "facebook" in name -> "facebook"
 
             "youtube" in pkg ||
-            "youtube" in name -> "icon_youtube"
+            "youtube" in name ||
+            "yt music" in name ||
+            "youtube music" in name -> "icon_youtube"
 
             "gmail" in pkg ||
             "gmail" in name -> "gmail"
@@ -1499,9 +1501,7 @@ class MainActivity : Activity(), SensorEventListener {
             name == "mapas" -> "maps"
 
             "google.android.apps.docs" in pkg ||
-            name == "drive" ||
-            name == "google drive" ||
-            name == "onedrive" -> "googledrive"
+            name == "google drive" -> "googledrive"
 
             "googlequicksearchbox" in pkg ||
             name == "google" ||
@@ -1595,7 +1595,12 @@ class MainActivity : Activity(), SensorEventListener {
         }
 
         val original = app.loadIcon(packageManager)
-        if (!includeFallbackFrame || setting("fallback_skin", "original") != "ghost") {
+        // The original app icon is the default fallback. Apply the Gothic frame
+        // only when explicitly requested, avoiding a second iconback layer.
+        if (setting("fallback_skin", "original") != "ghost") {
+            return original
+        }
+        if (!includeFallbackFrame) {
             return originalThemeFallback(original)
         }
 
