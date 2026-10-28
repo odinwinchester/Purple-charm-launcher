@@ -162,7 +162,7 @@ class ConsolidationAndroidTest {
             val tile = grid.getChildAt(i) as ViewGroup
             assertEquals((88 * a.resources.displayMetrics.density).toInt(), tile.layoutParams.height)
             val frame = tile.getChildAt(0) as android.widget.FrameLayout
-            assertNotNull(frame.background)
+            assertNull(frame.background) // Avoid duplicate original icon frames.
             val icon = frame.getChildAt(0) as android.widget.ImageView
             assertFalse(icon.drawable is android.graphics.drawable.LayerDrawable)
             val name = tile.getChildAt(1) as TextView
