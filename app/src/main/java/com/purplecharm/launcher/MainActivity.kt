@@ -8,6 +8,12 @@ import android.app.Activity
 import android.app.Dialog
 import android.app.WallpaperManager
 import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.Paint
+import android.graphics.drawable.BitmapDrawable
 import java.io.IOException
 import android.graphics.Camera
 import android.graphics.Matrix
@@ -75,7 +81,6 @@ class MainActivity : Activity(), SensorEventListener {
     private var cachedDrawerHost: FrameLayout? = null
     private var openFolderId: String? = null
     private var pendingDrawerDrag = false
-    private var folderHomeDragArmed = false
     private val graphicCache by lazy { GraphicResourceCache(resources) }
     private data class CachedIcon(val state: Drawable.ConstantState, val bytes: Int)
     private val iconCache = object : android.util.LruCache<String, CachedIcon>(4 * 1024 * 1024) {
@@ -630,13 +635,12 @@ class MainActivity : Activity(), SensorEventListener {
             return
         }
         folderDialog?.dismiss()
-        folderHomeDragArmed = false
         openFolderId = id
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(14), dp(14), dp(14))
             background = GradientDrawable().apply {
-                setColor(Color.TRANSPARENT); cornerRadius = dp(16).toFloat()
+                setColor(Color.argb(242, 18, 8, 29)); cornerRadius = dp(16).toFloat()
                 setStroke(dp(1).coerceAtLeast(1), Color.argb(130, 171, 107, 213))
             }
             tag = "folder_panel"
@@ -647,7 +651,7 @@ class MainActivity : Activity(), SensorEventListener {
             val app = resolveKey(key)
             val tile = if (app != null) appTile(app, false, false, dense = true) else label(key.substringAfterLast('/'), 10f)
             tile.tag = "folder_member_$index"
-            tile.setOnLongClickListener { if (folderHomeDragArmed) startFolderHomeDrag(tile, key) else startItemDrag(tile, key) }
+            tile.setOnLongClickListener { startFolderHomeDrag(tile, key) }
             acceptDrop(tile) { incoming ->
                 val state = runCatching { workspaceItems() }.getOrNull()
                 state != null && saveWorkspaceEdit(WorkspaceEdits.intoFolder(state, incoming, id, index))
@@ -659,20 +663,6 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val scroll = ScrollView(this).apply { addView(grid) }
         panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(((folder.apps.size + 2) / 3).coerceIn(1, 2) * 88)))
-        val extractTarget = label("Arrastar para início", 12f).apply {
-            tag = "folder_drag_home"
-            setPadding(0, dp(8), 0, dp(8))
-            background = optionHighlight()
-            setOnClickListener {
-                folderHomeDragArmed = true
-                text = "Segure um aplicativo para arrastar à tela inicial"
-            }
-        }
-        acceptDrop(extractTarget) { incoming ->
-            val state = runCatching { workspaceItems() }.getOrNull()
-            state != null && saveWorkspaceEdit(WorkspaceEdits.extract(state, id, incoming, pageIndex))
-        }
-        panel.addView(extractTarget)
         val tools = LinearLayout(this)
         listOf("Adicionar" to { addFolderApps(id) }, "Renomear" to { renameFolder(id) },
             "Organizar" to { folderAppActions(id) }).forEach { (title, action) ->
@@ -1164,8 +1154,12 @@ class MainActivity : Activity(), SensorEventListener {
     private fun applyWallpaper() {
         when (prefs.getString("pc_wallpaper_choice", "floral")) {
             "eye_crystal" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_eye_crystal, wallpaper = true))
-            "eye_royal" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_eye_royal, wallpaper = true))
+            "eye_royal" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_eye_crystal, wallpaper = true))
             "ghost_fire" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.wallpaper_ghost_fire, wallpaper = true))
+            "cosmic_azathoth" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.cosmic_horror_azathoth, wallpaper = true))
+            "cosmic_nyarlathotep" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.wallpaper_nyarlathotep, wallpaper = true))
+            "geometrico_neon" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.wallpaper_neon, wallpaper = true))
+            "geometrico_original" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.funbg, wallpaper = true))
             "gallery" -> {
                 val saved = prefs.getString("wallpaper_uri", null)
                 if (!saved.isNullOrEmpty()) {
@@ -1189,8 +1183,11 @@ class MainActivity : Activity(), SensorEventListener {
     private val wallpaperOptions = listOf(
         Triple("Floral original", "floral", R.drawable.purple_original_wallpaper),
         Triple("Olho de Crystal", "eye_crystal", R.drawable.purple_eye_crystal),
-        Triple("Olho de Crystal • Real", "eye_royal", R.drawable.purple_eye_royal),
-        Triple("Ghost Fire", "ghost_fire", R.drawable.wallpaper_ghost_fire)
+        Triple("Ghost Fire", "ghost_fire", R.drawable.wallpaper_ghost_fire),
+        Triple("Azathoth — O Caos Primordial", "cosmic_azathoth", R.drawable.cosmic_horror_azathoth),
+        Triple("Nyarlathotep", "cosmic_nyarlathotep", R.drawable.wallpaper_nyarlathotep),
+        Triple("Geométrico Purple Charm", "geometrico_neon", R.drawable.wallpaper_neon),
+        Triple("Geométrico original (funbg)", "geometrico_original", R.drawable.funbg)
     )
 
     private fun wallpaperGlass(): GradientDrawable =
@@ -1417,6 +1414,36 @@ class MainActivity : Activity(), SensorEventListener {
             if (bytes <= iconCache.maxSize()) icon.constantState?.let { iconCache.put(key, CachedIcon(it, bytes)) }
         }
     }
+    // Original GO-style theme layers are applied only to unthemed application icons.
+    // All three PNG resources are reused unchanged; themed icons keep their own artwork.
+    private fun originalThemeFallback(icon: Drawable): Drawable {
+        val size = 144
+        fun paintResource(id: Int, canvas: Canvas) {
+            val drawable = resources.getDrawable(id, theme).mutate()
+            drawable.setBounds(0, 0, size, size)
+            drawable.draw(canvas)
+        }
+        val result = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(result)
+        paintResource(R.drawable.iconback, canvas)
+        val foreground = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val foregroundCanvas = Canvas(foreground)
+        icon.mutate().apply { setBounds(0, 0, size, size) }.draw(foregroundCanvas)
+        val mask = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        paintResource(R.drawable.iconmask, Canvas(mask))
+        val maskedCanvas = Canvas(foreground)
+        val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+        }
+        maskedCanvas.drawBitmap(mask, 0f, 0f, maskPaint)
+        maskPaint.xfermode = null
+        canvas.drawBitmap(foreground, 0f, 0f, null)
+        paintResource(R.drawable.iconupon, canvas)
+        mask.recycle()
+        foreground.recycle()
+        return BitmapDrawable(resources, result)
+    }
+
     private fun uncachedIcon(app: ResolveInfo, includeFallbackFrame: Boolean): Drawable {
         val pkg = app.activityInfo.packageName
             .lowercase(Locale.ROOT)
@@ -1453,7 +1480,9 @@ class MainActivity : Activity(), SensorEventListener {
             "facebook" in name -> "facebook"
 
             "youtube" in pkg ||
-            "youtube" in name -> "icon_youtube"
+            "youtube" in name ||
+            "yt music" in name ||
+            "youtube music" in name -> "icon_youtube"
 
             "gmail" in pkg ||
             "gmail" in name -> "gmail"
@@ -1463,9 +1492,7 @@ class MainActivity : Activity(), SensorEventListener {
             name == "mapas" -> "maps"
 
             "google.android.apps.docs" in pkg ||
-            name == "drive" ||
-            name == "google drive" ||
-            name == "onedrive" -> "googledrive"
+            name == "google drive" -> "googledrive"
 
             "googlequicksearchbox" in pkg ||
             name == "google" ||
@@ -1559,7 +1586,14 @@ class MainActivity : Activity(), SensorEventListener {
         }
 
         val original = app.loadIcon(packageManager)
-        if (!includeFallbackFrame || setting("fallback_skin", "original") != "ghost") return original
+        // Automatically skin every unthemed app using the authentic original layers.
+        // The pre-existing PNG themed icons above remain completely unchanged.
+        if (setting("fallback_skin", "original") != "ghost") {
+            return originalThemeFallback(original)
+        }
+        if (!includeFallbackFrame) {
+            return originalThemeFallback(original)
+        }
 
         // Usa o fundo autêntico recuperado do Purple Charm original.
         // Os ícones personalizados existentes permanecem intocados.
@@ -2376,12 +2410,16 @@ class MainActivity : Activity(), SensorEventListener {
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         fun refresh(query: String) {
             results.removeAllViews()
-            if (query.isBlank()) return
             val term = normalize(query.trim())
             val filtered = apps.filter {
-                normalize(appLabel(it)).startsWith(term)
+                term.isEmpty() || normalize(appLabel(it)).contains(term)
             }.sortedWith(compareBy<ResolveInfo> {
-                normalize(appLabel(it)) != term
+                val name = normalize(appLabel(it))
+                when {
+                    term.isEmpty() || name == term -> 0
+                    name.startsWith(term) -> 1
+                    else -> 2
+                }
             }.thenBy {
                 normalize(appLabel(it))
             })
@@ -2407,6 +2445,7 @@ class MainActivity : Activity(), SensorEventListener {
             }
             override fun afterTextChanged(s: Editable?) {}
         })
+        refresh("")
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         input.requestFocus()
         input.post {
@@ -2555,7 +2594,7 @@ class MainActivity : Activity(), SensorEventListener {
             setContentView(cached)
             return
         }
-        val root = buildRoot(R.drawable.wallpaper_neon)
+        val root = buildRoot(R.drawable.funbg)
         cachedDrawerHost = homeHost
         val categories = listOf("Tudo", "Comunicação", "Entretenimento", "Outros")
         var selected = "Tudo"
@@ -2710,7 +2749,8 @@ class MainActivity : Activity(), SensorEventListener {
         val iconSize = if (compact) 35 else 43
 
         val iconFrame = FrameLayout(this).apply {
-            background = resources.getDrawable(R.drawable.purple_original_iconback, theme)
+            // The icon itself supplies its original art or the fallback frame.
+            background = null
             elevation = dp(2).toFloat()
         }
 

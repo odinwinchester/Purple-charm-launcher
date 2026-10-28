@@ -78,7 +78,7 @@ class ConsolidationAndroidTest {
             val panel = dialog.content as LinearLayout
             val grid = panel.findViewWithTag<GridLayout>("folder_grid")!!
             assertEquals(3, grid.columnCount); assertEquals(count, grid.childCount)
-            assertEquals(Color.TRANSPARENT, (panel.background as GradientDrawable).color!!.defaultColor)
+            assertEquals(Color.argb(242, 18, 8, 29), (panel.background as GradientDrawable).color!!.defaultColor)
             val viewport = grid.parent as ScrollView
             val rows = ((count + 2) / 3).coerceIn(1, 2)
             assertEquals((rows * 88 * a.resources.displayMetrics.density).toInt(), viewport.layoutParams.height)
@@ -86,14 +86,13 @@ class ConsolidationAndroidTest {
             dialog.dismiss(); c.pause().stop().destroy()
         }
     }
-    @Test fun folderHandoffIsArmedExplicitlyAndCancelKeepsAllMembers() {
+    @Test fun folderCancelWithoutDragKeepsAllMembersAndNoTutorial() {
         seed(8); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
         val before = prefs().all.toMap()
         MainActivity::class.java.getDeclaredMethod("showFolder", String::class.java).apply { isAccessible = true }.invoke(a, "folder:test")
         val dialog = field(a, "folderDialog") as FolderSurface
-        assertEquals(false, field(a, "folderHomeDragArmed"))
-        dialog.content.findViewWithTag<View>("folder_drag_home")!!.performClick()
-        assertEquals(true, field(a, "folderHomeDragArmed"))
+        assertEquals(null, dialog.content.findViewWithTag<View>("folder_drag_home"))
+        assertNotNull(dialog.content.findViewWithTag<View>("folder_member_0"))
         dialog.cancel(); shadowOf(Looper.getMainLooper()).idle()
         assertEquals(before, prefs().all)
         assertEquals(8, WorkspaceItemsStore(prefs()).folders().getValue("folder:test").apps.size)
@@ -162,7 +161,7 @@ class ConsolidationAndroidTest {
             val tile = grid.getChildAt(i) as ViewGroup
             assertEquals((88 * a.resources.displayMetrics.density).toInt(), tile.layoutParams.height)
             val frame = tile.getChildAt(0) as android.widget.FrameLayout
-            assertNotNull(frame.background)
+            assertNull(frame.background) // Avoid duplicate original icon frames.
             val icon = frame.getChildAt(0) as android.widget.ImageView
             assertFalse(icon.drawable is android.graphics.drawable.LayerDrawable)
             val name = tile.getChildAt(1) as TextView
@@ -184,7 +183,7 @@ class ConsolidationAndroidTest {
         val dialog = field(a, "folderDialog") as FolderSurface
         layout(a) // Native DragShadowBuilder requires measured source bounds.
         val before = prefs().all.toMap()
-        dialog.content.findViewWithTag<View>("folder_drag_home")!!.performClick()
+        assertEquals(null, dialog.content.findViewWithTag<View>("folder_drag_home"))
         assertTrue(dialog.content.findViewWithTag<View>("folder_member_0")!!.performLongClick())
         assertTrue(dialog.collapsed)
         shadowOf(Looper.getMainLooper()).idle()
