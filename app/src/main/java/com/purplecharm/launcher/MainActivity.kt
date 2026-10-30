@@ -937,7 +937,7 @@ class MainActivity : Activity(), SensorEventListener {
         pageIndex = HomePageSelection.read(prefs, pageCount())
         loadApps()
         showHome()
-        purpleIconLibrary.refreshIfDue {
+        purpleIconLibrary.refreshIfDue(apps.map { it.activityInfo.packageName }.toSet()) {
             iconCache.evictAll()
             if (!isFinishing && !isDestroyed) {
                 if (drawerOpen) showDrawer() else showHome()
