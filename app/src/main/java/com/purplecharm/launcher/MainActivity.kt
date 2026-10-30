@@ -82,6 +82,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var openFolderId: String? = null
     private var pendingDrawerDrag = false
     private val graphicCache by lazy { GraphicResourceCache(resources) }
+    private val purpleIconLibrary by lazy { PurpleIconLibrary(this) }
     private data class CachedIcon(val state: Drawable.ConstantState, val bytes: Int)
     private val iconCache = object : android.util.LruCache<String, CachedIcon>(4 * 1024 * 1024) {
         override fun sizeOf(key: String, value: CachedIcon) = value.bytes
@@ -936,6 +937,12 @@ class MainActivity : Activity(), SensorEventListener {
         pageIndex = HomePageSelection.read(prefs, pageCount())
         loadApps()
         showHome()
+        purpleIconLibrary.refreshIfDue {
+            iconCache.evictAll()
+            if (!isFinishing && !isDestroyed) {
+                if (drawerOpen) showDrawer() else showHome()
+            }
+        }
     }
 
     private fun dp(n: Int): Int =
@@ -1579,6 +1586,8 @@ class MainActivity : Activity(), SensorEventListener {
             }
         }
 
+        // Prefer downloaded artwork only when there is no bundled themed PNG.
+        purpleIconLibrary.cachedIcon(app.activityInfo.packageName)?.let { return it }
         val original = app.loadIcon(packageManager)
         // Automatically skin every unthemed app using the authentic original layers.
         // The pre-existing PNG themed icons above remain completely unchanged.
