@@ -82,6 +82,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var openFolderId: String? = null
     private var pendingDrawerDrag = false
     private val graphicCache by lazy { GraphicResourceCache(resources) }
+    private val purpleIconLibrary by lazy { PurpleIconLibrary(this) }
     private data class CachedIcon(val state: Drawable.ConstantState, val bytes: Int)
     private val iconCache = object : android.util.LruCache<String, CachedIcon>(4 * 1024 * 1024) {
         override fun sizeOf(key: String, value: CachedIcon) = value.bytes
@@ -261,7 +262,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun homeTileHeight(): Int {
         val fontScale = resources.configuration.fontScale.coerceAtLeast(1f)
         // Frame, vertical padding and up to three scaled text lines with breathing room.
-        return dp((71f + kotlin.math.ceil(38f * fontScale)).toInt())
+        return dp((82f + kotlin.math.ceil(38f * fontScale)).toInt())
     }
     private val maxPages = 8
 
@@ -657,12 +658,12 @@ class MainActivity : Activity(), SensorEventListener {
                 state != null && saveWorkspaceEdit(WorkspaceEdits.intoFolder(state, incoming, id, index))
             }
             grid.addView(tile, GridLayout.LayoutParams().apply {
-                width = 0; height = dp(88)
+                width = 0; height = dp(99)
                 columnSpec = GridLayout.spec(index % 3, 1f); rowSpec = GridLayout.spec(index / 3)
             })
         }
         val scroll = ScrollView(this).apply { addView(grid) }
-        panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(((folder.apps.size + 2) / 3).coerceIn(1, 2) * 88)))
+        panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(((folder.apps.size + 2) / 3).coerceIn(1, 2) * 99)))
         val tools = LinearLayout(this)
         listOf("Adicionar" to { addFolderApps(id) }, "Renomear" to { renameFolder(id) },
             "Organizar" to { folderAppActions(id) }).forEach { (title, action) ->
@@ -823,12 +824,6 @@ class MainActivity : Activity(), SensorEventListener {
             })
         }
         if (category == "Tema") {
-        option("✦ Máscara para ícones sem tema: " +
-            if (setting("fallback_skin", "original") == "ghost") "Cristal Ghost Fire" else "Original") {
-            chooseSetting("Ícones sem arte original", "fallback_skin",
-                arrayOf("Ícone original do aplicativo", "Cristal violeta • inspirado em Ghost Fire"),
-                arrayOf("original", "ghost"), "original")
-        }
         option("✦ Papéis de parede Purple Charm") { wallpaperMenu() }
         } else {
         option("✦ Deslizar para cima: " + gestureName(setting("swipe_up", "options"))) {
@@ -942,6 +937,12 @@ class MainActivity : Activity(), SensorEventListener {
         pageIndex = HomePageSelection.read(prefs, pageCount())
         loadApps()
         showHome()
+        purpleIconLibrary.refreshIfDue(apps.map { it.activityInfo.packageName }.toSet()) {
+            iconCache.evictAll()
+            if (!isFinishing && !isDestroyed) {
+                if (drawerOpen) showDrawer() else showHome()
+            }
+        }
     }
 
     private fun dp(n: Int): Int =
@@ -1407,7 +1408,7 @@ class MainActivity : Activity(), SensorEventListener {
         )
 
     private fun customIcon(app: ResolveInfo, includeFallbackFrame: Boolean = false): Drawable {
-        val key = "${appKey(app)}:${setting("fallback_skin", "original")}:$includeFallbackFrame"
+        val key = "${appKey(app)}:purple_charm:$includeFallbackFrame"
         iconCache.get(key)?.let { return it.state.newDrawable(resources).mutate() }
         return uncachedIcon(app, includeFallbackFrame).also { icon ->
             val bytes = iconBytes(icon)
@@ -1428,7 +1429,9 @@ class MainActivity : Activity(), SensorEventListener {
         paintResource(R.drawable.iconback, canvas)
         val foreground = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val foregroundCanvas = Canvas(foreground)
-        icon.mutate().apply { setBounds(0, 0, size, size) }.draw(foregroundCanvas)
+        // Inset the unthemed app art so the original Purple Charm frame remains visible.
+        val inset = (size * 0.03f).toInt()
+        icon.mutate().apply { setBounds(inset, inset, size - inset, size - inset) }.draw(foregroundCanvas)
         val mask = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         paintResource(R.drawable.iconmask, Canvas(mask))
         val maskedCanvas = Canvas(foreground)
@@ -1585,23 +1588,14 @@ class MainActivity : Activity(), SensorEventListener {
             }
         }
 
+        // Prefer downloaded artwork only when there is no bundled themed PNG.
+        purpleIconLibrary.cachedIcon(app.activityInfo.packageName)?.let { return it }
         val original = app.loadIcon(packageManager)
         // Automatically skin every unthemed app using the authentic original layers.
         // The pre-existing PNG themed icons above remain completely unchanged.
-        if (setting("fallback_skin", "original") != "ghost") {
-            return originalThemeFallback(original)
-        }
-        if (!includeFallbackFrame) {
-            return originalThemeFallback(original)
-        }
-
-        // Usa o fundo autêntico recuperado do Purple Charm original.
-        // Os ícones personalizados existentes permanecem intocados.
-        @Suppress("DEPRECATION")
-        val originalBorder = resources.getDrawable(R.drawable.purple_original_iconback).mutate()
-        return LayerDrawable(arrayOf(originalBorder, InsetDrawable(original, dp(9)))).apply {
-            setLayerInset(1, dp(4), dp(4), dp(4), dp(4))
-        }
+        // A única aparência automática é a máscara original do Purple Charm.
+        // Artes personalizadas já foram retornadas acima sem alterações.
+        return originalThemeFallback(original)
     }
 
     private fun sectionHeader(
@@ -2293,7 +2287,7 @@ class MainActivity : Activity(), SensorEventListener {
                 acceptDrop(holder) { key -> placeInDock(key, dockIndex) }
                 holder
             }
-            outer.addView(child, LinearLayout.LayoutParams(0, dp(61), 1f).apply {
+            outer.addView(child, LinearLayout.LayoutParams(0, dp(70), 1f).apply {
                 setMargins(dp(2), 0, dp(2), 0)
             })
         }
@@ -2746,7 +2740,8 @@ class MainActivity : Activity(), SensorEventListener {
             setPadding(dp(2), dp(if (dense) 2 else 6), dp(2), dp(if (dense) 2 else 8))
         }
 
-        val iconSize = if (compact) 35 else 43
+        // 20% larger in dock, home, app drawer and folder members.
+        val iconSize = if (compact) 42 else 52
 
         val iconFrame = FrameLayout(this).apply {
             // The icon itself supplies its original art or the fallback frame.
