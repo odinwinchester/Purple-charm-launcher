@@ -24,7 +24,7 @@ internal class PurpleIconLibrary(private val context: Context) {
     @Volatile private var catalog = readCatalog()
 
     private fun readCatalog(): JSONObject = runCatching {
-        JSONObject(catalogFile.readText(Charsets.UTF_8))
+        JSONObject(catalogFile.readText(Charsets.UTF_8)).optJSONObject("icons") ?: JSONObject()
     }.getOrDefault(JSONObject())
 
     fun cachedIcon(packageName: String): Drawable? {
