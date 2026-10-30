@@ -823,12 +823,6 @@ class MainActivity : Activity(), SensorEventListener {
             })
         }
         if (category == "Tema") {
-        option("✦ Máscara para ícones sem tema: " +
-            if (setting("fallback_skin", "original") == "ghost") "Cristal Ghost Fire" else "Original") {
-            chooseSetting("Ícones sem arte original", "fallback_skin",
-                arrayOf("Ícone original do aplicativo", "Cristal violeta • inspirado em Ghost Fire"),
-                arrayOf("original", "ghost"), "original")
-        }
         option("✦ Papéis de parede Purple Charm") { wallpaperMenu() }
         } else {
         option("✦ Deslizar para cima: " + gestureName(setting("swipe_up", "options"))) {
@@ -1407,7 +1401,7 @@ class MainActivity : Activity(), SensorEventListener {
         )
 
     private fun customIcon(app: ResolveInfo, includeFallbackFrame: Boolean = false): Drawable {
-        val key = "${appKey(app)}:${setting("fallback_skin", "original")}:$includeFallbackFrame"
+        val key = "${appKey(app)}:purple_charm:$includeFallbackFrame"
         iconCache.get(key)?.let { return it.state.newDrawable(resources).mutate() }
         return uncachedIcon(app, includeFallbackFrame).also { icon ->
             val bytes = iconBytes(icon)
@@ -1588,20 +1582,9 @@ class MainActivity : Activity(), SensorEventListener {
         val original = app.loadIcon(packageManager)
         // Automatically skin every unthemed app using the authentic original layers.
         // The pre-existing PNG themed icons above remain completely unchanged.
-        if (setting("fallback_skin", "original") != "ghost") {
-            return originalThemeFallback(original)
-        }
-        if (!includeFallbackFrame) {
-            return originalThemeFallback(original)
-        }
-
-        // Usa o fundo autêntico recuperado do Purple Charm original.
-        // Os ícones personalizados existentes permanecem intocados.
-        @Suppress("DEPRECATION")
-        val originalBorder = resources.getDrawable(R.drawable.purple_original_iconback).mutate()
-        return LayerDrawable(arrayOf(originalBorder, InsetDrawable(original, dp(9)))).apply {
-            setLayerInset(1, dp(4), dp(4), dp(4), dp(4))
-        }
+        // A única aparência automática é a máscara original do Purple Charm.
+        // Artes personalizadas já foram retornadas acima sem alterações.
+        return originalThemeFallback(original)
     }
 
     private fun sectionHeader(
