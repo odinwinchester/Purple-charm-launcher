@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -43,7 +44,7 @@ internal class PurpleIconLibrary(private val context: Context) {
         }.getOrNull()
     }
 
-    fun refreshIfDue(onChanged: () -> Unit) {
+    fun refreshIfDue(installedPackages: Set<String>, onChanged: () -> Unit) {
         val now = System.currentTimeMillis()
         if (now - prefs.getLong("last_attempt", 0L) < 24L * 60 * 60 * 1000) return
         prefs.edit().putLong("last_attempt", now).apply()
@@ -59,7 +60,7 @@ internal class PurpleIconLibrary(private val context: Context) {
                 val names = icons.keys()
                 while (names.hasNext()) {
                     val pkg = names.next()
-                    if (!pkg.matches(Regex("[a-zA-Z0-9_.]{3,200}"))) continue
+                    if (pkg !in installedPackages || !pkg.matches(Regex("[a-zA-Z0-9_.]{3,200}"))) continue
                     val entry = icons.optJSONObject(pkg) ?: continue
                     val hash = entry.optString("sha256")
                     val filename = entry.optString("file")
@@ -78,6 +79,7 @@ internal class PurpleIconLibrary(private val context: Context) {
                 }
                 val newCatalog = JSONObject().put("schema", 1).put("icons", accepted)
                 // Write the catalog last so no incomplete download becomes visible.
+                val previousCatalog = synchronized(this) { catalog.toString() }
                 val temp = File(root, "catalog.tmp")
                 temp.writeText(newCatalog.toString())
                 if (!temp.renameTo(catalogFile)) {
@@ -85,7 +87,7 @@ internal class PurpleIconLibrary(private val context: Context) {
                     temp.delete()
                 }
                 synchronized(this) { catalog = accepted }
-                if (changed) context.getMainExecutor().execute(onChanged)
+                if (changed || previousCatalog != accepted.toString()) context.getMainExecutor().execute(onChanged)
             } catch (_: Exception) {
                 // Network errors must never block launcher startup.
             }
@@ -102,9 +104,15 @@ internal class PurpleIconLibrary(private val context: Context) {
             if (conn.responseCode != 200) throw IllegalStateException("HTTP error")
             if (conn.contentLengthLong > max) throw IllegalStateException("Oversized file")
             return conn.inputStream.use { input ->
-                val bytes = input.readNBytes(max + 1)
-                if (bytes.size > max) throw IllegalStateException("Oversized file")
-                bytes
+                val output = ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    if (output.size() + n > max) throw IllegalStateException("Oversized file")
+                    output.write(buffer, 0, n)
+                }
+                output.toByteArray()
             }
         } finally { conn.disconnect() }
     }
