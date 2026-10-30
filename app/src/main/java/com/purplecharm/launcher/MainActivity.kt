@@ -1430,7 +1430,7 @@ class MainActivity : Activity(), SensorEventListener {
         val foreground = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val foregroundCanvas = Canvas(foreground)
         // Inset the unthemed app art so the original Purple Charm frame remains visible.
-        val inset = (size * 0.12f).toInt()
+        val inset = (size * 0.03f).toInt()
         icon.mutate().apply { setBounds(inset, inset, size - inset, size - inset) }.draw(foregroundCanvas)
         val mask = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         paintResource(R.drawable.iconmask, Canvas(mask))
