@@ -1,0 +1,51 @@
+name: RGBA Weather Test APK (manual only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rgba-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install image segmentation
+        run: pip install "Pillow>=10,<12" "rembg[cpu]==2.0.67"
+      - name: Verify pristine source art
+        run: python3 scripts/verify_weather_artwork.py
+      - name: Generate 26 experimental transparent PNGs
+        run: python3 scripts/weather_rgba_test.py
+      - name: Publish before-after previews and mask report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Weather-RGBA-26-Visual-Review
+          path: rgba-test-preview/
+          if-no-files-found: warn
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Unit tests and experimental APK
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - name: Validate APK package and signature
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$TOOLS/aapt" dump badging "$APK" | grep -q "package: name='com.purplecharm.launcher'"
+          sha256sum "$APK"
+      - name: Upload experimental APK (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Purple-Charm-RGBA-26-TEST-ONLY
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
