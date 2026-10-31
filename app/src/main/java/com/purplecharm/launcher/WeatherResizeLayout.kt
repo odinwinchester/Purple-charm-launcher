@@ -38,8 +38,16 @@ internal class WeatherResizeLayout(
         addView(art, LayoutParams(-2, -2))
         addView(leftHandle, LayoutParams(handleSize, handleSize))
         addView(rightHandle, LayoutParams(handleSize, handleSize))
-        setOnClickListener { if (isEditing) endEditing() else onOptions() }
-        setOnLongClickListener { beginEditing(); true }
+        // The artwork child fills this ViewGroup. Handle gestures on the child too:
+        // on real Android a long press may target the ImageView instead of the parent.
+        val longPress = View.OnLongClickListener { beginEditing(); true }
+        val click = View.OnClickListener { if (isEditing) endEditing() else onOptions() }
+        setOnClickListener(click)
+        setOnLongClickListener(longPress)
+        art.setOnClickListener(click)
+        art.setOnLongClickListener(longPress)
+        image.setOnClickListener(click)
+        image.setOnLongClickListener(longPress)
     }
     private fun handle(direction: Int) = TextView(context).apply {
         text = "↔"
