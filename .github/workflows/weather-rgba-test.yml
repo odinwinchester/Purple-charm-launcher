@@ -1,5 +1,7 @@
 name: RGBA Weather Test APK (manual only)
 on:
+  push:
+    branches: [codex/weather-rgba-test-only]
   workflow_dispatch:
 permissions:
   contents: read
