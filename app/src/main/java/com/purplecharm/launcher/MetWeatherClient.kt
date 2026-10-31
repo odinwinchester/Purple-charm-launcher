@@ -74,6 +74,13 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
         return cachedBody?.let { parseUpcoming(it, now) } ?: emptyList()
     }
 
+    /** Five-day data from the same validated MET cache, grouped in the device timezone. */
+    fun daily(now: Long = System.currentTimeMillis()): Map<java.time.LocalDate, List<WeatherForecast>> {
+        if (location() == null || location() != prefs.getString("met_forecast_location", null)) return emptyMap()
+        val body = cachedBody ?: return emptyMap()
+        return parseDaily(body, now)
+    }
+
     fun refresh(force: Boolean = false, onChanged: () -> Unit): Boolean {
         val key = location() ?: return false
         val now = System.currentTimeMillis()
@@ -160,6 +167,25 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                 instant.optDouble("relative_humidity").takeIf { it.isFinite() },
                 instant.optDouble("wind_speed").takeIf { it.isFinite() }, symbol)
         }
+
+        internal fun parseDaily(body: String, now: Long): Map<java.time.LocalDate, List<WeatherForecast>> = try {
+            require(parse(body, now) != null)
+            val series = series(body)
+            val zone = java.time.ZoneId.systemDefault()
+            val today = java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+            val result = linkedMapOf<java.time.LocalDate, MutableList<WeatherForecast>>()
+            for (i in 0 until series.length()) {
+                val point = series.getJSONObject(i)
+                val time = Instant.parse(point.getString("time")).toEpochMilli()
+                if (time < now - 60 * 60_000L) continue
+                val day = Instant.ofEpochMilli(time).atZone(zone).toLocalDate()
+                if (day.isAfter(today.plusDays(4))) break
+                if (!day.isBefore(today)) runCatching { decodePoint(point) }.getOrNull()?.let {
+                    result.getOrPut(day) { mutableListOf() }.add(it)
+                }
+            }
+            result
+        } catch (_: Exception) { emptyMap() }
 
         internal fun parseUpcoming(body: String, now: Long): List<WeatherForecast> = try {
             // Do not revive stale or wrong-unit cache for the hourly panel.

@@ -82,6 +82,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var openFolderId: String? = null
     private var pendingDrawerDrag = false
     private val graphicCache by lazy { GraphicResourceCache(resources) }
+    private val purpleIconLibrary by lazy { PurpleIconLibrary(this) }
     private data class CachedIcon(val state: Drawable.ConstantState, val bytes: Int)
     private val iconCache = object : android.util.LruCache<String, CachedIcon>(4 * 1024 * 1024) {
         override fun sizeOf(key: String, value: CachedIcon) = value.bytes
@@ -261,7 +262,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun homeTileHeight(): Int {
         val fontScale = resources.configuration.fontScale.coerceAtLeast(1f)
         // Frame, vertical padding and up to three scaled text lines with breathing room.
-        return dp((71f + kotlin.math.ceil(38f * fontScale)).toInt())
+        return dp((82f + kotlin.math.ceil(38f * fontScale)).toInt())
     }
     private val maxPages = 8
 
@@ -657,12 +658,12 @@ class MainActivity : Activity(), SensorEventListener {
                 state != null && saveWorkspaceEdit(WorkspaceEdits.intoFolder(state, incoming, id, index))
             }
             grid.addView(tile, GridLayout.LayoutParams().apply {
-                width = 0; height = dp(88)
+                width = 0; height = dp(99)
                 columnSpec = GridLayout.spec(index % 3, 1f); rowSpec = GridLayout.spec(index / 3)
             })
         }
         val scroll = ScrollView(this).apply { addView(grid) }
-        panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(((folder.apps.size + 2) / 3).coerceIn(1, 2) * 88)))
+        panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(((folder.apps.size + 2) / 3).coerceIn(1, 2) * 99)))
         val tools = LinearLayout(this)
         listOf("Adicionar" to { addFolderApps(id) }, "Renomear" to { renameFolder(id) },
             "Organizar" to { folderAppActions(id) }).forEach { (title, action) ->
@@ -823,12 +824,6 @@ class MainActivity : Activity(), SensorEventListener {
             })
         }
         if (category == "Tema") {
-        option("✦ Máscara para ícones sem tema: " +
-            if (setting("fallback_skin", "original") == "ghost") "Cristal Ghost Fire" else "Original") {
-            chooseSetting("Ícones sem arte original", "fallback_skin",
-                arrayOf("Ícone original do aplicativo", "Cristal violeta • inspirado em Ghost Fire"),
-                arrayOf("original", "ghost"), "original")
-        }
         option("✦ Papéis de parede Purple Charm") { wallpaperMenu() }
         } else {
         option("✦ Deslizar para cima: " + gestureName(setting("swipe_up", "options"))) {
@@ -942,6 +937,12 @@ class MainActivity : Activity(), SensorEventListener {
         pageIndex = HomePageSelection.read(prefs, pageCount())
         loadApps()
         showHome()
+        purpleIconLibrary.refreshIfDue(apps.map { it.activityInfo.packageName }.toSet()) {
+            iconCache.evictAll()
+            if (!isFinishing && !isDestroyed) {
+                if (drawerOpen) showDrawer() else showHome()
+            }
+        }
     }
 
     private fun dp(n: Int): Int =
@@ -1407,7 +1408,7 @@ class MainActivity : Activity(), SensorEventListener {
         )
 
     private fun customIcon(app: ResolveInfo, includeFallbackFrame: Boolean = false): Drawable {
-        val key = "${appKey(app)}:${setting("fallback_skin", "original")}:$includeFallbackFrame"
+        val key = "${appKey(app)}:purple_charm:$includeFallbackFrame"
         iconCache.get(key)?.let { return it.state.newDrawable(resources).mutate() }
         return uncachedIcon(app, includeFallbackFrame).also { icon ->
             val bytes = iconBytes(icon)
@@ -1428,7 +1429,9 @@ class MainActivity : Activity(), SensorEventListener {
         paintResource(R.drawable.iconback, canvas)
         val foreground = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val foregroundCanvas = Canvas(foreground)
-        icon.mutate().apply { setBounds(0, 0, size, size) }.draw(foregroundCanvas)
+        // Inset the unthemed app art so the original Purple Charm frame remains visible.
+        val inset = (size * 0.03f).toInt()
+        icon.mutate().apply { setBounds(inset, inset, size - inset, size - inset) }.draw(foregroundCanvas)
         val mask = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         paintResource(R.drawable.iconmask, Canvas(mask))
         val maskedCanvas = Canvas(foreground)
@@ -1585,23 +1588,14 @@ class MainActivity : Activity(), SensorEventListener {
             }
         }
 
+        // Prefer downloaded artwork only when there is no bundled themed PNG.
+        purpleIconLibrary.cachedIcon(app.activityInfo.packageName)?.let { return it }
         val original = app.loadIcon(packageManager)
         // Automatically skin every unthemed app using the authentic original layers.
         // The pre-existing PNG themed icons above remain completely unchanged.
-        if (setting("fallback_skin", "original") != "ghost") {
-            return originalThemeFallback(original)
-        }
-        if (!includeFallbackFrame) {
-            return originalThemeFallback(original)
-        }
-
-        // Usa o fundo autêntico recuperado do Purple Charm original.
-        // Os ícones personalizados existentes permanecem intocados.
-        @Suppress("DEPRECATION")
-        val originalBorder = resources.getDrawable(R.drawable.purple_original_iconback).mutate()
-        return LayerDrawable(arrayOf(originalBorder, InsetDrawable(original, dp(9)))).apply {
-            setLayerInset(1, dp(4), dp(4), dp(4), dp(4))
-        }
+        // A única aparência automática é a máscara original do Purple Charm.
+        // Artes personalizadas já foram retornadas acima sem alterações.
+        return originalThemeFallback(original)
     }
 
     private fun sectionHeader(
@@ -1988,6 +1982,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val selectedArt = WeatherArtworkCatalog.select(isSun, selectedSun, weatherArtIndex,
             phaseArtIndex, prefs.getString("gothic_manual_art", null), automaticWeather = mode == 0)
+        displayedWeatherArtworkSlug = selectedArt.slug
         // PNGs remain intact; live data is outside the artwork and in the details dialog.
         val columns = horizontalIconColumns()
         // Panoramic alternatives open at full grid width; a deliberate per-art resize persists.
@@ -2019,7 +2014,7 @@ class MainActivity : Activity(), SensorEventListener {
         val editor = WeatherResizeLayout(this, artwork, columns, initialSpan,
             { active -> widgetResizeActive = active },
             { span -> prefs.edit().putInt(spanKey, span).apply() },
-            { weatherDetails() })
+            { openExpandedWeather() })
         editor.contentDescription = "Widget meteorológico Purple Charm. Toque para ver os detalhes; toque longo para redimensionar. Para configurar, abra Widgets no modo de edição."
         widgetEditor = editor
         panel.addView(editor, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -2027,13 +2022,70 @@ class MainActivity : Activity(), SensorEventListener {
             tag = "live_weather_readout"
             maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
             contentDescription = "Dados meteorológicos MET Norway para ${weatherLocation.summary}. Os valores impressos no PNG são ilustrativos."
-            setOnClickListener { weatherDetails() }
+            setOnClickListener { openExpandedWeather() }
         }
         panel.addView(liveWeatherLabel, LinearLayout.LayoutParams(-1, -2))
-        panel.setOnClickListener { weatherDetails() }
+        panel.setOnClickListener { openExpandedWeather() }
         panel.setOnLongClickListener { editor.beginEditing(); true }
         celestialView = panel
         return panel.apply { layoutParams = ViewGroup.LayoutParams(-1, -1) }
+    }
+
+    // The displayed widget artwork is the source of truth for the expanded screen.
+    // Recomputing from time/weather at click time can open a different art.
+    private var displayedWeatherArtworkSlug: String? = null
+
+    private fun openExpandedWeather() {
+        val selected = displayedWeatherArtworkSlug ?: currentWeatherArtworkSlug()
+        startActivity(Intent(this, ExpandedWeatherActivity::class.java).apply {
+            putExtra("art_slug", selected)
+            putExtra("place", weatherLocation.summary)
+        })
+    }
+
+    private fun currentWeatherArtworkSlug(): String {
+        val forecast = weatherClient.current()
+        val now = System.currentTimeMillis()
+        val daylight = SolarDaylight.isDay(now,
+            prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull(),
+            prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull()) ?: forecast?.isDay
+        val isSun = when (prefs.getInt("gothic_celestial_mode", 0)) {
+            1 -> true
+            2 -> false
+            else -> daylight ?: false
+        }
+        val code = forecast?.code ?: 0
+        val rainy = forecast != null && (code == 61 || code == 95)
+        val snowy = forecast != null && code == 71
+        val cold = forecast != null && forecast.temperature <= 12
+        val condition = when {
+            snowy || cold -> 3
+            rainy -> 2
+            forecast != null && (code in 2..3 || code == 45) -> 1
+            else -> 0
+        }
+        val age = ((now - 947182440000L) / 86400000.0).let {
+            ((it % 29.530588853) + 29.530588853) % 29.530588853
+        }
+        val phase = when {
+            age < 1.84566 || age >= 27.68493 -> 3
+            age < 12.91963 -> 0
+            age < 16.61096 -> 1
+            else -> 2
+        }
+        val phaseIndex = intArrayOf(1, 2, 3, 0)[phase]
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val sunIndex = if (prefs.getInt("gothic_celestial_mode", 0) == 0) {
+            when {
+                rainy || snowy || cold || code in 2..3 || code == 45 -> 2
+                hour in 6..9 -> 3
+                (forecast?.temperature ?: 0.0) >= 30 -> 0
+                else -> 1
+            }
+        } else prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
+        return WeatherArtworkCatalog.select(isSun, sunIndex, condition, phaseIndex,
+            prefs.getString("gothic_manual_art", null),
+            automaticWeather = prefs.getInt("gothic_celestial_mode", 0) == 0).slug
     }
 
     private fun weatherDetails() {
@@ -2293,7 +2345,7 @@ class MainActivity : Activity(), SensorEventListener {
                 acceptDrop(holder) { key -> placeInDock(key, dockIndex) }
                 holder
             }
-            outer.addView(child, LinearLayout.LayoutParams(0, dp(61), 1f).apply {
+            outer.addView(child, LinearLayout.LayoutParams(0, dp(70), 1f).apply {
                 setMargins(dp(2), 0, dp(2), 0)
             })
         }
@@ -2746,7 +2798,8 @@ class MainActivity : Activity(), SensorEventListener {
             setPadding(dp(2), dp(if (dense) 2 else 6), dp(2), dp(if (dense) 2 else 8))
         }
 
-        val iconSize = if (compact) 35 else 43
+        // 20% larger in dock, home, app drawer and folder members.
+        val iconSize = if (compact) 42 else 52
 
         val iconFrame = FrameLayout(this).apply {
             // The icon itself supplies its original art or the fallback frame.

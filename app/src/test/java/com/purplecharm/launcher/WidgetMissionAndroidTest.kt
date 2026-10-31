@@ -223,9 +223,10 @@ class WidgetMissionAndroidTest {
         seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
         val editor = field(a, "widgetEditor") as WeatherResizeLayout
         assertTrue(editor.performClick())
-        var details = ShadowAlertDialog.getLatestAlertDialog()
-        assertEquals("Previsão real • MET Norway", shadowOf(details).title.toString())
-        details.dismiss()
+        val expandedIntent = shadowOf(a).nextStartedActivity
+        assertNotNull("widget tap should launch expanded weather", expandedIntent)
+        assertEquals(ExpandedWeatherActivity::class.java.name, expandedIntent.component?.className)
+        assertNotNull("selected artwork should be passed to expanded view", expandedIntent.getStringExtra("art_slug"))
 
         assertTrue(editor.performLongClick())
         assertTrue(editor.isEditing)

@@ -31,15 +31,33 @@ internal class WeatherResizeLayout(
     private var startX = 0f
     private var startY = 0f
     private var startSpan = span
+    private val leftEdge = View(context)
+    private val rightEdge = View(context)
     private val leftHandle = handle(-1)
     private val rightHandle = handle(1)
     init {
         clipChildren = true
         addView(art, LayoutParams(-2, -2))
+        addView(leftEdge, LayoutParams(handleSize, -2))
+        addView(rightEdge, LayoutParams(handleSize, -2))
         addView(leftHandle, LayoutParams(handleSize, handleSize))
         addView(rightHandle, LayoutParams(handleSize, handleSize))
-        setOnClickListener { if (isEditing) endEditing() else onOptions() }
-        setOnLongClickListener { beginEditing(); true }
+        // The artwork child fills this ViewGroup. Handle gestures on the child too:
+        // on real Android a long press may target the ImageView instead of the parent.
+        val longPress = View.OnLongClickListener { beginEditing(); true }
+        val click = View.OnClickListener { if (isEditing) endEditing() else onOptions() }
+        setOnClickListener(click)
+        setOnLongClickListener(longPress)
+        art.setOnClickListener(click)
+        art.setOnLongClickListener(longPress)
+        image.setOnClickListener(click)
+        image.setOnLongClickListener(longPress)
+        for (edge in listOf(leftEdge, rightEdge)) {
+            edge.isClickable = true
+            edge.isLongClickable = true
+            edge.setOnClickListener(click)
+            edge.setOnLongClickListener(longPress)
+        }
     }
     private fun handle(direction: Int) = TextView(context).apply {
         text = "↔"
@@ -118,6 +136,9 @@ internal class WeatherResizeLayout(
         art.resizedWidth = placement.artWidth
         art.measure(MeasureSpec.makeMeasureSpec(placement.artWidth, MeasureSpec.EXACTLY),
             MeasureSpec.makeMeasureSpec(placement.artHeight, MeasureSpec.EXACTLY))
+        for (edge in listOf(leftEdge, rightEdge)) edge.measure(
+            MeasureSpec.makeMeasureSpec(handleSize, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(placement.artHeight, MeasureSpec.EXACTLY))
         for (handle in listOf(leftHandle, rightHandle)) handle.measure(
             MeasureSpec.makeMeasureSpec(handleSize, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(handleSize, MeasureSpec.EXACTLY))
     }
@@ -125,6 +146,10 @@ internal class WeatherResizeLayout(
         val x = (placement.column * placement.cellWidth).toInt() + if (isEditing) handleSize else 0
         val y = ((height - art.measuredHeight) / 2).coerceAtLeast(0)
         art.layout(x, y, x + art.measuredWidth, y + art.measuredHeight)
+        // Transparent edge hit targets remain inside the artwork and above its ImageView.
+        leftEdge.layout(x, y, x + handleSize, y + art.measuredHeight)
+        rightEdge.layout(x + art.measuredWidth - handleSize, y,
+            x + art.measuredWidth, y + art.measuredHeight)
         val handleTop = (y + art.measuredHeight / 2 - handleSize / 2).coerceIn(0, (height - handleSize).coerceAtLeast(0))
         leftHandle.layout(x - handleSize, handleTop, x, handleTop + handleSize)
         rightHandle.layout(x + art.measuredWidth, handleTop, x + art.measuredWidth + handleSize, handleTop + handleSize)
