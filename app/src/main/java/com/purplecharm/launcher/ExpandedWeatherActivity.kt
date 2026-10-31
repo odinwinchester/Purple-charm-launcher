@@ -38,7 +38,7 @@ class ExpandedWeatherActivity : Activity() {
 
     // Approved 95% transparency: alpha 13/255, with a visible violet outline.
     private fun glass(): GradientDrawable = GradientDrawable().apply {
-        setColor(Color.argb(13, 143, 65, 181))
+        setColor(Color.TRANSPARENT)
         cornerRadius = dp(18).toFloat()
         setStroke(dp(1), Color.argb(190, 193, 146, 239))
     }
@@ -113,7 +113,9 @@ class ExpandedWeatherActivity : Activity() {
         val art = WeatherArtworkCatalog.all.firstOrNull {
             it.slug == intent.getStringExtra("art_slug")
         } ?: WeatherArtworkCatalog.all.first()
-        val root = FrameLayout(this).apply { setBackgroundColor(Color.rgb(20, 10, 34)) }
+        val root = FrameLayout(this).apply {
+            background = WeatherGothicBackdrop(art.kind == WeatherArtworkCatalog.Kind.SOLAR || (art.kind == WeatherArtworkCatalog.Kind.ECLIPSE && art.slug.contains("solar")))
+        }
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
