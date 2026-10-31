@@ -26,6 +26,13 @@ class ExpandedWeatherActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("purple_charm_favorites", MODE_PRIVATE) }
     private val weather by lazy { MetWeatherClient(prefs) }
     private val graphics by lazy { GraphicResourceCache(resources) }
+    private val weatherLocation by lazy {
+        WeatherLocationController(this, prefs) { coordinatesChanged ->
+            if (coordinatesChanged) weather.clearForecast()
+            weather.refresh { runOnUiThread { if (!isFinishing && !isDestroyed) render() } }
+            runOnUiThread { if (!isFinishing && !isDestroyed) render() }
+        }
+    }
     private var page = "home"
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 
@@ -73,6 +80,33 @@ class ExpandedWeatherActivity : Activity() {
         window.statusBarColor = Color.rgb(20, 10, 34)
         window.navigationBarColor = Color.rgb(20, 10, 34)
         render()
+        // First visit: ask through Android's own permission dialog. The user may
+        // deny it and still choose a city manually from the location options.
+        if (!prefs.contains("gothic_weather_location_mode")) {
+            weatherLocation.requestAutomaticLocation()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        weatherLocation.start()
+    }
+
+    override fun onStop() {
+        weatherLocation.stop()
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        weatherLocation.close()
+        super.onDestroy()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        weatherLocation.onPermissionResult(requestCode)
     }
 
     private fun render() {
@@ -123,7 +157,8 @@ class ExpandedWeatherActivity : Activity() {
         })
 
         val current = weather.current()
-        val place = intent.getStringExtra("place")?.takeIf {
+        val place = prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
+            ?: intent.getStringExtra("place")?.takeIf {
             it.isNotBlank() && it != "Local não definido"
         } ?: "Localização não definida"
         val headline = current?.let { "${it.temperature.roundToInt()}°C • ${it.description}" }
@@ -148,6 +183,7 @@ class ExpandedWeatherActivity : Activity() {
         fun open(destination: String) { page = destination; render() }
         when (page) {
             "home" -> {
+                card(column, "Localização • alterar ou permitir acesso  ›", weatherLocation.summary) { weatherLocation.showOptions() }
                 card(column, "Condições atuais", conditions) { open("conditions") }
                 card(column, "Previsão horária • MET Norway  ›", hourly.lineSequence().take(4).joinToString("\\n")) { open("hourly") }
                 card(column, "Previsão para cinco dias  ›", daily) { open("daily") }
