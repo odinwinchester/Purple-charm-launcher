@@ -36,7 +36,7 @@ class ExpandedWeatherActivity : Activity() {
     private var page = "home"
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 
-    // Approved 95% transparency: alpha 13/255, with a visible violet outline.
+    // Fully cut-out panels: violet outline only, no opaque fill.
     private fun glass(): GradientDrawable = GradientDrawable().apply {
         setColor(Color.TRANSPARENT)
         cornerRadius = dp(18).toFloat()
@@ -77,6 +77,8 @@ class ExpandedWeatherActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.setBackgroundDrawableResource(android.R.color.transparent)
+        window.decorView.setBackgroundColor(Color.rgb(12, 6, 29))
         window.statusBarColor = Color.rgb(20, 10, 34)
         window.navigationBarColor = Color.rgb(20, 10, 34)
         render()
@@ -114,15 +116,19 @@ class ExpandedWeatherActivity : Activity() {
             it.slug == intent.getStringExtra("art_slug")
         } ?: WeatherArtworkCatalog.all.first()
         val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.rgb(12, 6, 29))
             background = WeatherGothicBackdrop(art.kind == WeatherArtworkCatalog.Kind.SOLAR || (art.kind == WeatherArtworkCatalog.Kind.ECLIPSE && art.slug.contains("solar")))
         }
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
+            setBackgroundColor(Color.TRANSPARENT)
+            isVerticalScrollBarEnabled = false
         }
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(8), 0, dp(28))
+            setBackgroundColor(Color.TRANSPARENT)
         }
 
         val top = LinearLayout(this).apply {
