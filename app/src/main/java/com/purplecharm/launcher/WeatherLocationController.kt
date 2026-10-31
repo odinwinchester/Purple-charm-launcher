@@ -148,6 +148,9 @@ internal class WeatherLocationController(
                     }.setNegativeButton("Cancelar", null).show()
             }.show()
     }
+    /** Request Android's native foreground location permission after a user action. */
+    fun requestAutomaticLocation() = enableAutomatic()
+
     private fun enableAutomatic() {
         stopTracking()
         needsFirstFix = true
