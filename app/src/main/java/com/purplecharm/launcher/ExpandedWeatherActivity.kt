@@ -165,7 +165,7 @@ class ExpandedWeatherActivity : Activity() {
         } ?: "Localização não definida"
         val headline = current?.let { "${it.temperature.roundToInt()}°C • ${it.description}" }
             ?: "Previsão indisponível"
-        val conditions = "$place\\n$headline\\n" +
+        val conditions = "$place\n$headline\n" +
             if (current == null) "Configure a localização no widget para receber dados reais."
             else "Umidade: ${current.humidity?.roundToInt()?.let { "$it%" } ?: "indisponível"}" +
                 "   •   Vento: ${current.wind?.let { "${(it * 3.6).roundToInt()} km/h" } ?: "indisponível"}"
@@ -173,10 +173,10 @@ class ExpandedWeatherActivity : Activity() {
         val formatter = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
             .withZone(ZoneId.systemDefault())
         val upcoming = weather.upcoming()
-        val hourly = upcoming.take(12).joinToString("\\n") {
+        val hourly = upcoming.take(12).joinToString("\n") {
             "${formatter.format(Instant.ofEpochMilli(it.time))}   ${it.temperature.roundToInt()}°C   ${it.description}"
         }.ifEmpty { "Previsão horária indisponível. Configure a localização para consultar o MET Norway." }
-        val daily = weather.daily().entries.joinToString("\\n") { (date, points) ->
+        val daily = weather.daily().entries.joinToString("\n") { (date, points) ->
             val low = points.minOf { it.temperature }.roundToInt()
             val high = points.maxOf { it.temperature }.roundToInt()
             "${date.dayOfMonth}/${date.monthValue}   ${low}° / ${high}°C   ${points.first().description}"
@@ -187,12 +187,10 @@ class ExpandedWeatherActivity : Activity() {
             "home" -> {
                 card(column, "Localização • alterar ou permitir acesso  ›", weatherLocation.summary) { weatherLocation.showOptions() }
                 card(column, "Condições atuais", conditions) { open("conditions") }
-                card(column, "Previsão horária • MET Norway  ›", hourly.lineSequence().take(4).joinToString("\\n")) { open("hourly") }
+                card(column, "Previsão horária • MET Norway  ›", hourly.lineSequence().take(4).joinToString("\n")) { open("hourly") }
                 card(column, "Previsão para cinco dias  ›", daily) { open("daily") }
                 card(column, "Avisos oficiais • INMET  ›", alerts) { open("alerts") }
-                card(column, "Fonte e observações", "MET Norway • dados previstos, não medições locais.\\n" +
-                    "Os valores impressos na arte original são ilustrativos.\\n" +
-                    "Arte preservada • vidro violeta com 95% de transparência.")
+
             }
             "hourly" -> card(column, "Próximas horas • MET Norway", hourly)
             "daily" -> card(column, "Temperaturas mínimas e máximas previstas • MET Norway", daily)
