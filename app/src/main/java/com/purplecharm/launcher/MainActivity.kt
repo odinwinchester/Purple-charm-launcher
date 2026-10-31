@@ -1982,6 +1982,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val selectedArt = WeatherArtworkCatalog.select(isSun, selectedSun, weatherArtIndex,
             phaseArtIndex, prefs.getString("gothic_manual_art", null), automaticWeather = mode == 0)
+        displayedWeatherArtworkSlug = selectedArt.slug
         // PNGs remain intact; live data is outside the artwork and in the details dialog.
         val columns = horizontalIconColumns()
         // Panoramic alternatives open at full grid width; a deliberate per-art resize persists.
@@ -2030,8 +2031,12 @@ class MainActivity : Activity(), SensorEventListener {
         return panel.apply { layoutParams = ViewGroup.LayoutParams(-1, -1) }
     }
 
+    // The displayed widget artwork is the source of truth for the expanded screen.
+    // Recomputing from time/weather at click time can open a different art.
+    private var displayedWeatherArtworkSlug: String? = null
+
     private fun openExpandedWeather() {
-        val selected = currentWeatherArtworkSlug()
+        val selected = displayedWeatherArtworkSlug ?: currentWeatherArtworkSlug()
         startActivity(Intent(this, ExpandedWeatherActivity::class.java).apply {
             putExtra("art_slug", selected)
             putExtra("place", weatherLocation.summary)
