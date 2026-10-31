@@ -67,7 +67,7 @@ class ExpandedWeatherActivity : Activity() {
             alpha = 1f
         }
         root.addView(background, FrameLayout.LayoutParams(-1, -1))
-        val scroll = ScrollView(this).apply { fillViewport = true }
+        val scroll = ScrollView(this).apply { isFillViewport = true }
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(18), 0, dp(26))
