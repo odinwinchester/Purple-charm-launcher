@@ -61,7 +61,11 @@ class ExpandedWeatherActivity : Activity() {
         } ?: WeatherArtworkCatalog.all.first()
         val root = FrameLayout(this).apply { setBackgroundColor(Color.rgb(20, 10, 34)) }
         val background = ImageView(this).apply {
-            setImageResource(art.resource)
+            // Decode near the display size instead of always loading full-resolution pixels.
+            // Original drawable resource remains untouched.
+            setImageDrawable(GraphicResourceCache(resources).load(
+                art.resource, resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels
+            ))
             scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = art.label
             alpha = 1f
