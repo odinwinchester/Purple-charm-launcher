@@ -2031,6 +2031,59 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun weatherDetails() {
+        val selected = currentWeatherArtworkSlug()
+        startActivity(Intent(this, ExpandedWeatherActivity::class.java).apply {
+            putExtra("art_slug", selected)
+            putExtra("place", weatherLocation.summary)
+        })
+    }
+
+    private fun currentWeatherArtworkSlug(): String {
+        val forecast = weatherClient.current()
+        val now = System.currentTimeMillis()
+        val daylight = SolarDaylight.isDay(now,
+            prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull(),
+            prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull()) ?: forecast?.isDay
+        val isSun = when (prefs.getInt("gothic_celestial_mode", 0)) {
+            1 -> true
+            2 -> false
+            else -> daylight ?: false
+        }
+        val code = forecast?.code ?: 0
+        val rainy = forecast != null && (code == 61 || code == 95)
+        val snowy = forecast != null && code == 71
+        val cold = forecast != null && forecast.temperature <= 12
+        val condition = when {
+            snowy || cold -> 3
+            rainy -> 2
+            forecast != null && (code in 2..3 || code == 45) -> 1
+            else -> 0
+        }
+        val age = ((now - 947182440000L) / 86400000.0).let {
+            ((it % 29.530588853) + 29.530588853) % 29.530588853
+        }
+        val phase = when {
+            age < 1.84566 || age >= 27.68493 -> 3
+            age < 12.91963 -> 0
+            age < 16.61096 -> 1
+            else -> 2
+        }
+        val phaseIndex = intArrayOf(1, 2, 3, 0)[phase]
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val sunIndex = if (prefs.getInt("gothic_celestial_mode", 0) == 0) {
+            when {
+                rainy || snowy || cold || code in 2..3 || code == 45 -> 2
+                hour in 6..9 -> 3
+                (forecast?.temperature ?: 0.0) >= 30 -> 0
+                else -> 1
+            }
+        } else prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
+        return WeatherArtworkCatalog.select(isSun, sunIndex, condition, phaseIndex,
+            prefs.getString("gothic_manual_art", null),
+            automaticWeather = prefs.getInt("gothic_celestial_mode", 0) == 0).slug
+    }
+
+    private fun legacyWeatherDetails() {
         val forecast = weatherClient.current()
         val weatherActive = prefs.contains("gothic_weather_lat")
         val liveText = when {
