@@ -26,7 +26,7 @@ class ExpandedWeatherActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("purple_charm_favorites", MODE_PRIVATE) }
     private val weather by lazy { MetWeatherClient(prefs) }
     private val graphics by lazy { GraphicResourceCache(resources) }
-    private val violet = Color.rgb(143, 65, 181)
+    private var page = "home"
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 
     // Approved 95% transparency: alpha 13/255, with a visible violet outline.
@@ -45,7 +45,7 @@ class ExpandedWeatherActivity : Activity() {
             setPadding(dp(10), dp(7), dp(10), dp(7))
         }
 
-    private fun card(root: LinearLayout, title: String, content: String) {
+    private fun card(root: LinearLayout, title: String, content: String, onOpen: (() -> Unit)? = null) {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = glass()
@@ -53,9 +53,19 @@ class ExpandedWeatherActivity : Activity() {
         }
         panel.addView(text(title, 17f, true))
         panel.addView(text(content, 14f))
+        if (onOpen != null) {
+            panel.isClickable = true
+            panel.setOnClickListener { onOpen() }
+            panel.contentDescription = "$title. Toque para abrir detalhes."
+        }
         root.addView(panel, LinearLayout.LayoutParams(-1, -2).apply {
             setMargins(dp(12), dp(6), dp(12), dp(6))
         })
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (page == "home") super.onBackPressed() else { page = "home"; render() }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,11 +95,16 @@ class ExpandedWeatherActivity : Activity() {
             setPadding(dp(10), dp(4), dp(10), dp(4))
         }
         val back = text("‹  Voltar", 16f, true).apply {
-            setOnClickListener { finish() }
+            setOnClickListener { if (page == "home") finish() else { page = "home"; render() } }
             contentDescription = "Voltar ao Purple Charm"
         }
         top.addView(back)
-        top.addView(text("✦ Purple Charm • Clima", 18f, true),
+        top.addView(text(if (page == "home") "✦ Purple Charm • Clima" else when(page) {
+            "daily" -> "Previsão para cinco dias"
+            "hourly" -> "Previsão horária"
+            "alerts" -> "Avisos oficiais • INMET"
+            else -> "Condições atuais"
+        }, 18f, true),
             LinearLayout.LayoutParams(0, -2, 1f))
         column.addView(top)
 
@@ -103,7 +118,7 @@ class ExpandedWeatherActivity : Activity() {
             adjustViewBounds = true
             contentDescription = "Arte original: ${art.label}"
         }
-        column.addView(hero, LinearLayout.LayoutParams(-1, -2).apply {
+        if (page == "home") column.addView(hero, LinearLayout.LayoutParams(-1, -2).apply {
             setMargins(dp(12), dp(4), dp(12), dp(4))
         })
 
@@ -113,24 +128,39 @@ class ExpandedWeatherActivity : Activity() {
         } ?: "Localização não definida"
         val headline = current?.let { "${it.temperature.roundToInt()}°C • ${it.description}" }
             ?: "Previsão indisponível"
-        card(column, "Condições atuais", "$place\n$headline\n" +
+        val conditions = "$place\\n$headline\\n" +
             if (current == null) "Configure a localização no widget para receber dados reais."
             else "Umidade: ${current.humidity?.roundToInt()?.let { "$it%" } ?: "indisponível"}" +
-                "   •   Vento: ${current.wind?.let { "${(it * 3.6).roundToInt()} km/h" } ?: "indisponível"}")
+                "   •   Vento: ${current.wind?.let { "${(it * 3.6).roundToInt()} km/h" } ?: "indisponível"}"
 
         val formatter = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
             .withZone(ZoneId.systemDefault())
         val upcoming = weather.upcoming()
-        val hourly = upcoming.take(12).joinToString("\n") {
+        val hourly = upcoming.take(12).joinToString("\\n") {
             "${formatter.format(Instant.ofEpochMilli(it.time))}   ${it.temperature.roundToInt()}°C   ${it.description}"
-        }.ifEmpty { "Previsão horária indisponível" }
-        card(column, "Previsão horária • MET Norway", hourly)
-        card(column, "Próximos cinco dias", "Dados diários ainda não integrados. Nenhuma previsão fictícia será exibida.")
-        card(column, "Avisos oficiais • INMET", "Consulta de alertas ainda não integrada. Não é possível confirmar ausência de alertas.")
-        card(column, "Fonte e observações",
-            "MET Norway • dados previstos, não medições locais.\n" +
-            "Os valores impressos na arte original são ilustrativos.\n" +
-            "Arte preservada • vidro violeta com 95% de transparência.")
+        }.ifEmpty { "Previsão horária indisponível. Configure a localização para consultar o MET Norway." }
+        val daily = weather.daily().entries.joinToString("\\n") { (date, points) ->
+            val low = points.minOf { it.temperature }.roundToInt()
+            val high = points.maxOf { it.temperature }.roundToInt()
+            "${date.dayOfMonth}/${date.monthValue}   ${low}° / ${high}°C   ${points.first().description}"
+        }.ifEmpty { "Previsão de cinco dias indisponível. Aguardando dados reais do MET Norway." }
+        val alerts = "Consulta oficial ao INMET ainda não integrada. Não é possível afirmar que não existem alertas."
+        fun open(destination: String) { page = destination; render() }
+        when (page) {
+            "home" -> {
+                card(column, "Condições atuais", conditions) { open("conditions") }
+                card(column, "Previsão horária • MET Norway  ›", hourly.lineSequence().take(4).joinToString("\\n")) { open("hourly") }
+                card(column, "Previsão para cinco dias  ›", daily) { open("daily") }
+                card(column, "Avisos oficiais • INMET  ›", alerts) { open("alerts") }
+                card(column, "Fonte e observações", "MET Norway • dados previstos, não medições locais.\\n" +
+                    "Os valores impressos na arte original são ilustrativos.\\n" +
+                    "Arte preservada • vidro violeta com 95% de transparência.")
+            }
+            "hourly" -> card(column, "Próximas horas • MET Norway", hourly)
+            "daily" -> card(column, "Temperaturas mínimas e máximas previstas • MET Norway", daily)
+            "alerts" -> card(column, "Detalhes dos avisos oficiais", alerts)
+            else -> card(column, "Condições atuais", conditions)
+        }
         scroll.addView(column)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
