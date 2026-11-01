@@ -55,6 +55,35 @@ internal class WeatherGothicBackdrop(private val isDay: Boolean) : Drawable() {
             }
             canvas.drawPath(arch, paint)
         }
+        // Static gothic skyline: pointed towers and a distant waterfall.
+        // Vector artwork only; no animation, no modification of the 26 PNGs.
+        paint.shader = null
+        paint.style = Paint.Style.FILL
+        paint.color = Color.argb(150, 13, 7, 31)
+        val groundY = h * 0.79f
+        canvas.drawRect(0f, groundY, w, h, paint)
+        fun tower(cx: Float, top: Float, width: Float, bottom: Float) {
+            val roof = Path().apply {
+                moveTo(cx - width * 0.64f, top + width * 0.85f)
+                lineTo(cx, top - width * 0.55f)
+                lineTo(cx + width * 0.64f, top + width * 0.85f)
+                close()
+            }
+            canvas.drawPath(roof, paint)
+            canvas.drawRect(cx - width * 0.42f, top + width * 0.7f,
+                cx + width * 0.42f, bottom, paint)
+        }
+        tower(w * 0.18f, h * 0.33f, w * 0.14f, groundY)
+        tower(w * 0.36f, h * 0.24f, w * 0.18f, groundY)
+        tower(w * 0.57f, h * 0.30f, w * 0.16f, groundY)
+        tower(w * 0.79f, h * 0.38f, w * 0.13f, groundY)
+        paint.color = Color.argb(105, 182, 119, 238)
+        for (i in 0..7) {
+            val y = h * (0.58f + i * 0.036f)
+            val drift = kotlin.math.sin(i * 0.8).toFloat() * w * 0.025f
+            canvas.drawRoundRect(w * 0.63f + drift, y, w * 0.77f + drift,
+                y + h * 0.023f, w * 0.014f, w * 0.014f, paint)
+        }
         paint.style = Paint.Style.FILL
     }
     override fun setAlpha(alpha: Int) { /* Background is intentionally opaque. */ }
