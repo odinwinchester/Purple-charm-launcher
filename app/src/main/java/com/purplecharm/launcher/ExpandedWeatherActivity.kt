@@ -36,6 +36,7 @@ class ExpandedWeatherActivity : Activity() {
     private var page = "home"
     private var smoked = true
     private var previewSlug: String? = null
+    private var animationsPaused = false // Reserved for future animated scenery; static artwork does not animate.
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 
     // Fully cut-out panels: violet outline only, no opaque fill.
@@ -180,28 +181,49 @@ class ExpandedWeatherActivity : Activity() {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(4), dp(12), dp(4))
             }
-            fun control(label: String, click: () -> Unit): TextView = text(label, 14f, true).apply {
+            fun chip(label: String, action: () -> Unit): TextView = text(label, 12f, true).apply {
                 gravity = Gravity.CENTER
                 background = GradientDrawable().apply {
-                    setColor(Color.argb(170, 45, 17, 69))
+                    setColor(Color.argb(185, 68, 24, 104))
                     cornerRadius = dp(22).toFloat()
-                    setStroke(dp(1), Color.rgb(191, 112, 245))
+                    setStroke(dp(1), Color.rgb(207, 137, 255))
                 }
-                setOnClickListener { click() }
+                setOnClickListener { action() }
+                setPadding(dp(9), dp(10), dp(9), dp(10))
             }
-            controls.addView(control(if (smoked) "Violet Glass • fumê" else "Crystal Clear • vazado") {
-                smoked = !smoked
-                prefs.edit().putBoolean("weather_smoked_glass", smoked).apply()
-                render()
-            })
-            controls.addView(control("Pré-visualizar um dos 26 cenários") {
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("Cenário de teste • previsão real preservada")
-                    .setItems(arrayOf("Automático") + WeatherArtworkCatalog.all.map { it.label }) { _, index ->
-                        previewSlug = if (index == 0) null else WeatherArtworkCatalog.all[index - 1].slug
-                        render()
-                    }.show()
-            })
+            fun strip(vararg entries: Pair<String, () -> Unit>) {
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER
+                }
+                entries.forEach { (label, action) ->
+                    row.addView(chip(label, action), LinearLayout.LayoutParams(0, -2, 1f).apply {
+                        setMargins(dp(3), dp(3), dp(3), dp(3))
+                    })
+                }
+                controls.addView(row)
+            }
+            fun preview(slug: String?) { previewSlug = slug; render() }
+            strip(
+                "☀ Dia" to { preview("dia_limpo") },
+                "☾ Noite" to { preview("lua_03_lua_cheia_noite_limpa") },
+                "☂ Chuva" to { preview("sol_dia_chuvoso") }
+            )
+            strip(
+                "ϟ Tempestade" to { preview("sol_dia_chuvoso") },
+                "↻ Automático" to { preview(null) },
+                (if (animationsPaused) "▶ Retomar" else "Ⅱ Pausar") to {
+                    animationsPaused = !animationsPaused
+                    render()
+                }
+            )
+            strip(
+                (if (smoked) "◈ Violet Glass • fumê" else "◇ Crystal Clear • vazado") to {
+                    smoked = !smoked
+                    prefs.edit().putBoolean("weather_smoked_glass", smoked).apply()
+                    render()
+                }
+            )
             column.addView(controls)
         }
 
@@ -234,11 +256,33 @@ class ExpandedWeatherActivity : Activity() {
         fun open(destination: String) { page = destination; render() }
         when (page) {
             "home" -> {
-                card(column, "Localização • alterar ou permitir acesso  ›", weatherLocation.summary) { weatherLocation.showOptions() }
-                card(column, "Condições atuais", conditions) { open("conditions") }
+                val feature = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = glass()
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                }
+                val featureText = text("CONDIÇÕES ATUAIS\\n" +
+                    (current?.let { "${it.temperature.roundToInt()}°C" } ?: "—°C") +
+                    "\\n$place\\n" +
+                    (current?.description ?: "Aguardando previsão") +
+                    "\\nUmidade: " + (current?.humidity?.roundToInt()?.let { "$it%" } ?: "—") +
+                    "  •  Vento: " + (current?.wind?.let { "${(it * 3.6).roundToInt()} km/h" } ?: "—"), 15f)
+                feature.addView(featureText, LinearLayout.LayoutParams(0, -2, 3f))
+                val artImage = ImageView(this).apply {
+                    setImageDrawable(graphics.load(art.resource, dp(120), dp(120)))
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    contentDescription = "Arte meteorológica: ${art.label}"
+                }
+                feature.addView(artImage, LinearLayout.LayoutParams(0, dp(125), 2f))
+                feature.setOnClickListener { open("conditions") }
+                column.addView(feature, LinearLayout.LayoutParams(-1, -2).apply {
+                    setMargins(dp(12), dp(6), dp(12), dp(6))
+                })
                 card(column, "Previsão horária • MET Norway  ›", hourly.lineSequence().take(4).joinToString("\n")) { open("hourly") }
                 card(column, "Previsão para cinco dias  ›", daily) { open("daily") }
                 card(column, "Avisos oficiais • INMET  ›", alerts) { open("alerts") }
+                card(column, "Localização • alterar ou permitir acesso  ›", weatherLocation.summary) { weatherLocation.showOptions() }
 
             }
             "hourly" -> card(column, "Próximas horas • MET Norway", hourly)
