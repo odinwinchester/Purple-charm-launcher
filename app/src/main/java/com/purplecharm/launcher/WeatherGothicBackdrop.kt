@@ -15,7 +15,11 @@ import kotlin.math.min
  * Drawn behind transparent weather panels; never modifies the original PNGs.
  * Day/night palettes are selected from the existing artwork catalog.
  */
-internal class WeatherGothicBackdrop(private val isDay: Boolean) : Drawable() {
+internal class WeatherGothicBackdrop(
+    private val isDay: Boolean,
+    private val weatherCode: Int? = null,
+    private val temperature: Double? = null
+) : Drawable() {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     override fun draw(canvas: Canvas) {
         val w = bounds.width().toFloat()
@@ -39,6 +43,54 @@ internal class WeatherGothicBackdrop(private val isDay: Boolean) : Drawable() {
             canvas.drawCircle(x, y, if (i % 8 == 0) 2.1f else 0.9f, paint)
         }
 
+
+        // Independent meteorological background: no changes to widget art or glass panels.
+        val rain = weatherCode == 61 || weatherCode == 95
+        val storm = weatherCode == 95
+        val cold = weatherCode == 71 || (temperature != null && temperature <= 12.0)
+        val cloudy = rain || cold || weatherCode == 1 || weatherCode == 2 ||
+            weatherCode == 3 || weatherCode == 45
+        paint.shader = null
+        paint.style = Paint.Style.FILL
+        paint.color = if (isDay) Color.argb(175, 225, 125, 255)
+            else Color.argb(190, 215, 178, 255)
+        canvas.drawCircle(w * 0.82f, h * 0.14f, w * 0.10f, paint)
+        if (!isDay) {
+            paint.color = Color.argb(135, 43, 18, 79)
+            canvas.drawCircle(w * 0.79f, h * 0.125f, w * 0.082f, paint)
+        }
+        if (cloudy) {
+            paint.color = Color.argb(145, 43, 21, 77)
+            for (i in 0..5) {
+                val x = w * (0.10f + i * 0.17f)
+                val y = h * (0.12f + (i % 3) * 0.025f)
+                canvas.drawOval(x - w * 0.13f, y - h * 0.018f,
+                    x + w * 0.13f, y + h * 0.018f, paint)
+            }
+        }
+        if (rain || cold) {
+            paint.color = Color.argb(110, 211, 177, 255)
+            paint.strokeWidth = 1.4f * (w / 390f)
+            for (i in 0 until 90) {
+                val x = (((i * 79 + 17) % 101) / 101f) * w
+                val y = (((i * 47 + 31) % 103) / 103f) * h
+                if (rain) canvas.drawLine(x, y, x - w * 0.013f, y + h * 0.014f, paint)
+                else canvas.drawCircle(x, y, if (i % 4 == 0) 2.2f else 1.2f, paint)
+            }
+        }
+        if (storm) {
+            paint.color = Color.argb(205, 236, 179, 255)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2.2f * (w / 390f)
+            val bolt = Path().apply {
+                moveTo(w * 0.27f, h * 0.15f)
+                lineTo(w * 0.22f, h * 0.21f)
+                lineTo(w * 0.27f, h * 0.21f)
+                lineTo(w * 0.19f, h * 0.31f)
+            }
+            canvas.drawPath(bolt, paint)
+            paint.style = Paint.Style.FILL
+        }
         val mid = w / 2f
         val scale = min(w, h) / 390f
         paint.style = Paint.Style.STROKE
