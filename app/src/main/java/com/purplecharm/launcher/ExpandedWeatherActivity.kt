@@ -38,7 +38,7 @@ class ExpandedWeatherActivity : Activity() {
     }
     private var page = "home"
     private var previewSlug: String? = null
-    private var smoked = true
+    private var smoked by lazy { prefs.getBoolean("weather_smoked_glass", true) }
     private var paused = false
     private var ambientAnimator: ObjectAnimator? = null
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
@@ -196,7 +196,7 @@ class ExpandedWeatherActivity : Activity() {
             })
             column.addView(android.widget.Button(this).apply {
                 text = if (smoked) "Violet Glass • fumê" else "Crystal Clear • vazado"
-                setOnClickListener { smoked = !smoked; render() }
+                setOnClickListener { smoked = !smoked; prefs.edit().putBoolean("weather_smoked_glass", smoked).apply(); render() }
             })
             column.addView(android.widget.Button(this).apply {
                 text = if (paused) "Retomar animação" else "Pausar animação"
