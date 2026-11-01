@@ -1988,6 +1988,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val selectedArt = WeatherArtworkCatalog.select(isSun, selectedSun, weatherArtIndex,
             phaseArtIndex, prefs.getString("gothic_manual_art", null), automaticWeather = mode == 0)
+        currentWeatherArtSlug = selectedArt.slug
         // PNGs remain intact; live data is outside the artwork and in the details dialog.
         val columns = horizontalIconColumns()
         // Panoramic alternatives open at full grid width; a deliberate per-art resize persists.
@@ -2019,7 +2020,7 @@ class MainActivity : Activity(), SensorEventListener {
         val editor = WeatherResizeLayout(this, artwork, columns, initialSpan,
             { active -> widgetResizeActive = active },
             { span -> prefs.edit().putInt(spanKey, span).apply() },
-            { weatherDetails() })
+            { expandedWeatherDetails() })
         editor.contentDescription = "Widget meteorológico Purple Charm. Toque para ver os detalhes; toque longo para redimensionar. Para configurar, abra Widgets no modo de edição."
         widgetEditor = editor
         panel.addView(editor, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -2027,7 +2028,7 @@ class MainActivity : Activity(), SensorEventListener {
             tag = "live_weather_readout"
             maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
             contentDescription = "Dados meteorológicos MET Norway para ${weatherLocation.summary}. Os valores impressos no PNG são ilustrativos."
-            setOnClickListener { weatherDetails() }
+            setOnClickListener { expandedWeatherDetails() }
         }
         panel.addView(liveWeatherLabel, LinearLayout.LayoutParams(-1, -2))
         panel.setOnClickListener { weatherDetails() }
@@ -2035,6 +2036,15 @@ class MainActivity : Activity(), SensorEventListener {
         celestialView = panel
         return panel.apply { layoutParams = ViewGroup.LayoutParams(-1, -1) }
     }
+
+    private fun expandedWeatherDetails() {
+        startActivity(android.content.Intent(this, ExpandedWeatherActivity::class.java).apply {
+            putExtra("art_slug", currentWeatherArtSlug)
+            putExtra("place", prefs.getString("gothic_weather_city", ""))
+        })
+    }
+
+    private var currentWeatherArtSlug: String? = null
 
     private fun weatherDetails() {
         val forecast = weatherClient.current()

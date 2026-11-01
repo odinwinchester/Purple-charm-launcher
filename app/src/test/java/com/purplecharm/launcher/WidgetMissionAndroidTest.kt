@@ -223,9 +223,9 @@ class WidgetMissionAndroidTest {
         seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
         val editor = field(a, "widgetEditor") as WeatherResizeLayout
         assertTrue(editor.performClick())
-        var details = ShadowAlertDialog.getLatestAlertDialog()
-        assertEquals("Previsão real • MET Norway", shadowOf(details).title.toString())
-        details.dismiss()
+        val launched = org.robolectric.Shadows.shadowOf(a).nextStartedActivity
+        assertNotNull("Widget should open expanded weather screen", launched)
+        assertEquals(ExpandedWeatherActivity::class.java.name, launched.component?.className)
 
         assertTrue(editor.performLongClick())
         assertTrue(editor.isEditing)
