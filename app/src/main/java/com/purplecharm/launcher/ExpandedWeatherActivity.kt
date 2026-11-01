@@ -1,6 +1,9 @@
 package com.purplecharm.launcher
 
 import android.app.Activity
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.view.View
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -37,6 +40,7 @@ class ExpandedWeatherActivity : Activity() {
     private var previewSlug: String? = null
     private var smoked = true
     private var paused = false
+    private var ambientAnimator: ObjectAnimator? = null
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 
     // Fully cut-out panels: violet outline only, no opaque fill.
@@ -98,6 +102,8 @@ class ExpandedWeatherActivity : Activity() {
     }
 
     override fun onStop() {
+        ambientAnimator?.cancel()
+        ambientAnimator = null
         weatherLocation.stop()
         super.onStop()
     }
@@ -115,12 +121,27 @@ class ExpandedWeatherActivity : Activity() {
     }
 
     private fun render() {
+        ambientAnimator?.cancel()
+        ambientAnimator = null
         val art = WeatherArtworkCatalog.all.firstOrNull {
             it.slug == (previewSlug ?: intent.getStringExtra("art_slug"))
         } ?: WeatherArtworkCatalog.all.first()
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(12, 6, 29))
             background = WeatherGothicBackdrop(art.kind == WeatherArtworkCatalog.Kind.SOLAR || (art.kind == WeatherArtworkCatalog.Kind.ECLIPSE && art.slug.contains("solar")))
+        }
+        val ambient = View(this).apply {
+            setBackgroundColor(Color.rgb(116, 46, 164))
+            alpha = 0.03f
+        }
+        root.addView(ambient, FrameLayout.LayoutParams(-1, -1))
+        if (!paused) {
+            ambientAnimator = ObjectAnimator.ofFloat(ambient, View.ALPHA, 0.02f, 0.20f).apply {
+                duration = 2600L
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+                start()
+            }
         }
         val scroll = ScrollView(this).apply {
             isFillViewport = true
