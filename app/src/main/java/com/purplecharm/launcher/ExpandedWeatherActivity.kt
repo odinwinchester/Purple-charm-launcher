@@ -34,13 +34,11 @@ class ExpandedWeatherActivity : Activity() {
         }
     }
     private var page = "home"
-    private var smoked = true
-    private var previewSlug: String? = null
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 
     // Fully cut-out panels: violet outline only, no opaque fill.
     private fun glass(): GradientDrawable = GradientDrawable().apply {
-        setColor(if (smoked) Color.argb(170, 52, 20, 80) else Color.TRANSPARENT)
+        setColor(Color.argb(170, 52, 20, 80))
         cornerRadius = dp(18).toFloat()
         setStroke(dp(1), Color.argb(190, 193, 146, 239))
     }
@@ -83,7 +81,6 @@ class ExpandedWeatherActivity : Activity() {
         window.decorView.setBackgroundColor(Color.rgb(12, 6, 29))
         window.statusBarColor = Color.rgb(20, 10, 34)
         window.navigationBarColor = Color.rgb(20, 10, 34)
-        smoked = prefs.getBoolean("weather_smoked_glass", true)
         render()
         // First visit: ask through Android's own permission dialog. The user may
         // deny it and still choose a city manually from the location options.
@@ -116,7 +113,7 @@ class ExpandedWeatherActivity : Activity() {
 
     private fun render() {
         val art = WeatherArtworkCatalog.all.firstOrNull {
-            it.slug == (previewSlug ?: intent.getStringExtra("art_slug"))
+            it.slug == intent.getStringExtra("art_slug")
         } ?: WeatherArtworkCatalog.all.first()
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(12, 6, 29))
@@ -153,35 +150,19 @@ class ExpandedWeatherActivity : Activity() {
             LinearLayout.LayoutParams(0, -2, 1f))
         column.addView(top)
 
-        if (page == "home") {
-            val controls = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(12), dp(4), dp(12), dp(4))
-            }
-            fun control(label: String, click: () -> Unit): TextView = text(label, 14f, true).apply {
-                gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    setColor(Color.argb(170, 45, 17, 69))
-                    cornerRadius = dp(22).toFloat()
-                    setStroke(dp(1), Color.rgb(191, 112, 245))
-                }
-                setOnClickListener { click() }
-            }
-            controls.addView(control(if (smoked) "Violet Glass • fumê" else "Crystal Clear • vazado") {
-                smoked = !smoked
-                prefs.edit().putBoolean("weather_smoked_glass", smoked).apply()
-                render()
-            })
-            controls.addView(control("Pré-visualizar um dos 26 cenários") {
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("Cenário de teste • previsão real preservada")
-                    .setItems(arrayOf("Automático") + WeatherArtworkCatalog.all.map { it.label }) { _, index ->
-                        previewSlug = if (index == 0) null else WeatherArtworkCatalog.all[index - 1].slug
-                        render()
-                    }.show()
-            })
-            column.addView(controls)
+        // Restore the approved original artwork above the forecast cards.
+        val hero = ImageView(this).apply {
+            setImageDrawable(graphics.load(
+                art.resource, resources.displayMetrics.widthPixels,
+                (resources.displayMetrics.heightPixels * 0.45f).roundToInt()
+            ))
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+            contentDescription = "Arte original: ${art.label}"
         }
+        if (page == "home") column.addView(hero, LinearLayout.LayoutParams(-1, -2).apply {
+            setMargins(dp(12), dp(4), dp(12), dp(4))
+        })
 
         val current = weather.current()
         val place = prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
@@ -203,7 +184,7 @@ class ExpandedWeatherActivity : Activity() {
         }.ifEmpty { "Previsão horária indisponível. Configure a localização para consultar o MET Norway." }
         val daily = upcoming.groupBy {
             Instant.ofEpochMilli(it.time).atZone(ZoneId.systemDefault()).toLocalDate()
-        }.entries.take(5).joinToString("\\n") { (date, points) ->
+        }.entries.take(5).joinToString("\n") { (date, points) ->
             val low = points.minOf { it.temperature }.roundToInt()
             val high = points.maxOf { it.temperature }.roundToInt()
             "${date.dayOfMonth}/${date.monthValue}   ${low}° / ${high}°C   ${points.first().description}"
