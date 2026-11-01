@@ -175,57 +175,8 @@ class ExpandedWeatherActivity : Activity() {
             LinearLayout.LayoutParams(0, -2, 1f))
         column.addView(top)
 
-        if (page == "home") {
-            val controls = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(12), dp(4), dp(12), dp(4))
-            }
-            fun chip(label: String, action: () -> Unit): TextView = text(label, 12f, true).apply {
-                gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    setColor(Color.argb(185, 68, 24, 104))
-                    cornerRadius = dp(22).toFloat()
-                    setStroke(dp(1), Color.rgb(207, 137, 255))
-                }
-                setOnClickListener { action() }
-                setPadding(dp(9), dp(10), dp(9), dp(10))
-            }
-            fun strip(vararg entries: Pair<String, () -> Unit>) {
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER
-                }
-                entries.forEach { (label, action) ->
-                    row.addView(chip(label, action), LinearLayout.LayoutParams(0, -2, 1f).apply {
-                        setMargins(dp(3), dp(3), dp(3), dp(3))
-                    })
-                }
-                controls.addView(row)
-            }
-            fun preview(slug: String?) { previewSlug = slug; render() }
-            strip(
-                "☀ Dia" to { preview("dia_limpo") },
-                "☾ Noite" to { preview("lua_03_lua_cheia_noite_limpa") },
-                "☂ Chuva" to { preview("sol_dia_chuvoso") }
-            )
-            strip(
-                "ϟ Tempestade" to { preview("sol_dia_chuvoso") },
-                "↻ Automático" to { preview(null) },
-                "◈ Estilo" to {
-                    smoked = !smoked
-                    prefs.edit().putBoolean("weather_smoked_glass", smoked).apply()
-                    render()
-                }
-            )
-            strip(
-                (if (smoked) "◈ Violet Glass • fumê" else "◇ Crystal Clear • vazado") to {
-                    smoked = !smoked
-                    prefs.edit().putBoolean("weather_smoked_glass", smoked).apply()
-                    render()
-                }
-            )
-            column.addView(controls)
-        }
+        // One compact style switch; no manual weather scenarios in the live forecast.
+        // The switch follows the first artwork panel below.
 
         val current = weather.current()
         val place = prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
@@ -294,6 +245,22 @@ class ExpandedWeatherActivity : Activity() {
                 feature.addView(artImage, LinearLayout.LayoutParams(0, dp(125), 2f))
                 feature.setOnClickListener { open("conditions") }
                 column.addView(feature, LinearLayout.LayoutParams(-1, -2).apply {
+                    setMargins(dp(12), dp(6), dp(12), dp(6))
+                })
+                val style = text(
+                    if (smoked) "✓ Violet Glass (fumê)     ◇ Crystal Clear (vazado)"
+                    else "◇ Violet Glass (fumê)     ✓ Crystal Clear (vazado)", 13f, true
+                ).apply {
+                    gravity = Gravity.CENTER
+                    background = glass()
+                    setOnClickListener {
+                        smoked = !smoked
+                        prefs.edit().putBoolean("weather_smoked_glass", smoked).apply()
+                        render()
+                    }
+                    contentDescription = "Alternar transparência entre vidro fumê e vazado"
+                }
+                column.addView(style, LinearLayout.LayoutParams(-1, -2).apply {
                     setMargins(dp(12), dp(6), dp(12), dp(6))
                 })
                 card(column, "Previsão horária • MET Norway  ›", hourly.lineSequence().take(4).joinToString("\n")) { open("hourly") }
