@@ -1988,6 +1988,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val selectedArt = WeatherArtworkCatalog.select(isSun, selectedSun, weatherArtIndex,
             phaseArtIndex, prefs.getString("gothic_manual_art", null), automaticWeather = mode == 0)
+        currentWeatherArtSlug = selectedArt.slug
         // PNGs remain intact; live data is outside the artwork and in the details dialog.
         val columns = horizontalIconColumns()
         // Panoramic alternatives open at full grid width; a deliberate per-art resize persists.
@@ -2037,6 +2038,15 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun weatherDetails() {
+        startActivity(android.content.Intent(this, ExpandedWeatherActivity::class.java).apply {
+            putExtra("art_slug", currentWeatherArtSlug)
+            putExtra("place", prefs.getString("gothic_weather_city", ""))
+        })
+    }
+
+    private var currentWeatherArtSlug: String? = null
+
+    private fun legacyWeatherDetails() {
         val forecast = weatherClient.current()
         val weatherActive = prefs.contains("gothic_weather_lat")
         val liveText = when {
