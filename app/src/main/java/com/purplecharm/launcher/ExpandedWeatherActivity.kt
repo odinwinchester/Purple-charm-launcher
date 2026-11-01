@@ -38,7 +38,7 @@ class ExpandedWeatherActivity : Activity() {
     }
     private var page = "home"
     private var previewSlug: String? = null
-    private var smoked by lazy { prefs.getBoolean("weather_smoked_glass", true) }
+    private var smoked: Boolean = true
     private var paused = false
     private var ambientAnimator: ObjectAnimator? = null
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
@@ -88,6 +88,7 @@ class ExpandedWeatherActivity : Activity() {
         window.decorView.setBackgroundColor(Color.rgb(12, 6, 29))
         window.statusBarColor = Color.rgb(20, 10, 34)
         window.navigationBarColor = Color.rgb(20, 10, 34)
+        smoked = prefs.getBoolean("weather_smoked_glass", true)
         render()
         // First visit: ask through Android's own permission dialog. The user may
         // deny it and still choose a city manually from the location options.
