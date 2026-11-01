@@ -114,10 +114,32 @@ class ExpandedWeatherActivity : Activity() {
         weatherLocation.onPermissionResult(requestCode)
     }
 
+    private fun liveArtwork(): WeatherArtworkCatalog.Art {
+        val forecast = weather.current()
+        val latitude = prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull()
+        val longitude = prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull()
+        val daylight = SolarDaylight.isDay(System.currentTimeMillis(), latitude, longitude)
+            ?: forecast?.isDay ?: true
+        val rainy = forecast?.code == 61 || forecast?.code == 95
+        val cold = forecast != null && (forecast.temperature <= 12 || forecast.code == 71)
+        val cloudy = forecast?.code == 2 || forecast?.code == 3 || forecast?.code == 45
+        val condition = when {
+            cold -> 3
+            rainy -> 2
+            cloudy -> 1
+            else -> 0
+        }
+        val sunStyle = when {
+            condition != 0 -> 2
+            (forecast?.temperature ?: 0.0) >= 30 -> 0
+            else -> 1
+        }
+        val phase = intArrayOf(1, 2, 3, 0)[prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)]
+        return WeatherArtworkCatalog.select(daylight, sunStyle, condition, phase, null)
+    }
+
     private fun render() {
-        val art = WeatherArtworkCatalog.all.firstOrNull {
-            it.slug == (previewSlug ?: intent.getStringExtra("art_slug"))
-        } ?: WeatherArtworkCatalog.all.first()
+        val art = WeatherArtworkCatalog.all.firstOrNull { it.slug == previewSlug } ?: liveArtwork()
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(12, 6, 29))
             background = WeatherGothicBackdrop(art.kind == WeatherArtworkCatalog.Kind.SOLAR || (art.kind == WeatherArtworkCatalog.Kind.ECLIPSE && art.slug.contains("solar")))
@@ -201,9 +223,9 @@ class ExpandedWeatherActivity : Activity() {
         val hourly = upcoming.take(12).joinToString("\n") {
             "${formatter.format(Instant.ofEpochMilli(it.time))}   ${it.temperature.roundToInt()}°C   ${it.description}"
         }.ifEmpty { "Previsão horária indisponível. Configure a localização para consultar o MET Norway." }
-        val daily = upcoming.groupBy {
+        val daily = weather.upcomingDays().groupBy {
             Instant.ofEpochMilli(it.time).atZone(ZoneId.systemDefault()).toLocalDate()
-        }.entries.take(5).joinToString("\\n") { (date, points) ->
+        }.entries.take(5).joinToString("\n") { (date, points) ->
             val low = points.minOf { it.temperature }.roundToInt()
             val high = points.maxOf { it.temperature }.roundToInt()
             "${date.dayOfMonth}/${date.monthValue}   ${low}° / ${high}°C   ${points.first().description}"
