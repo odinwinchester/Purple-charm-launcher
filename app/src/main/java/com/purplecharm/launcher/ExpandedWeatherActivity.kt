@@ -36,7 +36,6 @@ class ExpandedWeatherActivity : Activity() {
     private var page = "home"
     private var smoked = true
     private var previewSlug: String? = null
-    private var animationsPaused = false // Reserved for future animated scenery; static artwork does not animate.
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 
     // Fully cut-out panels: violet outline only, no opaque fill.
@@ -212,8 +211,9 @@ class ExpandedWeatherActivity : Activity() {
             strip(
                 "ϟ Tempestade" to { preview("sol_dia_chuvoso") },
                 "↻ Automático" to { preview(null) },
-                (if (animationsPaused) "▶ Retomar" else "Ⅱ Pausar") to {
-                    animationsPaused = !animationsPaused
+                "◈ Estilo" to {
+                    smoked = !smoked
+                    prefs.edit().putBoolean("weather_smoked_glass", smoked).apply()
                     render()
                 }
             )
@@ -262,11 +262,11 @@ class ExpandedWeatherActivity : Activity() {
                     background = glass()
                     setPadding(dp(8), dp(8), dp(8), dp(8))
                 }
-                val featureText = text("CONDIÇÕES ATUAIS\\n" +
+                val featureText = text("CONDIÇÕES ATUAIS\n" +
                     (current?.let { "${it.temperature.roundToInt()}°C" } ?: "—°C") +
-                    "\\n$place\\n" +
+                    "\n$place\n" +
                     (current?.description ?: "Aguardando previsão") +
-                    "\\nUmidade: " + (current?.humidity?.roundToInt()?.let { "$it%" } ?: "—") +
+                    "\nUmidade: " + (current?.humidity?.roundToInt()?.let { "$it%" } ?: "—") +
                     "  •  Vento: " + (current?.wind?.let { "${(it * 3.6).roundToInt()} km/h" } ?: "—"), 15f)
                 feature.addView(featureText, LinearLayout.LayoutParams(0, -2, 3f))
                 val artImage = ImageView(this).apply {
