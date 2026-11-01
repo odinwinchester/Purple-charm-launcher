@@ -2020,7 +2020,7 @@ class MainActivity : Activity(), SensorEventListener {
         val editor = WeatherResizeLayout(this, artwork, columns, initialSpan,
             { active -> widgetResizeActive = active },
             { span -> prefs.edit().putInt(spanKey, span).apply() },
-            { weatherDetails() })
+            { expandedWeatherDetails() })
         editor.contentDescription = "Widget meteorológico Purple Charm. Toque para ver os detalhes; toque longo para redimensionar. Para configurar, abra Widgets no modo de edição."
         widgetEditor = editor
         panel.addView(editor, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -2028,7 +2028,7 @@ class MainActivity : Activity(), SensorEventListener {
             tag = "live_weather_readout"
             maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
             contentDescription = "Dados meteorológicos MET Norway para ${weatherLocation.summary}. Os valores impressos no PNG são ilustrativos."
-            setOnClickListener { weatherDetails() }
+            setOnClickListener { expandedWeatherDetails() }
         }
         panel.addView(liveWeatherLabel, LinearLayout.LayoutParams(-1, -2))
         panel.setOnClickListener { weatherDetails() }
@@ -2037,7 +2037,7 @@ class MainActivity : Activity(), SensorEventListener {
         return panel.apply { layoutParams = ViewGroup.LayoutParams(-1, -1) }
     }
 
-    private fun weatherDetails() {
+    private fun expandedWeatherDetails() {
         startActivity(android.content.Intent(this, ExpandedWeatherActivity::class.java).apply {
             putExtra("art_slug", currentWeatherArtSlug)
             putExtra("place", prefs.getString("gothic_weather_city", ""))
@@ -2046,7 +2046,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     private var currentWeatherArtSlug: String? = null
 
-    private fun legacyWeatherDetails() {
+    private fun weatherDetails() {
         val forecast = weatherClient.current()
         val weatherActive = prefs.contains("gothic_weather_lat")
         val liveText = when {
