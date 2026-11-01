@@ -224,25 +224,30 @@ class ExpandedWeatherActivity : Activity() {
         fun open(destination: String) { page = destination; render() }
         when (page) {
             "home" -> {
+                // The original weather artwork is the complete first visual block,
+                // never a small thumbnail alongside duplicated weather information.
                 val feature = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
+                    orientation = LinearLayout.VERTICAL
                     background = glass()
-                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                    setPadding(dp(7), dp(7), dp(7), dp(7))
                 }
-                val featureText = text("CONDIÇÕES ATUAIS\n" +
-                    (current?.let { "${it.temperature.roundToInt()}°C" } ?: "—°C") +
-                    "\n$place\n" +
-                    (current?.description ?: "Aguardando previsão") +
-                    "\nUmidade: " + (current?.humidity?.roundToInt()?.let { "$it%" } ?: "—") +
-                    "  •  Vento: " + (current?.wind?.let { "${(it * 3.6).roundToInt()} km/h" } ?: "—"), 15f)
-                feature.addView(featureText, LinearLayout.LayoutParams(0, -2, 3f))
+                val heroWidth = resources.displayMetrics.widthPixels - dp(38)
+                val heroDrawable = graphics.load(art.resource, heroWidth, dp(180))
+                val aspect = heroDrawable.intrinsicWidth.toFloat() /
+                    heroDrawable.intrinsicHeight.coerceAtLeast(1)
+                val heroHeight = (heroWidth / aspect).roundToInt().coerceAtLeast(dp(90))
                 val artImage = ImageView(this).apply {
-                    setImageDrawable(graphics.load(art.resource, dp(120), dp(120)))
+                    setImageDrawable(heroDrawable)
                     scaleType = ImageView.ScaleType.FIT_CENTER
-                    contentDescription = "Arte meteorológica: ${art.label}"
+                    adjustViewBounds = true
+                    contentDescription = "Arte meteorológica original: ${art.label}. Valores impressos são ilustrativos."
                 }
-                feature.addView(artImage, LinearLayout.LayoutParams(0, dp(125), 2f))
+                feature.addView(artImage, LinearLayout.LayoutParams(-1, heroHeight))
+                // The PNG's printed values are illustrative. Real MET values are
+                // clearly separated instead of pretending the artwork is live.
+                feature.addView(text(
+                    "DADOS ATUAIS • MET NORWAY\\n" + conditions, 13f
+                ).apply { gravity = Gravity.CENTER_HORIZONTAL })
                 feature.setOnClickListener { open("conditions") }
                 column.addView(feature, LinearLayout.LayoutParams(-1, -2).apply {
                     setMargins(dp(12), dp(6), dp(12), dp(6))
