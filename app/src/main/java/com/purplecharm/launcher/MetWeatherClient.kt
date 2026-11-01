@@ -74,6 +74,12 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
         return cachedBody?.let { parseUpcoming(it, now) } ?: emptyList()
     }
 
+    /** Forecast points across the next five calendar days, independently of the hourly panel. */
+    fun upcomingDays(now: Long = System.currentTimeMillis()): List<WeatherForecast> {
+        if (location() == null || location() != prefs.getString("met_forecast_location", null)) return emptyList()
+        return cachedBody?.let { parseUpcomingDays(it, now) } ?: emptyList()
+    }
+
     fun refresh(force: Boolean = false, onChanged: () -> Unit): Boolean {
         val key = location() ?: return false
         val now = System.currentTimeMillis()
@@ -160,6 +166,20 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                 instant.optDouble("relative_humidity").takeIf { it.isFinite() },
                 instant.optDouble("wind_speed").takeIf { it.isFinite() }, symbol)
         }
+
+        internal fun parseUpcomingDays(body: String, now: Long): List<WeatherForecast> = try {
+            require(parse(body, now) != null)
+            val series = series(body)
+            val end = now + 6L * 24 * 60 * 60_000L
+            val result = mutableListOf<WeatherForecast>()
+            for (i in 0 until series.length()) {
+                val item = series.getJSONObject(i)
+                val time = Instant.parse(item.getString("time")).toEpochMilli()
+                if (time > end) break
+                if (time >= now) runCatching { decodePoint(item) }.getOrNull()?.let(result::add)
+            }
+            result
+        } catch (_: Exception) { emptyList() }
 
         internal fun parseUpcoming(body: String, now: Long): List<WeatherForecast> = try {
             // Do not revive stale or wrong-unit cache for the hourly panel.
