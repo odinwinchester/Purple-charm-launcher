@@ -34,11 +34,14 @@ class ExpandedWeatherActivity : Activity() {
         }
     }
     private var page = "home"
+    private var previewSlug: String? = null
+    private var smoked = true
+    private var paused = false
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 
     // Fully cut-out panels: violet outline only, no opaque fill.
     private fun glass(): GradientDrawable = GradientDrawable().apply {
-        setColor(Color.TRANSPARENT)
+        setColor(if (smoked) Color.argb(160, 36, 16, 58) else Color.TRANSPARENT)
         cornerRadius = dp(18).toFloat()
         setStroke(dp(1), Color.argb(190, 193, 146, 239))
     }
@@ -113,7 +116,7 @@ class ExpandedWeatherActivity : Activity() {
 
     private fun render() {
         val art = WeatherArtworkCatalog.all.firstOrNull {
-            it.slug == intent.getStringExtra("art_slug")
+            it.slug == (previewSlug ?: intent.getStringExtra("art_slug"))
         } ?: WeatherArtworkCatalog.all.first()
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(12, 6, 29))
@@ -149,6 +152,37 @@ class ExpandedWeatherActivity : Activity() {
         }, 18f, true),
             LinearLayout.LayoutParams(0, -2, 1f))
         column.addView(top)
+        if (page == "home") {
+            val choices = listOf("Automático") + WeatherArtworkCatalog.all.map { it.label }
+            val picker = android.widget.Spinner(this).apply {
+                adapter = android.widget.ArrayAdapter(
+                    this@ExpandedWeatherActivity,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    choices
+                )
+                setSelection(previewSlug?.let { slug ->
+                    WeatherArtworkCatalog.all.indexOfFirst { it.slug == slug } + 1
+                } ?: 0)
+            }
+            column.addView(picker)
+            column.addView(android.widget.Button(this).apply {
+                text = "Aplicar cenário de teste"
+                setOnClickListener {
+                    previewSlug = if (picker.selectedItemPosition == 0) null
+                        else WeatherArtworkCatalog.all[picker.selectedItemPosition - 1].slug
+                    render()
+                }
+            })
+            column.addView(android.widget.Button(this).apply {
+                text = if (smoked) "Violet Glass • fumê" else "Crystal Clear • vazado"
+                setOnClickListener { smoked = !smoked; render() }
+            })
+            column.addView(android.widget.Button(this).apply {
+                text = if (paused) "Retomar animação" else "Pausar animação"
+                setOnClickListener { paused = !paused; render() }
+            })
+            column.addView(text("Prévia: apenas a arte muda; previsão continua real.", 12f))
+        }
 
         // Hero image is in the document flow and cannot overlap forecast cards.
         val hero = ImageView(this).apply {
