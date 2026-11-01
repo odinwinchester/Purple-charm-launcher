@@ -52,13 +52,8 @@ internal class WeatherGothicBackdrop(
             weatherCode == 3 || weatherCode == 45
         paint.shader = null
         paint.style = Paint.Style.FILL
-        paint.color = if (isDay) Color.argb(175, 225, 125, 255)
-            else Color.argb(190, 215, 178, 255)
-        canvas.drawCircle(w * 0.82f, h * 0.14f, w * 0.10f, paint)
-        if (!isDay) {
-            paint.color = Color.argb(135, 43, 18, 79)
-            canvas.drawCircle(w * 0.79f, h * 0.125f, w * 0.082f, paint)
-        }
+        // No synthetic Sun/Moon: the authentic original is displayed by the
+        // weather artwork panel. Keep the sky clear for that artwork.
         if (cloudy) {
             paint.color = Color.argb(145, 43, 21, 77)
             for (i in 0..5) {
@@ -136,6 +131,45 @@ internal class WeatherGothicBackdrop(
             canvas.drawRoundRect(w * 0.63f + drift, y, w * 0.77f + drift,
                 y + h * 0.023f, w * 0.014f, w * 0.014f, paint)
         }
+        // Lightweight shared landscape details; no additional bitmap copies.
+        // Water reflection and crystal silhouettes extend the original violet theme.
+        paint.shader = LinearGradient(
+            w * 0.5f, h * 0.78f, w * 0.5f, h,
+            intArrayOf(Color.argb(190, 64, 22, 100),
+                Color.argb(215, 20, 8, 52), Color.argb(240, 9, 5, 30)),
+            null, Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(0f, h * 0.80f, w, h, paint)
+        paint.shader = null
+        paint.color = Color.argb(125, 219, 114, 255)
+        for (i in 0 until 24) {
+            val y = h * (0.82f + i * 0.007f)
+            val spread = w * (0.08f + (i % 7) * 0.024f)
+            canvas.drawRoundRect(w * 0.70f - spread, y,
+                w * 0.70f + spread, y + h * 0.0015f,
+                w * 0.005f, w * 0.005f, paint)
+        }
+        fun crystal(cx: Float, baseY: Float, size: Float) {
+            paint.color = Color.argb(190, 124, 40, 207)
+            val shape = Path().apply {
+                moveTo(cx, baseY - size)
+                lineTo(cx + size * 0.45f, baseY - size * 0.34f)
+                lineTo(cx + size * 0.32f, baseY)
+                lineTo(cx - size * 0.33f, baseY)
+                lineTo(cx - size * 0.45f, baseY - size * 0.34f)
+                close()
+            }
+            canvas.drawPath(shape, paint)
+            paint.color = Color.argb(175, 240, 165, 255)
+            paint.strokeWidth = 1.2f * scale
+            paint.style = Paint.Style.STROKE
+            canvas.drawLine(cx, baseY - size, cx, baseY - size * 0.08f, paint)
+            paint.style = Paint.Style.FILL
+        }
+        crystal(w * 0.10f, h * 0.96f, w * 0.10f)
+        crystal(w * 0.18f, h * 0.98f, w * 0.06f)
+        crystal(w * 0.91f, h * 0.96f, w * 0.12f)
+        crystal(w * 0.84f, h * 0.98f, w * 0.06f)
         paint.style = Paint.Style.FILL
     }
     override fun setAlpha(alpha: Int) { /* Background is intentionally opaque. */ }
