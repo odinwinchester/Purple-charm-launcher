@@ -263,7 +263,36 @@ class ExpandedWeatherActivity : Activity() {
                 column.addView(style, LinearLayout.LayoutParams(-1, -2).apply {
                     setMargins(dp(12), dp(6), dp(12), dp(6))
                 })
-                card(column, "Previsão horária • MET Norway  ›", hourly.lineSequence().take(4).joinToString("\n")) { open("hourly") }
+                val hourlyPanel = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = glass()
+                    setPadding(dp(8), dp(7), dp(8), dp(7))
+                }
+                val hourlyTitle = text("◷  Previsão horária • MET Norway  ›", 17f, true)
+                hourlyPanel.addView(hourlyTitle)
+                val hourlyRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                if (upcoming.isEmpty()) {
+                    hourlyRow.addView(text("Previsão indisponível", 13f))
+                } else {
+                    upcoming.take(4).forEach { point ->
+                        val symbol = when (point.code) {
+                            61 -> "☂"
+                            95 -> "ϟ"
+                            3, 2, 1 -> "☁"
+                            else -> "☀"
+                        }
+                        val hour = formatter.format(Instant.ofEpochMilli(point.time))
+                        val cell = text("$hour\n$symbol\n${point.temperature.roundToInt()}°", 14f, true).apply {
+                            gravity = Gravity.CENTER
+                        }
+                        hourlyRow.addView(cell, LinearLayout.LayoutParams(0, -2, 1f))
+                    }
+                }
+                hourlyPanel.addView(hourlyRow)
+                hourlyPanel.setOnClickListener { open("hourly") }
+                column.addView(hourlyPanel, LinearLayout.LayoutParams(-1, -2).apply {
+                    setMargins(dp(12), dp(6), dp(12), dp(6))
+                })
                 card(column, "Previsão para cinco dias  ›", daily) { open("daily") }
                 card(column, "Avisos oficiais • INMET  ›", alerts) { open("alerts") }
                 card(column, "Índice UV e qualidade do ar", air)
