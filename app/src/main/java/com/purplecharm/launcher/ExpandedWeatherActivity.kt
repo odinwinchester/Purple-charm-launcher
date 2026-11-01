@@ -252,6 +252,23 @@ class ExpandedWeatherActivity : Activity() {
             val high = points.maxOf { it.temperature }.roundToInt()
             "${date.dayOfMonth}/${date.monthValue}   ${low}° / ${high}°C   ${points.first().description}"
         }.ifEmpty { "Previsão de cinco dias indisponível. Aguardando dados reais do MET Norway." }
+        fun number(value: Double?, suffix: String, multiplier: Double = 1.0): String =
+            value?.let { "${(it * multiplier).roundToInt()}$suffix" } ?: "indisponível"
+        val nextRain = upcoming.firstOrNull { it.rainProbability != null || it.precipitationMm != null }
+        val rain = "Probabilidade: " + number(nextRain?.rainProbability, "%") +
+            "\nPrecipitação prevista: " + number(nextRain?.precipitationMm, " mm") +
+            "\nReferência: próximo período disponível • MET Norway"
+        val windDetails = "Velocidade: " + number(current?.wind, " km/h", 3.6) +
+            "\nDireção de origem: " + number(current?.windDirection, "°") +
+            "\nRajadas: " + number(current?.gust, " km/h", 3.6) +
+            "\nSensação térmica: indisponível na integração atual"
+        val atmosphere = "Pressão atmosférica: " + number(current?.pressure, " hPa") +
+            "\nPonto de orvalho: " + number(current?.dewPoint, "°C") +
+            "\nUmidade relativa: " + number(current?.humidity, "%") +
+            "\nVisibilidade: " + number(current?.visibilityMeters, " m")
+        val air = "Índice UV: aguardando fonte específica" +
+            "\nQualidade do ar (AQI): aguardando fonte específica" +
+            "\nNenhum valor estimado ou fictício é apresentado."
         val alerts = "Consulta oficial ao INMET ainda não integrada. Não é possível afirmar que não existem alertas."
         fun open(destination: String) { page = destination; render() }
         when (page) {
@@ -282,6 +299,10 @@ class ExpandedWeatherActivity : Activity() {
                 card(column, "Previsão horária • MET Norway  ›", hourly.lineSequence().take(4).joinToString("\n")) { open("hourly") }
                 card(column, "Previsão para cinco dias  ›", daily) { open("daily") }
                 card(column, "Avisos oficiais • INMET  ›", alerts) { open("alerts") }
+                card(column, "Índice UV e qualidade do ar", air)
+                card(column, "Probabilidade e volume de chuva", rain)
+                card(column, "Vento e sensação térmica", windDetails)
+                card(column, "Detalhes da atmosfera", atmosphere)
                 card(column, "Localização • alterar ou permitir acesso  ›", weatherLocation.summary) { weatherLocation.showOptions() }
 
             }
