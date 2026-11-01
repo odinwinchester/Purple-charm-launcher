@@ -10,7 +10,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 internal data class WeatherForecast(
     val time: Long, val temperature: Double, val humidity: Double?,
-    val wind: Double?, val symbol: String
+    val wind: Double?, val symbol: String,
+    val precipitationMm: Double? = null, val rainProbability: Double? = null,
+    val windDirection: Double? = null, val gust: Double? = null,
+    val pressure: Double? = null, val dewPoint: Double? = null,
+    val visibilityMeters: Double? = null
 ) {
     val code: Int get() = MetSymbols.code(symbol)
     val isDay: Boolean? get() = when {
@@ -162,9 +166,24 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                     ?.optString("symbol_code")?.takeIf { it.isNotEmpty() } } ?: ""
             val temperature = instant.getDouble("air_temperature")
             require(temperature.isFinite())
-            return WeatherForecast(Instant.parse(point.getString("time")).toEpochMilli(), temperature,
-                instant.optDouble("relative_humidity").takeIf { it.isFinite() },
-                instant.optDouble("wind_speed").takeIf { it.isFinite() }, symbol)
+            val precipitation = listOf("next_1_hours", "next_6_hours", "next_12_hours")
+                .firstNotNullOfOrNull { period ->
+                    data.optJSONObject(period)?.optJSONObject("details")
+                        ?.optDouble("precipitation_amount", Double.NaN)?.takeIf { it.isFinite() }
+                }
+            val probability = listOf("next_1_hours", "next_6_hours", "next_12_hours")
+                .firstNotNullOfOrNull { period ->
+                    data.optJSONObject(period)?.optJSONObject("details")
+                        ?.optDouble("probability_of_precipitation", Double.NaN)?.takeIf { it.isFinite() }
+                }
+            fun detail(key: String) = instant.optDouble(key, Double.NaN).takeIf { it.isFinite() }
+            return WeatherForecast(
+                Instant.parse(point.getString("time")).toEpochMilli(), temperature,
+                detail("relative_humidity"), detail("wind_speed"), symbol,
+                precipitation, probability, detail("wind_from_direction"),
+                detail("wind_speed_of_gust"), detail("air_pressure_at_sea_level"),
+                detail("dew_point_temperature"), detail("visibility")
+            )
         }
 
         internal fun parseUpcomingDays(body: String, now: Long): List<WeatherForecast> = try {
