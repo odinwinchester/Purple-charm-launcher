@@ -142,7 +142,12 @@ class ExpandedWeatherActivity : Activity() {
         val art = WeatherArtworkCatalog.all.firstOrNull { it.slug == previewSlug } ?: liveArtwork()
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(12, 6, 29))
-            background = WeatherGothicBackdrop(art.kind == WeatherArtworkCatalog.Kind.SOLAR || (art.kind == WeatherArtworkCatalog.Kind.ECLIPSE && art.slug.contains("solar")))
+            background = WeatherGothicBackdrop(
+                art.kind == WeatherArtworkCatalog.Kind.SOLAR ||
+                    (art.kind == WeatherArtworkCatalog.Kind.ECLIPSE && art.slug.contains("solar")),
+                weather.current()?.code,
+                weather.current()?.temperature
+            )
         }
         val scroll = ScrollView(this).apply {
             isFillViewport = true
