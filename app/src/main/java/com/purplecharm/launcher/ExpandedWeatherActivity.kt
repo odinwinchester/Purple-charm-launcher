@@ -88,7 +88,7 @@ class ExpandedWeatherActivity : Activity() {
         // First visit: ask through Android's own permission dialog. The user may
         // deny it and still choose a city manually from the location options.
         if (!prefs.contains("gothic_weather_location_mode")) {
-            weatherLocation.requestAutomaticLocation()
+            weatherLocation.showOptions()
         }
     }
 
@@ -201,7 +201,9 @@ class ExpandedWeatherActivity : Activity() {
         val hourly = upcoming.take(12).joinToString("\n") {
             "${formatter.format(Instant.ofEpochMilli(it.time))}   ${it.temperature.roundToInt()}°C   ${it.description}"
         }.ifEmpty { "Previsão horária indisponível. Configure a localização para consultar o MET Norway." }
-        val daily = weather.daily().entries.joinToString("\n") { (date, points) ->
+        val daily = upcoming.groupBy {
+            Instant.ofEpochMilli(it.time).atZone(ZoneId.systemDefault()).toLocalDate()
+        }.entries.take(5).joinToString("\\n") { (date, points) ->
             val low = points.minOf { it.temperature }.roundToInt()
             val high = points.maxOf { it.temperature }.roundToInt()
             "${date.dayOfMonth}/${date.monthValue}   ${low}° / ${high}°C   ${points.first().description}"
