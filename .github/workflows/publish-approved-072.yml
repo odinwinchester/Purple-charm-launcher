@@ -97,7 +97,7 @@ jobs:
           APPROVED_SHA: 105ed722319c896b5d30cf39fafea5978fa5b33b
         run: |
           set -euo pipefail
-          if gh release view v0.7.2 >/dev/null 2>&1; then
+          if gh release view v0.7.2 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release v0.7.2 já existe; publicação duplicada bloqueada."
             exit 1
           fi
@@ -112,7 +112,7 @@ jobs:
 
           <!-- purple-charm-release-approved -->
           EOF
-          gh release create v0.7.2 dist/Purple-Charm-Crystal-Class-v0.7.2-STABLE.apk dist/release-metadata.json \
+          gh release create v0.7.2 --repo "$GITHUB_REPOSITORY" dist/Purple-Charm-Crystal-Class-v0.7.2-STABLE.apk dist/release-metadata.json \
             --title "Purple Charm Crystal Class v0.7.2" --notes-file "$RUNNER_TEMP/notes.md" --target "$APPROVED_SHA"
           RELEASE_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v0.7.2" --jq '.id')"
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
