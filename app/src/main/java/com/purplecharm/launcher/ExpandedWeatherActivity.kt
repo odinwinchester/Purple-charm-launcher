@@ -145,13 +145,17 @@ class ExpandedWeatherActivity : Activity() {
         val art = WeatherArtworkCatalog.all.firstOrNull { it.slug == previewSlug } ?: liveArtwork()
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(12, 6, 29))
-            background = WeatherGothicBackdrop(
-                art.kind == WeatherArtworkCatalog.Kind.SOLAR ||
-                    (art.kind == WeatherArtworkCatalog.Kind.ECLIPSE && art.slug.contains("solar")),
-                weather.current()?.code,
-                weather.current()?.temperature
-            )
+
         }
+        // Layer 1: approved static portrait castle art, behind every weather panel.
+        // CENTER_CROP fills the screen without distortion; the center castle stays visible.
+        root.addView(ImageView(this).apply {
+            setImageResource(R.drawable.purple_charm_camada1_castelo)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            contentDescription = null
+            importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, FrameLayout.LayoutParams(-1, -1))
+
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
