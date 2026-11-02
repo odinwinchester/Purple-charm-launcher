@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   discord:
-    if: ${{ !github.event.release.draft }}
+    # Desativado: anúncios centralizados em anunciar-release-discord.yml com trava idempotente.
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     steps:
       - name: Confirmar release com APK e compilacao aprovada na main
