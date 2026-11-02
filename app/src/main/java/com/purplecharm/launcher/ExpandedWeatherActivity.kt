@@ -95,6 +95,9 @@ class ExpandedWeatherActivity : Activity() {
     override fun onStart() {
         super.onStart()
         weatherLocation.start()
+        weather.refresh(onChanged = {
+            runOnUiThread { if (!isFinishing && !isDestroyed) render() }
+        })
     }
 
     override fun onStop() {
@@ -229,48 +232,42 @@ class ExpandedWeatherActivity : Activity() {
         fun open(destination: String) { page = destination; render() }
         when (page) {
             "home" -> {
-                // The original weather artwork is the complete first visual block,
-                // never a small thumbnail alongside duplicated weather information.
-                val feature = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    background = glass()
-                    setPadding(dp(7), dp(7), dp(7), dp(7))
+                // Layer 1 is exclusively the backdrop. Original widget PNGs are
+                // never embedded inside the Layer 2 glass panels.
+                card(column, "Condições atuais • MET Norway  ›", conditions) {
+                    open("conditions")
                 }
-                val heroWidth = resources.displayMetrics.widthPixels - dp(38)
-                val heroDrawable = graphics.load(art.resource, heroWidth, dp(180))
-                val aspect = heroDrawable.intrinsicWidth.toFloat() /
-                    heroDrawable.intrinsicHeight.coerceAtLeast(1)
-                val heroHeight = (heroWidth / aspect).roundToInt().coerceAtLeast(dp(90))
-                val artImage = ImageView(this).apply {
-                    setImageDrawable(heroDrawable)
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                    adjustViewBounds = true
-                    contentDescription = "Arte meteorológica original: ${art.label}. Valores impressos são ilustrativos."
-                }
-                feature.addView(artImage, LinearLayout.LayoutParams(-1, heroHeight))
-                // The PNG's printed values are illustrative. Real MET values are
-                // clearly separated instead of pretending the artwork is live.
-                feature.addView(text(
-                    "DADOS ATUAIS • MET NORWAY\\n" + conditions, 13f
-                ).apply { gravity = Gravity.CENTER_HORIZONTAL })
-                feature.setOnClickListener { open("conditions") }
-                column.addView(feature, LinearLayout.LayoutParams(-1, -2).apply {
-                    setMargins(dp(12), dp(6), dp(12), dp(6))
-                })
-                val style = text(
-                    if (smoked) "✓ Violet Glass (fumê)     ◇ Crystal Clear (vazado)"
-                    else "◇ Violet Glass (fumê)     ✓ Crystal Clear (vazado)", 13f, true
-                ).apply {
+                val styleRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER
-                    background = glass()
-                    setOnClickListener {
-                        smoked = !smoked
-                        prefs.edit().putBoolean("weather_smoked_glass", smoked).apply()
-                        render()
-                    }
-                    contentDescription = "Alternar transparência entre vidro fumê e vazado"
+                    setPadding(dp(4), dp(4), dp(4), dp(4))
                 }
-                column.addView(style, LinearLayout.LayoutParams(-1, -2).apply {
+                fun styleOption(label: String, selected: Boolean, value: Boolean): TextView =
+                    text((if (selected) "✓ " else "○ ") + label, 14f, selected).apply {
+                        gravity = Gravity.CENTER
+                        background = GradientDrawable().apply {
+                            setColor(if (selected) Color.argb(205, 73, 37, 108)
+                                else Color.argb(70, 35, 17, 63))
+                            cornerRadius = dp(14).toFloat()
+                            setStroke(dp(if (selected) 2 else 1),
+                                Color.argb(if (selected) 240 else 125, 202, 150, 246))
+                        }
+                        isClickable = true
+                        isFocusable = true
+                        contentDescription = "Selecionar estilo " + label
+                        setOnClickListener {
+                            if (smoked != value) {
+                                smoked = value
+                                prefs.edit().putBoolean("weather_smoked_glass", value).apply()
+                                render()
+                            }
+                        }
+                    }
+                styleRow.addView(styleOption("Fumê", smoked, true),
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(4) })
+                styleRow.addView(styleOption("Vazado", !smoked, false),
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(4) })
+                column.addView(styleRow, LinearLayout.LayoutParams(-1, -2).apply {
                     setMargins(dp(12), dp(6), dp(12), dp(6))
                 })
                 val hourlyPanel = LinearLayout(this).apply {
@@ -320,9 +317,5 @@ class ExpandedWeatherActivity : Activity() {
         scroll.addView(column)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
-        // Existing MET client refreshes asynchronously; rebuild only after completion.
-        weather.refresh(onChanged = {
-            runOnUiThread { if (!isFinishing && !isDestroyed) render() }
-        })
     }
 }
