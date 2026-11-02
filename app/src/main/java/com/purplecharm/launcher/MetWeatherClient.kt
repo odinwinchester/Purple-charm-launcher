@@ -10,7 +10,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 internal data class WeatherForecast(
     val time: Long, val temperature: Double, val humidity: Double?,
-    val wind: Double?, val symbol: String
+    val wind: Double?, val symbol: String,
+    val precipitationMm: Double? = null, val rainProbability: Double? = null,
+    val windDirection: Double? = null, val gust: Double? = null,
+    val pressure: Double? = null, val dewPoint: Double? = null,
+    val visibilityMeters: Double? = null
 ) {
     val code: Int get() = MetSymbols.code(symbol)
     val isDay: Boolean? get() = when {
@@ -72,6 +76,12 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
     fun upcoming(now: Long = System.currentTimeMillis()): List<WeatherForecast> {
         if (location() == null || location() != prefs.getString("met_forecast_location", null)) return emptyList()
         return cachedBody?.let { parseUpcoming(it, now) } ?: emptyList()
+    }
+
+    /** Forecast points across the next five calendar days, independently of the hourly panel. */
+    fun upcomingDays(now: Long = System.currentTimeMillis()): List<WeatherForecast> {
+        if (location() == null || location() != prefs.getString("met_forecast_location", null)) return emptyList()
+        return cachedBody?.let { parseUpcomingDays(it, now) } ?: emptyList()
     }
 
     fun refresh(force: Boolean = false, onChanged: () -> Unit): Boolean {
@@ -156,10 +166,39 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                     ?.optString("symbol_code")?.takeIf { it.isNotEmpty() } } ?: ""
             val temperature = instant.getDouble("air_temperature")
             require(temperature.isFinite())
-            return WeatherForecast(Instant.parse(point.getString("time")).toEpochMilli(), temperature,
-                instant.optDouble("relative_humidity").takeIf { it.isFinite() },
-                instant.optDouble("wind_speed").takeIf { it.isFinite() }, symbol)
+            val precipitation = listOf("next_1_hours", "next_6_hours", "next_12_hours")
+                .firstNotNullOfOrNull { period ->
+                    data.optJSONObject(period)?.optJSONObject("details")
+                        ?.optDouble("precipitation_amount", Double.NaN)?.takeIf { it.isFinite() }
+                }
+            val probability = listOf("next_1_hours", "next_6_hours", "next_12_hours")
+                .firstNotNullOfOrNull { period ->
+                    data.optJSONObject(period)?.optJSONObject("details")
+                        ?.optDouble("probability_of_precipitation", Double.NaN)?.takeIf { it.isFinite() }
+                }
+            fun detail(key: String) = instant.optDouble(key, Double.NaN).takeIf { it.isFinite() }
+            return WeatherForecast(
+                Instant.parse(point.getString("time")).toEpochMilli(), temperature,
+                detail("relative_humidity"), detail("wind_speed"), symbol,
+                precipitation, probability, detail("wind_from_direction"),
+                detail("wind_speed_of_gust"), detail("air_pressure_at_sea_level"),
+                detail("dew_point_temperature"), detail("visibility")
+            )
         }
+
+        internal fun parseUpcomingDays(body: String, now: Long): List<WeatherForecast> = try {
+            require(parse(body, now) != null)
+            val series = series(body)
+            val end = now + 6L * 24 * 60 * 60_000L
+            val result = mutableListOf<WeatherForecast>()
+            for (i in 0 until series.length()) {
+                val item = series.getJSONObject(i)
+                val time = Instant.parse(item.getString("time")).toEpochMilli()
+                if (time > end) break
+                if (time >= now) runCatching { decodePoint(item) }.getOrNull()?.let(result::add)
+            }
+            result
+        } catch (_: Exception) { emptyList() }
 
         internal fun parseUpcoming(body: String, now: Long): List<WeatherForecast> = try {
             // Do not revive stale or wrong-unit cache for the hourly panel.

@@ -40,7 +40,10 @@ class ExpandedWeatherActivity : Activity() {
 
     // Fully cut-out panels: violet outline only, no opaque fill.
     private fun glass(): GradientDrawable = GradientDrawable().apply {
-        setColor(if (smoked) Color.argb(170, 52, 20, 80) else Color.TRANSPARENT)
+        // Fumê: black with 10 percentage points less transparency (alpha 220 -> 246).
+        // Vazado: keep the existing appearance unchanged.
+        setColor(if (smoked) Color.argb(246, 0, 0, 0)
+            else Color.argb(130, 12, 5, 27))
         cornerRadius = dp(18).toFloat()
         setStroke(dp(1), Color.argb(190, 193, 146, 239))
     }
@@ -95,6 +98,9 @@ class ExpandedWeatherActivity : Activity() {
     override fun onStart() {
         super.onStart()
         weatherLocation.start()
+        weather.refresh(onChanged = {
+            runOnUiThread { if (!isFinishing && !isDestroyed) render() }
+        })
     }
 
     override fun onStop() {
@@ -114,14 +120,45 @@ class ExpandedWeatherActivity : Activity() {
         weatherLocation.onPermissionResult(requestCode)
     }
 
+    private fun liveArtwork(): WeatherArtworkCatalog.Art {
+        val forecast = weather.current()
+        val latitude = prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull()
+        val longitude = prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull()
+        val daylight = SolarDaylight.isDay(System.currentTimeMillis(), latitude, longitude)
+            ?: forecast?.isDay ?: true
+        val rainy = forecast?.code == 61 || forecast?.code == 95
+        val cold = forecast != null && (forecast.temperature <= 12 || forecast.code == 71)
+        val cloudy = forecast?.code == 2 || forecast?.code == 3 || forecast?.code == 45
+        val condition = when {
+            cold -> 3
+            rainy -> 2
+            cloudy -> 1
+            else -> 0
+        }
+        val sunStyle = when {
+            condition != 0 -> 2
+            (forecast?.temperature ?: 0.0) >= 30 -> 0
+            else -> 1
+        }
+        val phase = intArrayOf(1, 2, 3, 0)[prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)]
+        return WeatherArtworkCatalog.select(daylight, sunStyle, condition, phase, null)
+    }
+
     private fun render() {
-        val art = WeatherArtworkCatalog.all.firstOrNull {
-            it.slug == (previewSlug ?: intent.getStringExtra("art_slug"))
-        } ?: WeatherArtworkCatalog.all.first()
+        val art = WeatherArtworkCatalog.all.firstOrNull { it.slug == previewSlug } ?: liveArtwork()
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(12, 6, 29))
-            background = WeatherGothicBackdrop(art.kind == WeatherArtworkCatalog.Kind.SOLAR || (art.kind == WeatherArtworkCatalog.Kind.ECLIPSE && art.slug.contains("solar")))
+
         }
+        // Layer 1: approved static portrait castle art, behind every weather panel.
+        // CENTER_CROP fills the screen without distortion; the center castle stays visible.
+        root.addView(ImageView(this).apply {
+            setImageResource(R.drawable.purple_charm_camada1_castelo)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            contentDescription = null
+            importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, FrameLayout.LayoutParams(-1, -1))
+
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
@@ -153,35 +190,8 @@ class ExpandedWeatherActivity : Activity() {
             LinearLayout.LayoutParams(0, -2, 1f))
         column.addView(top)
 
-        if (page == "home") {
-            val controls = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(12), dp(4), dp(12), dp(4))
-            }
-            fun control(label: String, click: () -> Unit): TextView = text(label, 14f, true).apply {
-                gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    setColor(Color.argb(170, 45, 17, 69))
-                    cornerRadius = dp(22).toFloat()
-                    setStroke(dp(1), Color.rgb(191, 112, 245))
-                }
-                setOnClickListener { click() }
-            }
-            controls.addView(control(if (smoked) "Violet Glass • fumê" else "Crystal Clear • vazado") {
-                smoked = !smoked
-                prefs.edit().putBoolean("weather_smoked_glass", smoked).apply()
-                render()
-            })
-            controls.addView(control("Pré-visualizar um dos 26 cenários") {
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("Cenário de teste • previsão real preservada")
-                    .setItems(arrayOf("Automático") + WeatherArtworkCatalog.all.map { it.label }) { _, index ->
-                        previewSlug = if (index == 0) null else WeatherArtworkCatalog.all[index - 1].slug
-                        render()
-                    }.show()
-            })
-            column.addView(controls)
-        }
+        // One compact style switch; no manual weather scenarios in the live forecast.
+        // The switch follows the first artwork panel below.
 
         val current = weather.current()
         val place = prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
@@ -201,22 +211,109 @@ class ExpandedWeatherActivity : Activity() {
         val hourly = upcoming.take(12).joinToString("\n") {
             "${formatter.format(Instant.ofEpochMilli(it.time))}   ${it.temperature.roundToInt()}°C   ${it.description}"
         }.ifEmpty { "Previsão horária indisponível. Configure a localização para consultar o MET Norway." }
-        val daily = upcoming.groupBy {
+        val daily = weather.upcomingDays().groupBy {
             Instant.ofEpochMilli(it.time).atZone(ZoneId.systemDefault()).toLocalDate()
-        }.entries.take(5).joinToString("\\n") { (date, points) ->
+        }.entries.take(5).joinToString("\n") { (date, points) ->
             val low = points.minOf { it.temperature }.roundToInt()
             val high = points.maxOf { it.temperature }.roundToInt()
             "${date.dayOfMonth}/${date.monthValue}   ${low}° / ${high}°C   ${points.first().description}"
         }.ifEmpty { "Previsão de cinco dias indisponível. Aguardando dados reais do MET Norway." }
+        fun number(value: Double?, suffix: String, multiplier: Double = 1.0): String =
+            value?.let { "${(it * multiplier).roundToInt()}$suffix" } ?: "indisponível"
+        val nextRain = upcoming.firstOrNull { it.rainProbability != null || it.precipitationMm != null }
+        val rain = "Probabilidade: " + number(nextRain?.rainProbability, "%") +
+            "\nPrecipitação prevista: " + number(nextRain?.precipitationMm, " mm") +
+            "\nReferência: próximo período disponível • MET Norway"
+        val windDetails = "Velocidade: " + number(current?.wind, " km/h", 3.6) +
+            "\nDireção de origem: " + number(current?.windDirection, "°") +
+            "\nRajadas: " + number(current?.gust, " km/h", 3.6) +
+            "\nSensação térmica: indisponível na integração atual"
+        val atmosphere = "Pressão atmosférica: " + number(current?.pressure, " hPa") +
+            "\nPonto de orvalho: " + number(current?.dewPoint, "°C") +
+            "\nUmidade relativa: " + number(current?.humidity, "%") +
+            "\nVisibilidade: " + number(current?.visibilityMeters, " m")
+        val air = "Índice UV: aguardando fonte específica" +
+            "\nQualidade do ar (AQI): aguardando fonte específica" +
+            "\nNenhum valor estimado ou fictício é apresentado."
         val alerts = "Consulta oficial ao INMET ainda não integrada. Não é possível afirmar que não existem alertas."
         fun open(destination: String) { page = destination; render() }
         when (page) {
             "home" -> {
-                card(column, "Localização • alterar ou permitir acesso  ›", weatherLocation.summary) { weatherLocation.showOptions() }
-                card(column, "Condições atuais", conditions) { open("conditions") }
-                card(column, "Previsão horária • MET Norway  ›", hourly.lineSequence().take(4).joinToString("\n")) { open("hourly") }
+                // Layer 1 is exclusively the backdrop. Original widget PNGs are
+                // never embedded inside the Layer 2 glass panels.
+                card(column, "Condições atuais • MET Norway  ›", conditions) {
+                    open("conditions")
+                }
+                val styleRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER
+                    setPadding(dp(4), dp(4), dp(4), dp(4))
+                }
+                fun styleOption(label: String, selected: Boolean, value: Boolean): TextView =
+                    text((if (selected) "✓ " else "○ ") + label, 14f, selected).apply {
+                        gravity = Gravity.CENTER
+                        background = GradientDrawable().apply {
+                            setColor(if (selected) Color.argb(205, 73, 37, 108)
+                                else Color.argb(70, 35, 17, 63))
+                            cornerRadius = dp(14).toFloat()
+                            setStroke(dp(if (selected) 2 else 1),
+                                Color.argb(if (selected) 240 else 125, 202, 150, 246))
+                        }
+                        isClickable = true
+                        isFocusable = true
+                        contentDescription = "Selecionar estilo " + label
+                        setOnClickListener {
+                            if (smoked != value) {
+                                smoked = value
+                                prefs.edit().putBoolean("weather_smoked_glass", value).apply()
+                                render()
+                            }
+                        }
+                    }
+                styleRow.addView(styleOption("Fumê", smoked, true),
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(4) })
+                styleRow.addView(styleOption("Vazado", !smoked, false),
+                    LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(4) })
+                column.addView(styleRow, LinearLayout.LayoutParams(-1, -2).apply {
+                    setMargins(dp(12), dp(6), dp(12), dp(6))
+                })
+                val hourlyPanel = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = glass()
+                    setPadding(dp(8), dp(7), dp(8), dp(7))
+                }
+                val hourlyTitle = text("◷  Previsão horária • MET Norway  ›", 17f, true)
+                hourlyPanel.addView(hourlyTitle)
+                val hourlyRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                if (upcoming.isEmpty()) {
+                    hourlyRow.addView(text("Previsão indisponível", 13f))
+                } else {
+                    upcoming.take(4).forEach { point ->
+                        val symbol = when (point.code) {
+                            61 -> "☂"
+                            95 -> "ϟ"
+                            3, 2, 1 -> "☁"
+                            else -> "☀"
+                        }
+                        val hour = formatter.format(Instant.ofEpochMilli(point.time))
+                        val cell = text("$hour\n$symbol\n${point.temperature.roundToInt()}°", 14f, true).apply {
+                            gravity = Gravity.CENTER
+                        }
+                        hourlyRow.addView(cell, LinearLayout.LayoutParams(0, -2, 1f))
+                    }
+                }
+                hourlyPanel.addView(hourlyRow)
+                hourlyPanel.setOnClickListener { open("hourly") }
+                column.addView(hourlyPanel, LinearLayout.LayoutParams(-1, -2).apply {
+                    setMargins(dp(12), dp(6), dp(12), dp(6))
+                })
                 card(column, "Previsão para cinco dias  ›", daily) { open("daily") }
                 card(column, "Avisos oficiais • INMET  ›", alerts) { open("alerts") }
+                card(column, "Índice UV e qualidade do ar", air)
+                card(column, "Probabilidade e volume de chuva", rain)
+                card(column, "Vento e sensação térmica", windDetails)
+                card(column, "Detalhes da atmosfera", atmosphere)
+                card(column, "Localização • alterar ou permitir acesso  ›", weatherLocation.summary) { weatherLocation.showOptions() }
 
             }
             "hourly" -> card(column, "Próximas horas • MET Norway", hourly)
@@ -227,9 +324,5 @@ class ExpandedWeatherActivity : Activity() {
         scroll.addView(column)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
-        // Existing MET client refreshes asynchronously; rebuild only after completion.
-        weather.refresh(onChanged = {
-            runOnUiThread { if (!isFinishing && !isDestroyed) render() }
-        })
     }
 }
