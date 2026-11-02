@@ -40,7 +40,10 @@ class ExpandedWeatherActivity : Activity() {
 
     // Fully cut-out panels: violet outline only, no opaque fill.
     private fun glass(): GradientDrawable = GradientDrawable().apply {
-        setColor(if (smoked) Color.argb(170, 52, 20, 80) else Color.TRANSPARENT)
+        // Both styles need readable white text over the luminous castle.
+        // Fumê remains denser; Vazado stays translucent with a subtle dark veil.
+        setColor(if (smoked) Color.argb(220, 25, 10, 43)
+            else Color.argb(130, 12, 5, 27))
         cornerRadius = dp(18).toFloat()
         setStroke(dp(1), Color.argb(190, 193, 146, 239))
     }
