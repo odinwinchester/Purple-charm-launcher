@@ -81,7 +81,7 @@ class ConsolidationAndroidTest {
             assertEquals(Color.argb(242, 18, 8, 29), (panel.background as GradientDrawable).color!!.defaultColor)
             val viewport = grid.parent as ScrollView
             val rows = ((count + 2) / 3).coerceIn(1, 2)
-            assertEquals((rows * 88 * a.resources.displayMetrics.density).toInt(), viewport.layoutParams.height)
+            assertEquals((rows * 99 * a.resources.displayMetrics.density).toInt(), viewport.layoutParams.height)
             assertEquals(before, prefs().getString("workspace_folders_v1", null))
             dialog.dismiss(); c.pause().stop().destroy()
         }
