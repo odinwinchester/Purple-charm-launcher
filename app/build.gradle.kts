@@ -17,6 +17,16 @@ android {
         testInstrumentationRunner = "com.purplecharm.launcher.UpgradeProbe"
     }
 
+    // Debug builds install alongside the signed production launcher.
+    buildTypes.getByName("debug") {
+        applicationIdSuffix = ".test"
+        versionNameSuffix = "-TEST"
+        manifestPlaceholders["launcherLabel"] = "Purple Charm TEST"
+    }
+    buildTypes.getByName("release") {
+        manifestPlaceholders["launcherLabel"] = "Purple Charm Crystal Class"
+    }
+
     val signingPath = providers.environmentVariable("PURPLE_KEYSTORE_PATH").orNull
     if (!signingPath.isNullOrBlank()) {
         signingConfigs.create("stable") {
