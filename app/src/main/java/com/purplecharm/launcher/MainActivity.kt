@@ -823,11 +823,15 @@ class MainActivity : Activity(), SensorEventListener {
             })
         }
         if (category == "Tema") {
-        option("✦ Máscara para ícones sem tema: " +
-            if (setting("fallback_skin", "original") == "ghost") "Cristal Ghost Fire" else "Original") {
-            chooseSetting("Ícones sem arte original", "fallback_skin",
-                arrayOf("Ícone original do aplicativo", "Cristal violeta • inspirado em Ghost Fire"),
-                arrayOf("original", "ghost"), "original")
+        option("✦ Ícones sem arte personalizada: " +
+            when (setting("fallback_skin", "hybrid")) {
+                "ghost" -> "Cristal Ghost Fire"
+                "original" -> "Cores originais"
+                else -> "Purple Charm híbrido"
+            }) {
+            chooseSetting("Aparência dos ícones sem tema", "fallback_skin",
+                arrayOf("Purple Charm híbrido (padrão)", "Cores originais com moldura roxa", "Cristal violeta • Ghost Fire"),
+                arrayOf("hybrid", "original", "ghost"), "hybrid")
         }
         option("✦ Papéis de parede Purple Charm") { wallpaperMenu() }
         } else {
@@ -1407,7 +1411,7 @@ class MainActivity : Activity(), SensorEventListener {
         )
 
     private fun customIcon(app: ResolveInfo, includeFallbackFrame: Boolean = false): Drawable {
-        val key = "${appKey(app)}:${setting("fallback_skin", "original")}:$includeFallbackFrame"
+        val key = "${appKey(app)}:${setting("fallback_skin", "hybrid")}:$includeFallbackFrame"
         iconCache.get(key)?.let { return it.state.newDrawable(resources).mutate() }
         return uncachedIcon(app, includeFallbackFrame).also { icon ->
             val bytes = iconBytes(icon)
@@ -1442,6 +1446,40 @@ class MainActivity : Activity(), SensorEventListener {
         mask.recycle()
         foreground.recycle()
         return BitmapDrawable(resources, result)
+    }
+
+    // Tint only transparent-background glyphs; opaque icons retain their original colors.
+    private fun hybridIconForeground(icon: Drawable): Drawable {
+        val size = 144
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        icon.mutate().apply { setBounds(0, 0, size, size) }.draw(Canvas(bitmap))
+        val pixels = IntArray(size * size)
+        bitmap.getPixels(pixels, 0, size, 0, 0, size, size)
+        val corners = intArrayOf(0, size - 1, (size - 1) * size, size * size - 1)
+        if (corners.any { Color.alpha(pixels[it]) > 24 }) {
+            bitmap.recycle()
+            return icon
+        }
+        var visible = 0
+        for (i in pixels.indices) {
+            val pixel = pixels[i]
+            val alpha = Color.alpha(pixel)
+            if (alpha < 24) continue
+            visible++
+            val mix = (i % size).toFloat() / (size - 1)
+            val r = (157 + 26 * mix).toInt()
+            val g = (77 + 40 * mix).toInt()
+            val b = (231 + 24 * mix).toInt()
+            val brightness = (Color.red(pixel) + Color.green(pixel) + Color.blue(pixel)) / 765f
+            val strength = 0.65f + 0.35f * brightness
+            pixels[i] = Color.argb(alpha, (r * strength).toInt(), (g * strength).toInt(), (b * strength).toInt())
+        }
+        if (visible < size * size / 40) {
+            bitmap.recycle()
+            return icon
+        }
+        bitmap.setPixels(pixels, 0, size, 0, 0, size, size)
+        return BitmapDrawable(resources, bitmap)
     }
 
     private fun uncachedIcon(app: ResolveInfo, includeFallbackFrame: Boolean): Drawable {
@@ -1588,8 +1626,9 @@ class MainActivity : Activity(), SensorEventListener {
         val original = app.loadIcon(packageManager)
         // Automatically skin every unthemed app using the authentic original layers.
         // The pre-existing PNG themed icons above remain completely unchanged.
-        if (setting("fallback_skin", "original") != "ghost") {
-            return originalThemeFallback(original)
+        val skin = setting("fallback_skin", "hybrid")
+        if (skin != "ghost") {
+            return originalThemeFallback(if (skin == "hybrid") hybridIconForeground(original) else original)
         }
         if (!includeFallbackFrame) {
             return originalThemeFallback(original)
