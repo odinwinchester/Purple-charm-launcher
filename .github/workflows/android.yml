@@ -70,9 +70,9 @@ jobs:
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
           "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|application-label:)"
           PACKAGE_NAME="$("$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
-          test "$PACKAGE_NAME" = "com.purplecharm.launcher"
+          test "$PACKAGE_NAME" = "com.purplecharm.launcher.test"
           sha256sum "$APK"
-          echo "DEBUG EPHEMERAL: chave de teste do runner; nao garante atualizacao da instalacao anterior."
+          echo "DEBUG TEST: pacote separado; nao substitui a instalacao principal."
           "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -q "versionCode='9'"
 
       - name: Nomear APK para instalacao
