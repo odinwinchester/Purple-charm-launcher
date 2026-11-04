@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = providers.environmentVariable("PURPLE_VERSION_CODE").orElse("10").get().toInt()
-        versionName = "0.9.1"
+        versionName = "10"
         testInstrumentationRunner = "com.purplecharm.launcher.UpgradeProbe"
     }
 
