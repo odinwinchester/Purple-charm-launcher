@@ -2310,13 +2310,49 @@ class MainActivity : Activity(), SensorEventListener {
         return outer
     }
 
+    // Biblioteca de ícones: acesso separado no menu inferior.
+    // A atualização remota só será habilitada quando o catálogo for publicado e validado.
+    private fun showNewIconsMenu() {
+        loadApps()
+        val library = RemoteIconLibrary(this)
+        val installedPackages = apps.map { it.activityInfo.packageName }.distinct()
+        val downloaded = installedPackages.filter { library.installedIcon(it) != null }
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(18), dp(16), dp(18))
+            background = smokePanel()
+        }
+        panel.addView(label("⇩ Novos ícones", 20f, true))
+        panel.addView(label("Artes baixadas: ${downloaded.size}", 14f).apply {
+            setPadding(0, dp(12), 0, dp(8))
+        })
+        val message = if (downloaded.isEmpty())
+            "Nenhum ícone baixado ainda. O catálogo online será disponibilizado após a validação das artes."
+        else
+            "Ícones baixados: " + downloaded.joinToString(", ")
+        panel.addView(label(message, 13f).apply {
+            setPadding(dp(8), dp(8), dp(8), dp(12))
+        })
+        panel.addView(label("O download e a aplicação automática serão ativados após a publicação do catálogo verificado.", 12f))
+        panel.addView(glassButton("Fechar", 14f).apply {
+            setOnClickListener { dialog.dismiss() }
+        })
+        dialog.setContentView(panel)
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout((resources.displayMetrics.widthPixels - dp(24)).coerceAtMost(dp(400)), -2)
+        }
+    }
+
     // Menu independente de personalização do Purple Charm.
     // Menu de personalização compacto: faixa horizontal acima do dock.
     // Mantém o papel de parede visível e evita o painel grande de seis botões.
     private fun showClassicCustomizationMenu() {
         val dialog = Dialog(this)
-        val icons = arrayOf("＋", "▧", "⚙", "⌘", "?")
-        val names = arrayOf("Organizar", "Papel de parede", "Configurações", "Sistema", "Ajuda")
+        val icons = arrayOf("＋", "▧", "⚙", "⌘", "?", "⇩")
+        val names = arrayOf("Organizar", "Papel de parede", "Configurações", "Sistema", "Ajuda", "Novos ícones")
         val actions: Array<() -> Unit> = arrayOf(
             { editWorkspaceMenu() },
             { wallpaperMenu() },
@@ -2327,7 +2363,8 @@ class MainActivity : Activity(), SensorEventListener {
                     .setTitle("Purple Charm • Ajuda")
                     .setMessage("Deslize para cima a partir do dock para personalizar. Toque no ícone central para abrir os aplicativos.")
                     .setPositiveButton("Entendi", null).show()
-            }
+            },
+            { showNewIconsMenu() }
         )
         val strip = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2340,12 +2377,12 @@ class MainActivity : Activity(), SensorEventListener {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
             }
-            val symbol = label(icons[i], 25f, true).apply {
+            val symbol = label(icons[i], 23f, true).apply {
                 background = glassTile()
                 setTextColor(Color.WHITE)
             }
-            tile.addView(symbol, LinearLayout.LayoutParams(dp(43), dp(45)))
-            tile.addView(label(names[i], 9f), LinearLayout.LayoutParams(-1, dp(32)))
+            tile.addView(symbol, LinearLayout.LayoutParams(dp(39), dp(43)))
+            tile.addView(label(names[i], 8f), LinearLayout.LayoutParams(-1, dp(34)))
             tile.setOnClickListener { dialog.dismiss(); actions[i]() }
             strip.addView(tile, LinearLayout.LayoutParams(0, dp(82), 1f))
         }
