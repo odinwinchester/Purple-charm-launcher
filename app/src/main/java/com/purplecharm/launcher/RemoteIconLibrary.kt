@@ -73,6 +73,9 @@ internal class RemoteIconLibrary(private val context: Context) {
     }
 
     fun installedIcon(packageName: String): Drawable? {
+        // Android launchers and Robolectric tests can expose synthetic/invalid
+        // package identifiers. They must retain their normal system icon.
+        if (!packagePattern.matches(packageName)) return null
         val file = fileFor(packageName)
         if (!file.isFile) return null
         val installed = runCatching { JSONObject(manifestFile.readText()) }.getOrNull() ?: return null
