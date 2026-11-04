@@ -27,7 +27,7 @@ def load_packages() -> dict[str, str]:
     for name, package in packages.items():
         if not re.fullmatch(r"[a-z0-9_-]+", name):
             raise ValueError(f"Invalid icon filename stem: {name}")
-        if not isinstance(package, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+", package):
+        if not isinstance(package, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+", package):
             raise ValueError(f"Invalid Android package for {name}")
     if len(set(packages.values())) != len(packages):
         raise ValueError("Duplicate Android package names")
@@ -60,7 +60,7 @@ def main() -> None:
     pngs = sorted(LIBRARY.glob("*.png"))
     unknown = [p.name for p in pngs if p.stem not in packages]
     if unknown:
-        raise ValueError("Register package names in PACKAGES before publishing: " + ", ".join(unknown))
+        raise ValueError("Register package names in icon-library/packages.json before publishing: " + ", ".join(unknown))
     for path in pngs:
         data = path.read_bytes()
         validate_png(data, path.name)
