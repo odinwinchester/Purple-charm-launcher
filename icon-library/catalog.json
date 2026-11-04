@@ -1,4 +1,17 @@
 {
   "schemaVersion": 1,
-  "icons": []
+  "icons": [
+    {
+      "packageName": "com.discord",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/feat/approved-discord-brave-icons/icon-library/discord.png",
+      "sha256": ""
+    },
+    {
+      "packageName": "com.brave.browser",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/feat/approved-discord-brave-icons/icon-library/brave.png",
+      "sha256": ""
+    }
+  ]
 }
