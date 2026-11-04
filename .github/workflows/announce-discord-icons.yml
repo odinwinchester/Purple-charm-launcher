@@ -1,0 +1,53 @@
+name: Anunciar atualizacao Purple Charm no Discord
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/approved-discord-brave-icons
+    paths:
+      - .github/workflows/announce-discord-icons.yml
+
+permissions:
+  contents: read
+
+jobs:
+  announce:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Enviar anuncio de desenvolvimento
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DISCORD_WEBHOOK_URL:-}" ]]; then
+            echo "::error::Secret DISCORD_WEBHOOK_URL nao configurado."
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json, os, urllib.request
+          message = (
+              "💜 **PURPLE CHARM — PRÓXIMA ATUALIZAÇÃO** 💜\n\n"
+              "✨ A biblioteca de ícones online está chegando ao Purple Charm Crystal Class!\n\n"
+              "🎨 As primeiras artes serão para **Discord** e **Brave**.\n"
+              "📥 O download será feito dentro do launcher, sem abrir o GitHub.\n"
+              "🛡️ Downloads com autorização do usuário e verificação de integridade.\n"
+              "🔄 Novas artes poderão ser publicadas sem reinstalar o APK.\n"
+              "↩️ Haverá opção para restaurar os ícones anteriores.\n\n"
+              "🚧 **Em desenvolvimento:** a compilação e os testes ainda estão em andamento. "
+              "Não há data de lançamento confirmada.\n\n"
+              "💜 **Purple Charm — Sua experiência, seu estilo.**"
+          )
+          data = json.dumps({"content": message, "allowed_mentions": {"parse": []}}, ensure_ascii=False).encode("utf-8")
+          req = urllib.request.Request(
+              os.environ["DISCORD_WEBHOOK_URL"],
+              data=data,
+              headers={"Content-Type": "application/json", "User-Agent": "PurpleCharmAnnouncement/1.0"},
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=20) as response:
+              if response.status not in (200, 204):
+                  raise RuntimeError(f"Discord returned HTTP {response.status}")
+          print("Anuncio enviado ao webhook configurado.")
+          PY
