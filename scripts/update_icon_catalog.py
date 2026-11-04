@@ -17,10 +17,21 @@ LIBRARY = ROOT / "icon-library"
 CATALOG = LIBRARY / "catalog.json"
 REPO = "odinwinchester/Purple-charm-launcher"
 REF = os.environ.get("ICON_CATALOG_REF", "main")
-PACKAGES = {
-    "discord": "com.discord",
-    "brave": "com.brave.browser",
-}
+REGISTRY = LIBRARY / "packages.json"
+
+
+def load_packages() -> dict[str, str]:
+    packages = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    if not isinstance(packages, dict):
+        raise ValueError("packages.json must contain a JSON object")
+    for name, package in packages.items():
+        if not re.fullmatch(r"[a-z0-9_-]+", name):
+            raise ValueError(f"Invalid icon filename stem: {name}")
+        if not isinstance(package, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+", package):
+            raise ValueError(f"Invalid Android package for {name}")
+    if len(set(packages.values())) != len(packages):
+        raise ValueError("Duplicate Android package names")
+    return packages
 
 
 def validate_png(data: bytes, name: str) -> None:
@@ -40,19 +51,20 @@ def validate_png(data: bytes, name: str) -> None:
 def main() -> None:
     if not re.fullmatch(r"[A-Za-z0-9._/-]+", REF) or ".." in REF:
         raise ValueError("Unsafe catalog ref")
+    packages = load_packages()
     previous = json.loads(CATALOG.read_text(encoding="utf-8"))
     if previous.get("schemaVersion") != 1:
         raise ValueError("Unsupported catalog schema")
     old_by_package = {e["packageName"]: e for e in previous.get("icons", [])}
     entries = []
     pngs = sorted(LIBRARY.glob("*.png"))
-    unknown = [p.name for p in pngs if p.stem not in PACKAGES]
+    unknown = [p.name for p in pngs if p.stem not in packages]
     if unknown:
-        raise ValueError("Register package names in PACKAGES before publishing: " + ", ".join(unknown))
+        raise ValueError("Register package names in icon-library/packages.json before publishing: " + ", ".join(unknown))
     for path in pngs:
         data = path.read_bytes()
         validate_png(data, path.name)
-        package = PACKAGES[path.stem]
+        package = packages[path.stem]
         digest = hashlib.sha256(data).hexdigest()
         old = old_by_package.get(package, {})
         old_version = int(old.get("version", 0))

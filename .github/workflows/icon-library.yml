@@ -4,9 +4,10 @@ on:
   push:
     branches:
       - main
-      - feat/approved-discord-brave-icons
+      - feat/automatic-icon-library
     paths:
       - 'icon-library/*.png'
+      - 'icon-library/packages.json'
       - 'scripts/update_icon_catalog.py'
       - '.github/workflows/icon-library.yml'
   workflow_dispatch:
@@ -35,6 +36,7 @@ jobs:
           ICON_CATALOG_REF: ${{ github.ref_name }}
         run: python3 scripts/update_icon_catalog.py
       - name: Publicar catalogo se alterado
+        if: github.ref == 'refs/heads/main'
         shell: bash
         run: |
           set -euo pipefail
