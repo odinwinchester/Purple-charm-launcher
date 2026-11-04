@@ -599,15 +599,19 @@ class MainActivity : Activity(), SensorEventListener {
         val tile = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(2), dp(6), dp(2), dp(8))
+            setPadding(dp(2), dp(if (compact) 2 else 6), dp(2), dp(if (compact) 2 else 8))
             contentDescription = "Pasta ${folder?.name ?: "indisponível"}"
         }
         val preview = GridLayout(this).apply {
             columnCount = 2; rowCount = 2
             setPadding(dp(4), dp(4), dp(4), dp(4))
-            background = glass(10, false)
+            background = GradientDrawable().apply {
+                setColor(Color.argb(175, 22, 9, 36))
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1).coerceAtLeast(1), Color.argb(190, 166, 65, 211))
+            }
         }
-        val previewSize = if (compact) 45 else 53
+        val previewSize = 53
         folder?.apps?.take(4)?.forEach { key ->
             preview.addView(ImageView(this).apply {
                 resolveKey(key)?.let { setImageDrawable(customIcon(it, includeFallbackFrame = true)) }
@@ -2855,10 +2859,11 @@ class MainActivity : Activity(), SensorEventListener {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             background = null
-            setPadding(dp(2), dp(if (dense) 2 else 6), dp(2), dp(if (dense) 2 else 8))
+            setPadding(dp(2), dp(if (compact) 2 else if (dense) 2 else 6), dp(2), dp(if (compact) 2 else if (dense) 2 else 8))
         }
 
-        val iconSize = if (compact) 35 else 43
+        // Match the existing folder preview on home and dock; do not alter icon artwork.
+        val iconSize = 53
 
         val iconFrame = FrameLayout(this).apply {
             // The icon itself supplies its original art or the fallback frame.
@@ -2892,8 +2897,8 @@ class MainActivity : Activity(), SensorEventListener {
         tile.addView(
             iconFrame,
             LinearLayout.LayoutParams(
-                dp(iconSize + 10),
-                dp(iconSize + 10)
+                dp(iconSize + if (compact) 0 else 10),
+                dp(iconSize + if (compact) 0 else 10)
             )
         )
 
