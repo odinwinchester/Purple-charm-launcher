@@ -1408,6 +1408,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun customIcon(app: ResolveInfo, includeFallbackFrame: Boolean = false): Drawable {
         val key = "${appKey(app)}:${setting("fallback_skin", "original")}:$includeFallbackFrame"
+        RemoteIconLibrary(this).installedIcon(app.activityInfo.packageName)?.let { return it }
         iconCache.get(key)?.let { return it.state.newDrawable(resources).mutate() }
         return uncachedIcon(app, includeFallbackFrame).also { icon ->
             val bytes = iconBytes(icon)
@@ -2315,8 +2316,6 @@ class MainActivity : Activity(), SensorEventListener {
     private fun showNewIconsMenu() {
         loadApps()
         val library = RemoteIconLibrary(this)
-        val installedPackages = apps.map { it.activityInfo.packageName }.distinct()
-        val downloaded = installedPackages.filter { library.installedIcon(it) != null }
         val dialog = Dialog(this)
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2324,17 +2323,13 @@ class MainActivity : Activity(), SensorEventListener {
             background = smokePanel()
         }
         panel.addView(label("⇩ Novos ícones", 20f, true))
-        panel.addView(label("Artes baixadas: ${downloaded.size}", 14f).apply {
-            setPadding(0, dp(12), 0, dp(8))
-        })
-        val message = if (downloaded.isEmpty())
-            "Nenhum ícone baixado ainda. O catálogo online será disponibilizado após a validação das artes."
-        else
-            "Ícones baixados: " + downloaded.joinToString(", ")
-        panel.addView(label(message, 13f).apply {
-            setPadding(dp(8), dp(8), dp(8), dp(12))
-        })
-        panel.addView(label("O download e a aplicação automática serão ativados após a publicação do catálogo verificado.", 12f))
+        val status = label("Consultando biblioteca...", 13f).apply {
+            setPadding(0, dp(12), 0, dp(12))
+        }
+        panel.addView(status)
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = ScrollView(this).apply { addView(list) }
+        panel.addView(scroll, LinearLayout.LayoutParams(-1, dp(270)))
         panel.addView(glassButton("Fechar", 14f).apply {
             setOnClickListener { dialog.dismiss() }
         })
@@ -2344,6 +2339,76 @@ class MainActivity : Activity(), SensorEventListener {
             setBackgroundDrawableResource(android.R.color.transparent)
             setLayout((resources.displayMetrics.widthPixels - dp(24)).coerceAtMost(dp(400)), -2)
         }
+
+        val catalogUrl = "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/main/icon-library/catalog.json"
+        Thread {
+            val result = runCatching { library.fetchCatalog(catalogUrl) }
+            runOnUiThread {
+                if (!dialog.isShowing) return@runOnUiThread
+                result.onFailure {
+                    status.text = "Não foi possível consultar a biblioteca. Verifique a conexão."
+                }.onSuccess { entries ->
+                    val installedApps = apps.map { it.activityInfo.packageName }.toSet()
+                    val available = entries.filter { it.packageName in installedApps }
+                    status.text = if (available.isEmpty())
+                        "Nenhuma arte disponível para os aplicativos instalados."
+                    else "${available.size} arte(s) disponível(is) para seus aplicativos."
+                    available.forEach { entry ->
+                        val title = when (entry.packageName) {
+                            "com.discord" -> "Discord"
+                            "com.brave.browser" -> "Brave"
+                            else -> entry.packageName
+                        }
+                        val row = LinearLayout(this).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(0, dp(8), 0, dp(8))
+                        }
+                        row.addView(label("$title • versão ${entry.version}", 14f, true))
+                        val action = glassButton(
+                            if (library.installedIcon(entry.packageName) != null) "Restaurar ícone" else "Baixar e aplicar",
+                            13f
+                        )
+                        action.setOnClickListener {
+                            if (library.installedIcon(entry.packageName) != null) {
+                                library.restore(entry.packageName)
+                                iconCache.evictAll()
+                                action.text = "Baixar e aplicar"
+                                Toast.makeText(this, "Ícone original restaurado", Toast.LENGTH_SHORT).show()
+                                dialog.dismiss()
+                                showHome()
+                            } else {
+                                SmokeDialogBuilder(this)
+                                    .setTitle("Baixar ícone de $title?")
+                                    .setMessage("O Purple Charm baixará a arte verificada e a aplicará aos atalhos deste aplicativo.")
+                                    .setPositiveButton("Baixar") { _, _ ->
+                                        action.isEnabled = false
+                                        action.text = "Baixando..."
+                                        Thread {
+                                            val downloaded = runCatching { library.downloadAndApply(entry) }
+                                            runOnUiThread {
+                                                if (!dialog.isShowing) return@runOnUiThread
+                                                action.isEnabled = true
+                                                if (downloaded.isSuccess && downloaded.getOrDefault(false)) {
+                                                    iconCache.evictAll()
+                                                    Toast.makeText(this, "Ícone aplicado: $title", Toast.LENGTH_SHORT).show()
+                                                    dialog.dismiss()
+                                                    showHome()
+                                                } else {
+                                                    action.text = "Tentar novamente"
+                                                    Toast.makeText(this, "Falha ao baixar ou verificar a imagem", Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        }.start()
+                                    }
+                                    .setNegativeButton("Cancelar", null).show()
+                            }
+                        }
+                        row.addView(action)
+                        list.addView(row)
+                    }
+                }
+            }
+        }.start()
     }
 
     // Menu independente de personalização do Purple Charm.
