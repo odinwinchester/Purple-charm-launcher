@@ -2,16 +2,16 @@
   "schemaVersion": 1,
   "icons": [
     {
-      "packageName": "com.discord",
-      "version": 1,
-      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/feat/approved-discord-brave-icons/icon-library/discord.png",
-      "sha256": ""
-    },
-    {
       "packageName": "com.brave.browser",
       "version": 1,
       "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/feat/approved-discord-brave-icons/icon-library/brave.png",
-      "sha256": ""
+      "sha256": "8f576b5336825cb83bc69a4c9ea02cc88c3268bacfc3321bca7abe4bd785af7b"
+    },
+    {
+      "packageName": "com.discord",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/feat/approved-discord-brave-icons/icon-library/discord.png",
+      "sha256": "d053cf4c9107980b122094b0e59526c503a72feb46575c80365506651415e4a4"
     }
   ]
 }
