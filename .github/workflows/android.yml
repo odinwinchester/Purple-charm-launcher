@@ -73,7 +73,7 @@ jobs:
           test "$PACKAGE_NAME" = "com.purplecharm.launcher"
           sha256sum "$APK"
           echo "DEBUG EPHEMERAL: chave de teste do runner; nao garante atualizacao da instalacao anterior."
-          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -q "versionCode='10'"
+          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -q "versionCode='11'"
 
       - name: Nomear APK para instalacao
         shell: bash
