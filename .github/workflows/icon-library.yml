@@ -1,0 +1,49 @@
+name: Atualizar biblioteca de icones Purple Charm
+
+on:
+  push:
+    branches:
+      - main
+      - feat/approved-discord-brave-icons
+    paths:
+      - 'icon-library/*.png'
+      - 'scripts/update_icon_catalog.py'
+      - '.github/workflows/icon-library.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: icon-library-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  update-catalog:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout da branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validar PNGs e atualizar catalogo
+        env:
+          ICON_CATALOG_REF: ${{ github.ref_name }}
+        run: python3 scripts/update_icon_catalog.py
+      - name: Publicar catalogo se alterado
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- icon-library/catalog.json; then
+            echo "Catalogo ja atualizado."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add icon-library/catalog.json
+          git commit -m "chore(icons): update verified remote icon catalog [skip ci]"
+          git push
