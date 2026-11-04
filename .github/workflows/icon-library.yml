@@ -4,9 +4,10 @@ on:
   push:
     branches:
       - main
-      - feat/approved-discord-brave-icons
+      - feat/automatic-icon-library
     paths:
       - 'icon-library/*.png'
+      - 'icon-library/packages.json'
       - 'scripts/update_icon_catalog.py'
       - '.github/workflows/icon-library.yml'
   workflow_dispatch:
