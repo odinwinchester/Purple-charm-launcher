@@ -144,10 +144,13 @@ jobs:
           test -s "$APK"
           SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose "$APK"
-          ACTUAL_CERT="$("$SDK_BUILD_TOOLS/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-          test "$ACTUAL_CERT" = "$EXPECTED_SIGNING_CERT"
-          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -q "versionCode='12'"
-          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -q "name='com.purplecharm.launcher'"
+          CERT_OUTPUT="$("$SDK_BUILD_TOOLS/apksigner" verify --print-certs "$APK")"
+          ACTUAL_CERT="$(printf '%s\n' "$CERT_OUTPUT" | sed -nE 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*([[:xdigit:]:]+)[[:space:]]*$/\1/p' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          [[ "$ACTUAL_CERT" =~ ^[0-9a-f]{64}$ ]] || { echo "Não foi possível extrair o SHA-256 do certificado do APK."; exit 1; }
+          test "$ACTUAL_CERT" = "$EXPECTED_SIGNING_CERT" || { echo "Certificado do APK não corresponde ao certificado oficial esperado."; exit 1; }
+          BADGING="$("$SDK_BUILD_TOOLS/aapt" dump badging "$APK")"
+          printf '%s\n' "$BADGING" | grep -q "versionCode='12'" || { echo "versionCode incorreto."; exit 1; }
+          printf '%s\n' "$BADGING" | grep -q "package: name='com.purplecharm.launcher'" || { echo "applicationId incorreto."; exit 1; }
           mkdir -p dist
           cp "$APK" dist/Purple-Charm-v12-OFFICIAL-RELEASE.apk
       - name: Publicar APK oficial
