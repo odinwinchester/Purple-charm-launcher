@@ -147,7 +147,7 @@ jobs:
           # Versoes do Android SDK usam nomes distintos (ex.: "V2 Signer" ou "Signer #1").
           # Extrair apenas o SHA-256 do certificado; rejeitar duplicatas e resultados invalidos.
           CERT_OUTPUT="$("$SDK_BUILD_TOOLS/apksigner" verify --print-certs "$APK")"
-          CERT_DIGESTS="$(printf '%s\n' "$CERT_OUTPUT" | sed -nE 's/^.*[Cc]ertificate SHA-256 digest:[[:space:]]*([[:xdigit:]:]+)[[:space:]]*$/\\1/p' | tr -d ':' | tr '[:upper:]' '[:lower:]' | sort -u)"
+          CERT_DIGESTS="$(printf '%s\n' "$CERT_OUTPUT" | sed -nE 's/^.*[Cc]ertificate SHA-256 digest:[[:space:]]*([[:xdigit:]:]+)[[:space:]]*$/\1/p' | tr -d ':' | tr '[:upper:]' '[:lower:]' | sort -u)"
           ACTUAL_CERT="$CERT_DIGESTS"
           if [[ ! "$ACTUAL_CERT" =~ ^[0-9a-f]{64}$ ]]; then
             echo "Falha ao ler um unico digest SHA-256 valido do certificado do APK."
