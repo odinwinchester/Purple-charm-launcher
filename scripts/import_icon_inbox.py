@@ -21,6 +21,9 @@ def validate(path: Path):
         raise ValueError(f"{path.name}: filename must be the Android package name")
     if path.stat().st_size > 2 * 1024 * 1024:
         raise ValueError(f"{path.name}: PNG exceeds 2 MiB")
+    # Pillow requires verify() before any pixel access or conversion.
+    with Image.open(path) as verification_image:
+        verification_image.verify()
     with Image.open(path) as im:
         if im.format != "PNG" or not (32 <= im.width <= 2048 and 32 <= im.height <= 2048):
             raise ValueError(f"{path.name}: invalid PNG or dimensions")
@@ -36,7 +39,6 @@ def validate(path: Path):
         histogram = alpha.histogram()
         if sum(histogram[:9]) < (w * h) // 20:
             raise ValueError(f"{path.name}: at least 5% must be transparent (alpha <= 8)")
-        im.verify()
 
 def main():
     paths = sorted(p for p in INBOX.glob("*.png") if p.name != "chatgpt_work_transfer_test.png") if INBOX.exists() else []
