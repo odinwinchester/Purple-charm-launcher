@@ -1,7 +1,6 @@
 {
   "brave": "com.brave.browser",
   "discord": "com.discord",
-  "com.discord": "com.discord",
   "tiktok": "com.zhiliaoapp.musically",
   "com.openai.chatgpt": "com.openai.chatgpt"
 }
