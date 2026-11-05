@@ -144,9 +144,15 @@ jobs:
           test -s "$APK"
           SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          # apksigner escreve o digest como "Signer #1 certificate SHA-256 digest: ..."
+          # A leitura por awk independe de diferenças de espaços e não expõe a chave.
           CERT_OUTPUT="$("$SDK_BUILD_TOOLS/apksigner" verify --print-certs "$APK")"
-          ACTUAL_CERT="$(printf '%s\n' "$CERT_OUTPUT" | sed -nE 's/^[[:space:]]*Signer #1 certificate SHA-256 digest:[[:space:]]*([[:xdigit:]:]+)[[:space:]]*$/\1/p' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-          [[ "$ACTUAL_CERT" =~ ^[0-9a-f]{64}$ ]] || { echo "Não foi possível extrair o SHA-256 do certificado do APK."; exit 1; }
+          ACTUAL_CERT="$(printf '%s\n' "$CERT_OUTPUT" | awk -F ': ' '/Signer #1 certificate SHA-256 digest/ {print $NF; exit}' | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')"
+          if [[ ! "$ACTUAL_CERT" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Falha ao ler o digest do APK; campos de certificado presentes:"
+            printf '%s\n' "$CERT_OUTPUT" | grep -i 'certificate.*digest' | sed -E 's/:[[:space:]]*[[:xdigit:]:]{40,}$/:[REDACTED]/' || true
+            exit 1
+          fi
           test "$ACTUAL_CERT" = "$EXPECTED_SIGNING_CERT" || { echo "Certificado do APK não corresponde ao certificado oficial esperado."; exit 1; }
           BADGING="$("$SDK_BUILD_TOOLS/aapt" dump badging "$APK")"
           printf '%s\n' "$BADGING" | grep -q "versionCode='12'" || { echo "versionCode incorreto."; exit 1; }
