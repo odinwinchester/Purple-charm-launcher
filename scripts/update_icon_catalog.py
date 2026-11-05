@@ -40,9 +40,9 @@ def validate_png(data: bytes, name: str) -> None:
     if data[12:16] != b"IHDR" or struct.unpack(">I", data[8:12])[0] != 13:
         raise ValueError(f"{name}: missing PNG IHDR")
     width, height = struct.unpack(">II", data[16:24])
-    if not (32 <= width <= 4096 and 32 <= height <= 4096):
+    if not (32 <= width <= 2048 and 32 <= height <= 2048):
         raise ValueError(f"{name}: invalid dimensions {width}x{height}")
-    if len(data) > 5 * 1024 * 1024:
+    if len(data) > 2 * 1024 * 1024:
         raise ValueError(f"{name}: file exceeds 5 MiB")
     if b"IEND" not in data[-16:]:
         raise ValueError(f"{name}: missing PNG end marker")

@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - main
-      - feat/automatic-icon-library
+      - feat/icon-inbox-publisher
     paths:
       - 'icon-library/*.png'
+      - 'icon-library/inbox/*.png'
       - 'icon-library/packages.json'
+      - 'scripts/import_icon_inbox.py'
       - 'scripts/update_icon_catalog.py'
       - '.github/workflows/icon-library.yml'
   workflow_dispatch:
@@ -32,18 +34,36 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Validar PNGs e atualizar catalogo
+      - name: Instalar validador PNG
+        run: python3 -m pip install Pillow==11.3.0
+      - name: Importar imagens aprovadas e atualizar catalogo
         env:
-          ICON_CATALOG_REF: ${{ github.ref_name }}
-        run: python3 scripts/update_icon_catalog.py
-      - name: Propor atualizacao do catalogo por Pull Request
+          ICON_CATALOG_REF: main
+        run: |
+          python3 scripts/import_icon_inbox.py
+          python3 scripts/update_icon_catalog.py
+      - name: Propor publicacao segura na main
         if: github.ref == 'refs/heads/main'
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: 'chore(icons): update verified remote icon catalog'
-          branch: bot/update-icon-catalog
+          commit-message: 'chore(icons): publish validated remote icons'
+          branch: bot/publish-icon-inbox
           delete-branch: true
-          add-paths: icon-library/catalog.json
-          title: 'chore(icons): publicar catalogo de icones validado'
-          body: 'Catalogo gerado e validado automaticamente. Integrar apos o status obrigatorio safe-selftests passar.'
+          add-paths: |
+            icon-library/*.png
+            icon-library/inbox/*.png
+            icon-library/packages.json
+            icon-library/catalog.json
+          title: 'chore(icons): publicar icones validados'
+          body: 'Imagens verificadas automaticamente. A main protegida exige revisao/merge conforme as regras do repositorio.'
+      - name: Registrar alteracoes na branch de testes
+        if: github.ref != 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add icon-library
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(icons): validate and stage uploaded icons"
+            git push
+          fi
