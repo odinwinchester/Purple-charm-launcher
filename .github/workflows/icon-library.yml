@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feat/icon-inbox-publisher
+      - icon-library-publishing
     paths:
       - 'icon-library/*.png'
       - 'icon-library/inbox/*.png'
@@ -38,7 +39,7 @@ jobs:
         run: python3 -m pip install Pillow==11.3.0
       - name: Importar imagens aprovadas e atualizar catalogo
         env:
-          ICON_CATALOG_REF: main
+          ICON_CATALOG_REF: ${{ github.ref_name == 'icon-library-publishing' && 'icon-library-publishing' || 'main' }}
         run: |
           python3 scripts/import_icon_inbox.py
           python3 scripts/update_icon_catalog.py
