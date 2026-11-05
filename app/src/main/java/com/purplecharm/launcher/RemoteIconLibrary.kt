@@ -71,7 +71,9 @@ internal class RemoteIconLibrary(private val context: Context) {
     // A lista pode ser consultada offline; os PNGs continuam independentes do catálogo.
     private val catalogCacheFile get() = File(directory, "catalog-cache.json")
     private val catalogPrefs get() = context.getSharedPreferences("purple_icon_catalog", Context.MODE_PRIVATE)
-    private val catalogUrl = "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/main/icon-library/catalog.json"
+    // Published icons are validated and cataloged by the dedicated icon publisher branch.
+    // The launcher reads updates remotely; a new APK is not needed for each icon.
+    private val catalogUrl = "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/catalog.json"
 
     @Synchronized
     fun cachedCatalog(): List<Entry> = runCatching {
