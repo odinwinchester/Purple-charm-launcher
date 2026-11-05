@@ -24,18 +24,18 @@ def validate(path: Path):
     with Image.open(path) as im:
         if im.format != "PNG" or not (32 <= im.width <= 2048 and 32 <= im.height <= 2048):
             raise ValueError(f"{path.name}: invalid PNG or dimensions")
-        if im.mode not in ("RGBA", "P") or "A" not in im.convert("RGBA").getbands():
+        if im.mode != "RGBA" and not (im.mode == "P" and "transparency" in im.info):
             raise ValueError(f"{path.name}: RGBA required")
         alpha = im.convert("RGBA").getchannel("A")
         low, high = alpha.getextrema()
-        if low != 0 or high == 0:
+        if low > 8 or high < 128:
             raise ValueError(f"{path.name}: transparent background and visible artwork required")
         w, h = im.size
-        if any(alpha.getpixel(pt) != 0 for pt in ((0,0),(w-1,0),(0,h-1),(w-1,h-1))):
+        if any(alpha.getpixel(pt) > 8 for pt in ((0,0),(w-1,0),(0,h-1),(w-1,h-1))):
             raise ValueError(f"{path.name}: all four corners must be transparent")
         histogram = alpha.histogram()
-        if histogram[0] < (w * h) // 20:
-            raise ValueError(f"{path.name}: at least 5% must be fully transparent")
+        if sum(histogram[:9]) < (w * h) // 20:
+            raise ValueError(f"{path.name}: at least 5% must be transparent (alpha <= 8)")
         im.verify()
 
 def main():
