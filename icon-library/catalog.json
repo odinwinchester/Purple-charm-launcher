@@ -8,6 +8,12 @@
       "sha256": "8f576b5336825cb83bc69a4c9ea02cc88c3268bacfc3321bca7abe4bd785af7b"
     },
     {
+      "packageName": "com.openai.chatgpt",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/com.openai.chatgpt.png",
+      "sha256": "e9eac0f261a5e5ce201517c8b177a054304d2c9d7c61dd11dfa05bc8fb1d4a8b"
+    },
+    {
       "packageName": "com.discord",
       "version": 1,
       "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/discord.png",
