@@ -87,3 +87,77 @@ jobs:
           name: Purple-Charm-Crystal-Class-v10-DEBUG-EPHEMERAL
           path: dist/*.apk
           if-no-files-found: error
+
+  signed-release:
+    name: APK oficial assinado
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: safe-selftests
+    runs-on: ubuntu-24.04
+    environment: android-signing
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Recuperar chave oficial e validar certificado
+        shell: bash
+        env:
+          KEYSTORE_CIPHERTEXT_B64: ${{ secrets.PURPLE_KEYSTORE_CIPHERTEXT_B64 }}
+          STORE_PASSWORD: ${{ secrets.PURPLE_STORE_PASSWORD }}
+          EXPECTED_CERT: ${{ vars.PURPLE_SIGNING_CERT_SHA256 }}
+          PROTECTION_ACK: ${{ vars.PURPLE_SIGNING_ENVIRONMENT_PROTECTED }}
+        run: |
+          set -euo pipefail
+          test "$PROTECTION_ACK" = "YES"
+          test -n "$KEYSTORE_CIPHERTEXT_B64"
+          test "${#STORE_PASSWORD}" -ge 20
+          EXPECTED_CERT="$(printf '%s' "$EXPECTED_CERT" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          [[ "$EXPECTED_CERT" =~ ^[0-9a-f]{64}$ ]]
+          echo "::add-mask::$STORE_PASSWORD"
+          umask 077
+          printf '%s' "$STORE_PASSWORD" > "$RUNNER_TEMP/store.pass"
+          printf '%s' "$KEYSTORE_CIPHERTEXT_B64" | base64 --decode > "$RUNNER_TEMP/keystore.pccks"
+          python3 -m pip install --disable-pip-version-check "cryptography==50.0.2"
+          python3 scripts/keystore_crypto.py decrypt "$RUNNER_TEMP/keystore.pccks" "$RUNNER_TEMP/purple-release.jks" --passphrase-file "$RUNNER_TEMP/store.pass"
+          keytool -exportcert -alias purple-charm-release -keystore "$RUNNER_TEMP/purple-release.jks" -storepass:file "$RUNNER_TEMP/store.pass" -file "$RUNNER_TEMP/cert.der" >/dev/null 2>&1
+          ACTUAL_CERT="$(openssl dgst -sha256 "$RUNNER_TEMP/cert.der" | awk '{print tolower($NF)}')"
+          test "$ACTUAL_CERT" = "$EXPECTED_CERT"
+          echo "PURPLE_KEYSTORE_PATH=$RUNNER_TEMP/purple-release.jks" >> "$GITHUB_ENV"
+          echo "PURPLE_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "PURPLE_VERSION_CODE=12" >> "$GITHUB_ENV"
+          echo "EXPECTED_SIGNING_CERT=$EXPECTED_CERT" >> "$GITHUB_ENV"
+      - name: Compilar release com assinatura oficial
+        run: gradle :app:assembleRelease --stacktrace
+      - name: Validar APK e certificado oficial
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$SDK_BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          ACTUAL_CERT="$("$SDK_BUILD_TOOLS/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test "$ACTUAL_CERT" = "$EXPECTED_SIGNING_CERT"
+          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -q "versionCode='12'"
+          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -q "name='com.purplecharm.launcher'"
+          mkdir -p dist
+          cp "$APK" dist/Purple-Charm-v12-OFFICIAL-RELEASE.apk
+      - name: Publicar APK oficial
+        uses: actions/upload-artifact@v4
+        with:
+          name: Purple-Charm-v12-OFFICIAL-RELEASE
+          path: dist/Purple-Charm-v12-OFFICIAL-RELEASE.apk
+          if-no-files-found: error
+      - name: Apagar chave e senha temporárias
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/purple-release.jks" "$RUNNER_TEMP/keystore.pccks" "$RUNNER_TEMP/store.pass" "$RUNNER_TEMP/cert.der"
