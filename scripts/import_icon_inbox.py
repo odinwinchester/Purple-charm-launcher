@@ -39,7 +39,7 @@ def validate(path: Path):
         im.verify()
 
 def main():
-    paths = sorted(INBOX.glob("*.png")) if INBOX.exists() else []
+    paths = sorted(p for p in INBOX.glob("*.png") if p.name != "chatgpt_work_transfer_test.png") if INBOX.exists() else []
     if not paths:
         print("Inbox empty; nothing to publish")
         return
