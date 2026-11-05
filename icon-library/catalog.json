@@ -4,19 +4,19 @@
     {
       "packageName": "com.brave.browser",
       "version": 1,
-      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/main/icon-library/brave.png",
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/brave.png",
       "sha256": "8f576b5336825cb83bc69a4c9ea02cc88c3268bacfc3321bca7abe4bd785af7b"
     },
     {
       "packageName": "com.discord",
       "version": 1,
-      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/main/icon-library/discord.png",
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/discord.png",
       "sha256": "d053cf4c9107980b122094b0e59526c503a72feb46575c80365506651415e4a4"
     },
     {
       "packageName": "com.zhiliaoapp.musically",
       "version": 1,
-      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/main/icon-library/tiktok.png",
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/tiktok.png",
       "sha256": "03630033e3c8b52131da182ddf31d0041804aa6e3a13c43b56b686434ed3505a"
     }
   ]
