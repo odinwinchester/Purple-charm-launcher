@@ -930,6 +930,8 @@ class MainActivity : Activity(), SensorEventListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Atualiza apenas a lista de ícones em segundo plano, sem aplicar imagens.
+        RemoteIconLibrary(this).refreshCatalogIfDue()
         // O papel de parede ocupa toda a tela, mas os controles
         // respeitam as barras do Android.
         window.statusBarColor = Color.TRANSPARENT
@@ -2344,9 +2346,8 @@ class MainActivity : Activity(), SensorEventListener {
             setLayout((resources.displayMetrics.widthPixels - dp(24)).coerceAtMost(dp(400)), -2)
         }
 
-        val catalogUrl = "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/main/icon-library/catalog.json"
         Thread {
-            val result = runCatching { library.fetchCatalog(catalogUrl) }
+            val result = runCatching { library.fetchCatalogWithCache() }
             runOnUiThread {
                 if (!dialog.isShowing) return@runOnUiThread
                 result.onFailure {

@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import org.json.JSONObject
+import org.json.JSONArray
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -65,6 +66,59 @@ internal class RemoteIconLibrary(private val context: Context) {
                 require(it.version > 0 && it.url.startsWith("https://") && hashPattern.matches(it.sha256))
             }
         }
+    }
+
+    // A lista pode ser consultada offline; os PNGs continuam independentes do catálogo.
+    private val catalogCacheFile get() = File(directory, "catalog-cache.json")
+    private val catalogPrefs get() = context.getSharedPreferences("purple_icon_catalog", Context.MODE_PRIVATE)
+    private val catalogUrl = "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/main/icon-library/catalog.json"
+
+    @Synchronized
+    fun cachedCatalog(): List<Entry> = runCatching {
+        if (!catalogCacheFile.isFile) return@runCatching emptyList()
+        parseCatalog(catalogCacheFile.readText(Charsets.UTF_8))
+    }.getOrDefault(emptyList())
+
+    private fun parseCatalog(jsonText: String): List<Entry> {
+        val json = JSONObject(jsonText)
+        val icons = json.getJSONArray("icons")
+        require(icons.length() <= 2000)
+        return (0 until icons.length()).map { i ->
+            val item = icons.getJSONObject(i)
+            Entry(item.getString("packageName"), item.getInt("version"),
+                item.getString("url"), item.getString("sha256").lowercase()).also {
+                require(packagePattern.matches(it.packageName) && it.version > 0 &&
+                    it.url.startsWith("https://") && hashPattern.matches(it.sha256))
+            }
+        }
+    }
+
+    // Chamado somente de thread de trabalho, nunca da thread da interface.
+    @Synchronized
+    fun fetchCatalogWithCache(): List<Entry> = runCatching {
+        val bytes = readUrl(catalogUrl, maxCatalogBytes)
+        val jsonText = String(bytes, Charsets.UTF_8)
+        val entries = parseCatalog(jsonText)
+        directory.mkdirs()
+        val temp = File(directory, "catalog-cache.tmp")
+        temp.writeText(jsonText, Charsets.UTF_8)
+        if (!temp.renameTo(catalogCacheFile)) {
+            temp.delete()
+            error("Não foi possível salvar o catálogo")
+        }
+        entries
+    }.getOrElse { cachedCatalog() }
+
+    // Na abertura do launcher, no máximo uma consulta a cada seis horas.
+    // Não baixa nem aplica PNGs; apenas atualiza a lista local.
+    fun refreshCatalogIfDue() {
+        val now = System.currentTimeMillis()
+        val last = catalogPrefs.getLong("last_check", 0L)
+        if (now >= last && now - last < 6L * 60 * 60 * 1000) return
+        catalogPrefs.edit().putLong("last_check", now).apply()
+        Thread {
+            runCatching { fetchCatalogWithCache() }
+        }.start()
     }
 
     private fun fileFor(packageName: String): File {
