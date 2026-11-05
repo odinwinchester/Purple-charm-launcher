@@ -25,7 +25,7 @@ def load_packages() -> dict[str, str]:
     if not isinstance(packages, dict):
         raise ValueError("packages.json must contain a JSON object")
     for name, package in packages.items():
-        if not re.fullmatch(r"[a-z0-9_-]+", name):
+        if not re.fullmatch(r"[a-z][a-z0-9_]*(?:[.-][a-z][a-z0-9_]*)*", name):
             raise ValueError(f"Invalid icon filename stem: {name}")
         if not isinstance(package, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+", package):
             raise ValueError(f"Invalid Android package for {name}")
