@@ -8,7 +8,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.view.ViewGroup
 
 /**
  * Approved HOME widget composition (not the expanded weather screen).
@@ -53,9 +52,8 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         readings.visibility = View.GONE
         hourly.visibility = View.GONE
     }
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val width = MeasureSpec.getSize(widthMeasureSpec)
-        val height = MeasureSpec.getSize(heightMeasureSpec)
+    override fun onSizeChanged(width: Int, height: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(width, height, oldw, oldh)
         val dataWidth = (width * 0.53f).toInt()
         val dataHeight = (height * 0.73f).toInt()
         dataArea.layoutParams = (dataArea.layoutParams as LayoutParams).apply {
@@ -63,7 +61,6 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
             this.height = dataHeight
             gravity = Gravity.RIGHT or Gravity.TOP
         }
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
     fun updateLiveData(readingsValue: String?, hourlyValue: String?) {
