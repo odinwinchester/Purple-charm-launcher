@@ -174,14 +174,18 @@ class AdditionalWeatherAndroidTest {
         controller.pause().stop().destroy()
     }
 
-    @Test fun homeSeparatesOneRealForecastLineFromPrintedArtAndDetailsRetainAttribution() {
+    @Test fun homeKeepsRealForecastInsideArtworkWithoutExtraFooterAndDetailsRetainAttribution() {
         val p = seed(); cached("rain_day", 20)
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val a = controller.get(); settle(a)
         val panel = MainActivity::class.java.getDeclaredField("celestialView").apply { isAccessible = true }.get(a) as View
-        val readout = panel.findViewWithTag<android.widget.TextView>("live_weather_readout")!!
-        assertTrue(readout.text.toString().contains("20°C")); assertTrue(readout.text.toString().contains("MET Norway"))
-        assertEquals(1, readout.maxLines)
+        // Live data belongs inside the weather artwork frame; a second footer
+        // below the frame must not push the home icon grid downward.
+        assertNull(panel.findViewWithTag<android.widget.TextView>("live_weather_readout"))
+        assertEquals(1, (panel as ViewGroup).childCount)
+        val weatherLayers = views(panel).filterIsInstance<WeatherHomeLayers>().single()
+        assertTrue(views(weatherLayers).filterIsInstance<android.widget.TextView>()
+            .any { it.text.toString().contains("20°C") })
         assertFalse(views(panel).filterIsInstance<android.widget.TextView>().any { it.text.toString().contains("ilustrativos") })
         assertNotNull(art(a, "moldura_gotica_cristais_chuva"))
         val location = p.getString("gothic_weather_lat", null)
