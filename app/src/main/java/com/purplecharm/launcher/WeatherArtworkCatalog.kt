@@ -10,7 +10,7 @@ internal object WeatherArtworkCatalog {
         Art("sol_gotico_cristal", "Sol Gótico de Cristal", R.drawable.sol_gotico_cristal, Kind.SOLAR),
         Art("sol_gotico_nuvens", "Sol Gótico entre Nuvens", R.drawable.sol_gotico_nuvens, Kind.SOLAR),
         Art("sol_gotico_nascente", "Sol Gótico Nascente", R.drawable.sol_gotico_nascente, Kind.SOLAR),
-        Art("lua_crescente_gotica_cristal", "Lua Crescente Gótica de Cristal", R.drawable.lua_crescente_gotica_cristal, Kind.LUNAR_ALTERNATIVE),
+        Art("lua_minguante_gotica_cristal", "Lua Minguante Gótica de Cristal", R.drawable.lua_minguante_gotica_cristal, Kind.LUNAR_ALTERNATIVE),
         Art("lua_crescente_gotica_emoldurada", "Lua Crescente Gótica com Moldura", R.drawable.lua_crescente_gotica_emoldurada, Kind.LUNAR_ALTERNATIVE, panoramic = true),
         Art("lua_cheia_rgba_transparente", "Lua Cheia (camada independente)", R.drawable.lua_cheia_rgba_transparente, Kind.LUNAR_ALTERNATIVE),
         Art("lua_01_lua_nova_noite_limpa", "Lua Nova • Noite limpa", R.drawable.lua_01_lua_nova_noite_limpa),
@@ -51,7 +51,8 @@ internal object WeatherArtworkCatalog {
                 else -> solarBase[sunIndex.coerceIn(solarBase.indices)]
             }
         } else {
-            if (phase == 1) return requireNotNull(bySlug["lua_crescente_gotica_cristal"])
+            if (phase == 1) return requireNotNull(bySlug["lua_crescente_gotica_emoldurada"])
+            if (phase == 3) return requireNotNull(bySlug["lua_minguante_gotica_cristal"])
             if (phase == 2) return requireNotNull(bySlug["lua_cheia_rgba_transparente"])
             val weather = lunarWeather[condition.coerceIn(lunarWeather.indices)]
             val phaseName = lunarPhase[phase.coerceIn(lunarPhase.indices)]
