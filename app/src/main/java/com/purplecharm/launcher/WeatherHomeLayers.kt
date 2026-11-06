@@ -54,6 +54,11 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         hourly.visibility = View.GONE
     }
 
+    fun updateLiveData(readingsValue: String?, hourlyValue: String?) {
+        setReadings(readingsValue)
+        setHourlyForecast(hourlyValue)
+    }
+
     fun setArt(resourceId: Int, label: String) {
         art.setImageResource(resourceId)
         art.contentDescription = label
