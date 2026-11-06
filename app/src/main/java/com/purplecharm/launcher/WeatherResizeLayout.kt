@@ -92,6 +92,10 @@ internal class WeatherResizeLayout(
             }
         }
     }
+    fun updateWeatherLayers(readings: String, hourly: String) {
+        (art.getChildAt(0) as? WeatherHomeLayers)?.updateLiveData(readings, hourly)
+    }
+
     fun beginEditing() {
         if (isEditing) return
         isEditing = true
