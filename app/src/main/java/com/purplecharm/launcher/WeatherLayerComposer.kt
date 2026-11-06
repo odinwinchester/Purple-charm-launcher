@@ -58,6 +58,21 @@ internal class WeatherLayerComposer(context: Context) : FrameLayout(context) {
 
     fun clearCelestialArtwork() = celestialLayer.removeAllViews()
 
+    fun setEffectArtwork(resourceId: Int?, topMarginPx: Int, heightPx: Int) {
+        effectsLayer.removeAllViews()
+        if (resourceId != null) {
+            val image = ImageView(context).apply {
+                setImageResource(resourceId)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+            effectsLayer.addView(image, LayoutParams(LayoutParams.MATCH_PARENT, heightPx).apply {
+                topMargin = topMarginPx
+            })
+        }
+        setEffectsVisible(resourceId != null)
+    }
+
     fun setEffectsVisible(visible: Boolean) {
         effectsLayer.visibility = if (visible) View.VISIBLE else View.GONE
     }
