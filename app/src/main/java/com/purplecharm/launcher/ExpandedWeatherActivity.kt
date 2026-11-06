@@ -150,7 +150,17 @@ class ExpandedWeatherActivity : Activity() {
         // remains exclusively in the celestial layer until the 13 new assets are validated.
         val root = WeatherLayerComposer(this).apply {
             setBackdrop(R.drawable.purple_charm_camada1_castelo)
-            setEffectsVisible(false) // Avoid duplicating effects already baked into legacy PNGs.
+            val independent = art.slug.startsWith("sol_gotico_") ||
+                art.slug == "lua_cheia_rgba_transparente"
+            val code = weather.current()?.code ?: 0
+            val temp = weather.current()?.temperature ?: 99.0
+            val effect = if (independent) when {
+                temp <= 12 || code in 71..77 || code in 85..86 -> R.drawable.sobreposicao_nuvens_geladas_roxas
+                code in 51..67 || code in 80..82 || code in 95..99 -> R.drawable.chuva_cristais_violeta_nuvens
+                code in 2..3 || code == 45 -> R.drawable.nuvens_roxas_widget_rgba
+                else -> null
+            } else null
+            setEffectArtwork(effect, dp(58), dp(220))
         }
 
         val scroll = ScrollView(this).apply {
