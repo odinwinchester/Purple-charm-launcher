@@ -221,8 +221,11 @@ class ExpandedWeatherActivity : Activity() {
         fun number(value: Double?, suffix: String, multiplier: Double = 1.0): String =
             value?.let { "${(it * multiplier).roundToInt()}$suffix" } ?: "indisponível"
         val nextRain = upcoming.firstOrNull { it.rainProbability != null || it.precipitationMm != null }
+        val rainAmount = nextRain?.precipitationMm?.let {
+            String.format(Locale.getDefault(), "%.1f mm", it)
+        } ?: "indisponível"
         val rain = "Probabilidade: " + number(nextRain?.rainProbability, "%") +
-            "\nPrecipitação prevista: " + number(nextRain?.precipitationMm, " mm") +
+            "\nPrecipitação prevista: " + rainAmount +
             "\nReferência: próximo período disponível • MET Norway"
         val windDetails = "Velocidade: " + number(current?.wind, " km/h", 3.6) +
             "\nDireção de origem: " + number(current?.windDirection, "°") +
@@ -232,9 +235,12 @@ class ExpandedWeatherActivity : Activity() {
             "\nPonto de orvalho: " + number(current?.dewPoint, "°C") +
             "\nUmidade relativa: " + number(current?.humidity, "%") +
             "\nVisibilidade: " + number(current?.visibilityMeters, " m")
-        val air = "Índice UV: aguardando fonte específica" +
-            "\nQualidade do ar (AQI): aguardando fonte específica" +
-            "\nNenhum valor estimado ou fictício é apresentado."
+        val uv = current?.uvClearSky?.let { value ->
+            "Índice UV (previsão para céu limpo): ${String.format(Locale.US, "%.1f", value)} • MET Norway"
+        } ?: "Índice UV: indisponível nesta previsão"
+        val air = uv +
+            "\nQualidade do ar (AQI): fonte para o Brasil ainda não integrada" +
+            "\nUV previsto para céu limpo não representa medição local."
         val alerts = "Consulta oficial ao INMET ainda não integrada. Não é possível afirmar que não existem alertas."
         fun open(destination: String) { page = destination; render() }
         when (page) {

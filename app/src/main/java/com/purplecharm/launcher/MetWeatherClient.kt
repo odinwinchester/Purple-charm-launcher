@@ -14,7 +14,8 @@ internal data class WeatherForecast(
     val precipitationMm: Double? = null, val rainProbability: Double? = null,
     val windDirection: Double? = null, val gust: Double? = null,
     val pressure: Double? = null, val dewPoint: Double? = null,
-    val visibilityMeters: Double? = null
+    val visibilityMeters: Double? = null,
+    val uvClearSky: Double? = null
 ) {
     val code: Int get() = MetSymbols.code(symbol)
     val isDay: Boolean? get() = when {
@@ -166,23 +167,26 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                     ?.optString("symbol_code")?.takeIf { it.isNotEmpty() } } ?: ""
             val temperature = instant.getDouble("air_temperature")
             require(temperature.isFinite())
-            val precipitation = listOf("next_1_hours", "next_6_hours", "next_12_hours")
+            // Keep precipitation amount and probability within the same forecast interval.
+            val rainDetails = listOf("next_1_hours", "next_6_hours", "next_12_hours")
                 .firstNotNullOfOrNull { period ->
-                    data.optJSONObject(period)?.optJSONObject("details")
-                        ?.optDouble("precipitation_amount", Double.NaN)?.takeIf { it.isFinite() }
+                    data.optJSONObject(period)?.optJSONObject("details")?.takeIf {
+                        it.optDouble("precipitation_amount", Double.NaN).isFinite() ||
+                            it.optDouble("probability_of_precipitation", Double.NaN).isFinite()
+                    }
                 }
-            val probability = listOf("next_1_hours", "next_6_hours", "next_12_hours")
-                .firstNotNullOfOrNull { period ->
-                    data.optJSONObject(period)?.optJSONObject("details")
-                        ?.optDouble("probability_of_precipitation", Double.NaN)?.takeIf { it.isFinite() }
-                }
+            val precipitation = rainDetails?.optDouble("precipitation_amount", Double.NaN)
+                ?.takeIf { it.isFinite() && it >= 0.0 }
+            val probability = rainDetails?.optDouble("probability_of_precipitation", Double.NaN)
+                ?.takeIf { it.isFinite() && it in 0.0..100.0 }
             fun detail(key: String) = instant.optDouble(key, Double.NaN).takeIf { it.isFinite() }
             return WeatherForecast(
                 Instant.parse(point.getString("time")).toEpochMilli(), temperature,
                 detail("relative_humidity"), detail("wind_speed"), symbol,
                 precipitation, probability, detail("wind_from_direction"),
                 detail("wind_speed_of_gust"), detail("air_pressure_at_sea_level"),
-                detail("dew_point_temperature"), detail("visibility")
+                detail("dew_point_temperature"), detail("visibility"),
+                detail("ultraviolet_index_clear_sky")?.takeIf { it >= 0.0 }
             )
         }
 
