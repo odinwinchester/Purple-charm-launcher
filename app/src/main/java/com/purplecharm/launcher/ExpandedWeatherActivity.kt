@@ -126,22 +126,16 @@ class ExpandedWeatherActivity : Activity() {
         val longitude = prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull()
         val daylight = SolarDaylight.isDay(System.currentTimeMillis(), latitude, longitude)
             ?: forecast?.isDay ?: true
-        val rainy = forecast?.code == 61 || forecast?.code == 95
-        val cold = forecast != null && (forecast.temperature <= 12 || forecast.code == 71)
-        val cloudy = forecast?.code == 2 || forecast?.code == 3 || forecast?.code == 45
-        val condition = when {
-            cold -> 3
-            rainy -> 2
-            cloudy -> 1
-            else -> 0
-        }
+        val condition = WeatherArtworkCatalog.condition(forecast?.code, forecast?.temperature)
         val sunStyle = when {
             condition != 0 -> 2
             (forecast?.temperature ?: 0.0) >= 30 -> 0
             else -> 1
         }
         val phase = LunarPhaseCalculator.artworkIndexAt(Instant.now())
-        return WeatherArtworkCatalog.select(daylight, sunStyle, condition, phase, null)
+        return WeatherArtworkCatalog.select(daylight, sunStyle, condition, phase,
+            prefs.getString("gothic_manual_art", null),
+            automaticWeather = prefs.getInt("gothic_celestial_mode", 0) == 0)
     }
 
     private fun render() {
@@ -150,17 +144,9 @@ class ExpandedWeatherActivity : Activity() {
         // remains exclusively in the celestial layer until the 13 new assets are validated.
         val root = WeatherLayerComposer(this).apply {
             setBackdrop(R.drawable.purple_charm_camada1_castelo)
-            val independent = art.slug.startsWith("sol_gotico_") ||
-                art.slug == "lua_cheia_rgba_transparente" ||
-                art.slug == "lua_minguante_gotica_cristal"
-            val code = weather.current()?.code ?: 0
-            val temp = weather.current()?.temperature ?: 99.0
-            val effect = if (independent) when {
-                temp <= 12 || code in 71..77 || code in 85..86 -> R.drawable.sobreposicao_nuvens_geladas_roxas
-                code in 51..67 || code in 80..82 || code in 95..99 -> R.drawable.chuva_cristais_violeta_nuvens
-                code in 2..3 || code == 45 -> R.drawable.nuvens_roxas_widget_rgba
-                else -> null
-            } else null
+            val forecast = weather.current()
+            val condition = WeatherArtworkCatalog.condition(forecast?.code, forecast?.temperature)
+            val effect = WeatherArtworkCatalog.effectFor(art, condition, forecast != null)
             setEffectArtwork(effect, dp(58), dp(220))
         }
 
