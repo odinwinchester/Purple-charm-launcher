@@ -2034,13 +2034,9 @@ class MainActivity : Activity(), SensorEventListener {
         editor.contentDescription = "Widget meteorológico Purple Charm. Toque para ver os detalhes; toque longo para redimensionar. Para configurar, abra Widgets no modo de edição."
         widgetEditor = editor
         panel.addView(editor, LinearLayout.LayoutParams(-1, 0, 1f))
-        liveWeatherLabel = label(liveText, 11f).apply {
-            tag = "live_weather_readout"
-            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            contentDescription = "Dados meteorológicos MET Norway para ${weatherLocation.summary}. Os valores impressos no PNG são ilustrativos."
-            setOnClickListener { expandedWeatherDetails() }
-        }
-        panel.addView(liveWeatherLabel, LinearLayout.LayoutParams(-1, -2))
+        // All current readings live inside the artwork frame; no duplicate footer
+        // is placed between the weather widget and the home icon grid.
+        liveWeatherLabel = null
         panel.setOnClickListener { weatherDetails() }
         panel.setOnLongClickListener { editor.beginEditing(); true }
         celestialView = panel
