@@ -2045,7 +2045,7 @@ class MainActivity : Activity(), SensorEventListener {
             setHourlyForecast(hourlyText)
             val independent = selectedArt.slug.startsWith("sol_gotico_") ||
                 selectedArt.slug == "lua_cheia_rgba_transparente" ||
-                selectedArt.slug == "lua_crescente_gotica_cristal"
+                selectedArt.slug == "lua_minguante_gotica_cristal"
             val effect = if (independent && weatherLoaded) when (weatherArtIndex) {
                 1 -> R.drawable.nuvens_roxas_widget_rgba
                 2 -> R.drawable.chuva_cristais_violeta_nuvens
