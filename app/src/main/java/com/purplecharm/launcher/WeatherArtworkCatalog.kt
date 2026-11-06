@@ -50,11 +50,12 @@ internal object WeatherArtworkCatalog {
         manual?.let(bySlug::get)?.let { return it }
         val slug = if (isSun) {
             when {
-                automaticWeather && condition == 2 -> "sol_dia_chuvoso"
-                automaticWeather && condition == 3 -> "sol_dia_frio"
+                automaticWeather && condition == 2 -> "sol_gotico_classico"
+                automaticWeather && condition == 3 -> "sol_gotico_cristal"
                 else -> solarBase[sunIndex.coerceIn(solarBase.indices)]
             }
         } else {
+            if (phase == 2) return requireNotNull(bySlug["lua_cheia_rgba_transparente"])
             val weather = lunarWeather[condition.coerceIn(lunarWeather.indices)]
             val phaseName = lunarPhase[phase.coerceIn(lunarPhase.indices)]
             val number = 1 + condition.coerceIn(lunarWeather.indices) * lunarPhase.size +
@@ -67,6 +68,6 @@ internal object WeatherArtworkCatalog {
         Kind.ECLIPSE -> "Arte de eclipse • seleção manual; evento e visibilidade não confirmados"
         Kind.LUNAR_ALTERNATIVE -> "Arte lunar alternativa • fase do componente: " +
             listOf("Nova", "Crescente", "Cheia", "Minguante")[phase.coerceIn(0, 3)]
-        else -> "Arte preservada • valores impressos ilustrativos"
+        else -> "Arte meteorológica • dados reais exibidos separadamente"
     }
 }
