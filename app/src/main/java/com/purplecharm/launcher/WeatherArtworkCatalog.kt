@@ -10,6 +10,7 @@ internal object WeatherArtworkCatalog {
         Art("sol_gotico_cristal", "Sol Gótico de Cristal", R.drawable.sol_gotico_cristal, Kind.SOLAR),
         Art("sol_gotico_nuvens", "Sol Gótico entre Nuvens", R.drawable.sol_gotico_nuvens, Kind.SOLAR),
         Art("sol_gotico_nascente", "Sol Gótico Nascente", R.drawable.sol_gotico_nascente, Kind.SOLAR),
+        Art("moldura_gotica_cristais_chuva", "Sol Dia Frio (arte completa)", R.drawable.moldura_gotica_cristais_chuva, Kind.SOLAR, panoramic = true),
         Art("lua_minguante_gotica_cristal", "Lua Minguante Gótica de Cristal", R.drawable.lua_minguante_gotica_cristal, Kind.LUNAR_ALTERNATIVE),
         Art("lua_nova_gotica_orbe_lunar", "Lua Nova Gótica com Orbe Lunar", R.drawable.lua_nova_gotica_orbe_lunar, Kind.LUNAR_ALTERNATIVE, panoramic = true),
         Art("lua_crescente_gotica_emoldurada", "Lua Crescente Gótica com Moldura", R.drawable.lua_crescente_gotica_emoldurada, Kind.LUNAR_ALTERNATIVE, panoramic = true),
@@ -48,7 +49,7 @@ internal object WeatherArtworkCatalog {
         val slug = if (isSun) {
             when {
                 automaticWeather && condition == 2 -> "sol_gotico_classico"
-                automaticWeather && condition == 3 -> "sol_gotico_cristal"
+                automaticWeather && condition == 3 -> "moldura_gotica_cristais_chuva"
                 else -> solarBase[sunIndex.coerceIn(solarBase.indices)]
             }
         } else {
