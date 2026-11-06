@@ -5,6 +5,12 @@ internal object WeatherArtworkCatalog {
     data class Art(val slug: String, val label: String, val resource: Int,
                    val kind: Kind = Kind.LUNAR_PHASE, val panoramic: Boolean = false)
     val all = listOf(
+        // New approved solar layer assets, separate from weather overlays.
+        Art("sol_gotico_classico", "Sol Gótico Clássico", R.drawable.sol_gotico_classico, Kind.SOLAR),
+        Art("sol_gotico_cristal", "Sol Gótico de Cristal", R.drawable.sol_gotico_cristal, Kind.SOLAR),
+        Art("sol_gotico_nuvens", "Sol Gótico entre Nuvens", R.drawable.sol_gotico_nuvens, Kind.SOLAR),
+        Art("sol_gotico_nascente", "Sol Gótico Nascente", R.drawable.sol_gotico_nascente, Kind.SOLAR),
+        Art("lua_cheia_rgba_transparente", "Lua Cheia (camada independente)", R.drawable.lua_cheia_rgba_transparente, Kind.LUNAR_ALTERNATIVE),
         Art("dia_quente", "Dia Quente", R.drawable.dia_quente, Kind.SOLAR),
         Art("dia_limpo", "Dia Limpo", R.drawable.dia_limpo, Kind.SOLAR),
         Art("dia_nublado", "Dia Nublado", R.drawable.dia_nublado, Kind.SOLAR),
@@ -32,9 +38,9 @@ internal object WeatherArtworkCatalog {
         Art("eclipse_solar_frio", "Eclipse Solar • Frio (manual, evento não confirmado)", R.drawable.eclipse_solar_frio, Kind.ECLIPSE),
         Art("eclipse_lunar_limpo", "Eclipse Lunar • Limpo (manual, evento não confirmado)", R.drawable.eclipse_lunar_limpo, Kind.ECLIPSE)
     )
-    // Temporary legacy-resource adapter. The selector no longer depends on list positions:
-    // new layer-1 resources can replace these slugs without changing selection logic.
-    private val solarBase = listOf("dia_quente", "dia_limpo", "dia_nublado", "nascer_do_sol")
+    // Approved solar assets are the default; retain the lunar phase assets until
+    // a phase-correct replacement is validated, avoiding false moon phases.
+    private val solarBase = listOf("sol_gotico_classico", "sol_gotico_cristal", "sol_gotico_nuvens", "sol_gotico_nascente")
     private val lunarPhase = listOf("nova", "crescente", "cheia", "minguante")
     private val lunarWeather = listOf("noite_limpa", "noite_nublada", "noite_chuvosa", "noite_fria_neve")
     private val bySlug by lazy { all.associateBy { it.slug } }
