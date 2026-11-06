@@ -2006,6 +2006,19 @@ class MainActivity : Activity(), SensorEventListener {
         val visualKey = "${selectedArt.slug}:$columns:$initialSpan"
         val liveText = if (forecast != null) "MET Norway: ${kotlin.math.round(forecast.temperature).toInt()}°C • previsão atual"
             else if (weatherActive) "Previsão indisponível • tocar para detalhes" else "Escolher localização • dados MET"
+        val city = prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
+            ?: "Localização não definida"
+        val readingText = forecast?.let { point ->
+            val humidity = point.humidity?.let { "${it.toInt()}%" } ?: "—"
+            val wind = point.wind?.let { "${(it * 3.6).toInt()} km/h" } ?: "—"
+            val uv = point.uvClearSky?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "—"
+            "$city • ${point.temperature.toInt()}°C\nUmid. $humidity • Vento $wind • UV céu limpo $uv"
+        } ?: "$city • previsão indisponível"
+        val hourlyText = weatherClient.upcoming().take(4).joinToString("   ") { point ->
+            val hour = java.time.Instant.ofEpochMilli(point.time)
+                .atZone(java.time.ZoneId.systemDefault()).hour
+            "${hour}h ${point.temperature.toInt()}°"
+        }.ifBlank { "Previsão horária indisponível" }
         if (reuseUnchanged && visualKey == lastCelestialKey && celestialView != null) {
             if (liveWeatherLabel?.text?.toString() != liveText) liveWeatherLabel?.text = liveText
             liveWeatherLabel?.contentDescription = "Dados meteorológicos MET Norway para ${weatherLocation.summary}. Os valores impressos no PNG são ilustrativos."
@@ -2027,9 +2040,8 @@ class MainActivity : Activity(), SensorEventListener {
         // The home widget now renders through the approved four-layer container.
         // Keep existing artwork and resize geometry intact during migration.
         val layers = WeatherHomeLayers(this, artwork).apply {
-            setReadings(liveText)
-            // Forecast strip remains hidden until the hourly values are validated.
-            setHourlyForecast(null)
+            setReadings(readingText)
+            setHourlyForecast(hourlyText)
             setEffectsEnabled(false)
         }
         val editor = WeatherResizeLayout(this, artwork, columns, initialSpan,
