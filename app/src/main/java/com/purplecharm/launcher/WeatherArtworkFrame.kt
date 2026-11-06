@@ -5,10 +5,11 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.view.View
 import kotlin.math.roundToInt
 
 /** One external border; no overlay, clipping, tint, shadow or painted background. */
-internal class WeatherArtworkFrame(context: Context, image: ImageView, size: Int) : FrameLayout(context) {
+internal class WeatherArtworkFrame(context: Context, image: ImageView, size: Int, layerContent: View? = null) : FrameLayout(context) {
     private val border = resources.displayMetrics.density.roundToInt().coerceAtLeast(1)
     private val preferredWidth = (intArrayOf(240, 320, 420)[size.coerceIn(0, 2)] *
         resources.displayMetrics.density).roundToInt()
@@ -23,7 +24,7 @@ internal class WeatherArtworkFrame(context: Context, image: ImageView, size: Int
         }
         clipChildren = true
         clipToPadding = true
-        addView(image, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(layerContent ?: image, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val available = if (MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED)
