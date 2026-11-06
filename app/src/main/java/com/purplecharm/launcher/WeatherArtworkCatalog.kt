@@ -43,6 +43,31 @@ internal object WeatherArtworkCatalog {
     private val lunarWeather = listOf("noite_limpa", "noite_nublada", "noite_chuvosa", "noite_fria_neve")
     private val bySlug by lazy { all.associateBy { it.slug } }
 
+    /** Consistent condition categories shared by both weather screens. */
+    fun condition(code: Int?, temperature: Double?): Int {
+        if (code == null || temperature == null) return 0
+        return when {
+            code in 71..77 || code in 85..86 || temperature <= 12.0 -> 3
+            code in 51..67 || code in 80..82 || code in 95..99 -> 2
+            code in 2..3 || code == 45 -> 1
+            else -> 0
+        }
+    }
+
+    fun supportsOverlay(art: Art): Boolean =
+        art.slug.startsWith("sol_gotico_") ||
+            art.slug == "lua_cheia_rgba_transparente" ||
+            art.slug == "lua_minguante_gotica_cristal"
+
+    fun effectFor(art: Art, condition: Int, available: Boolean): Int? =
+        if (!available || !supportsOverlay(art)) null else when (condition) {
+            1 -> R.drawable.nuvens_roxas_widget_rgba
+            2 -> R.drawable.chuva_cristais_violeta_nuvens
+            3 -> R.drawable.sobreposicao_nuvens_geladas_roxas
+            else -> null
+        }
+
+
     fun select(isSun: Boolean, sunIndex: Int, condition: Int, phase: Int, manual: String?,
                automaticWeather: Boolean = true): Art {
         manual?.let(bySlug::get)?.let { return it }
