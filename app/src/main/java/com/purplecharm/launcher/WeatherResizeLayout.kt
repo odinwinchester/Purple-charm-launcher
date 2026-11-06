@@ -127,7 +127,9 @@ internal class WeatherResizeLayout(
     }
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
         val x = (placement.column * placement.cellWidth).toInt() + if (isEditing) handleSize else 0
-        val y = ((height - art.measuredHeight) / 2).coerceAtLeast(0)
+        // Anchor artwork to the bottom of its reserved zone so the next icon row
+        // starts immediately below the visible frame, not below unused padding.
+        val y = (height - art.measuredHeight).coerceAtLeast(0)
         art.layout(x, y, x + art.measuredWidth, y + art.measuredHeight)
         val handleTop = (y + art.measuredHeight / 2 - handleSize / 2).coerceIn(0, (height - handleSize).coerceAtLeast(0))
         leftHandle.layout(x - handleSize, handleTop, x, handleTop + handleSize)
