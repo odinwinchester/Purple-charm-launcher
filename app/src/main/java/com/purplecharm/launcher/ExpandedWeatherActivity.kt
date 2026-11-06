@@ -221,8 +221,11 @@ class ExpandedWeatherActivity : Activity() {
         fun number(value: Double?, suffix: String, multiplier: Double = 1.0): String =
             value?.let { "${(it * multiplier).roundToInt()}$suffix" } ?: "indisponível"
         val nextRain = upcoming.firstOrNull { it.rainProbability != null || it.precipitationMm != null }
+        val rainAmount = nextRain?.precipitationMm?.let {
+            String.format(Locale.getDefault(), "%.1f mm", it)
+        } ?: "indisponível"
         val rain = "Probabilidade: " + number(nextRain?.rainProbability, "%") +
-            "\nPrecipitação prevista: " + number(nextRain?.precipitationMm, " mm") +
+            "\nPrecipitação prevista: " + rainAmount +
             "\nReferência: próximo período disponível • MET Norway"
         val windDetails = "Velocidade: " + number(current?.wind, " km/h", 3.6) +
             "\nDireção de origem: " + number(current?.windDirection, "°") +
