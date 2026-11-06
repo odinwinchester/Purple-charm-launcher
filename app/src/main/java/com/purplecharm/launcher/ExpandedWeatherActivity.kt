@@ -146,18 +146,12 @@ class ExpandedWeatherActivity : Activity() {
 
     private fun render() {
         val art = WeatherArtworkCatalog.all.firstOrNull { it.slug == previewSlug } ?: liveArtwork()
-        val root = FrameLayout(this).apply {
-            setBackgroundColor(Color.rgb(12, 6, 29))
-
+        // Layers 0-3 are now separate containers. The legacy combined artwork
+        // remains exclusively in the celestial layer until the 13 new assets are validated.
+        val root = WeatherLayerComposer(this).apply {
+            setBackdrop(R.drawable.purple_charm_camada1_castelo)
+            setEffectsVisible(false) // Avoid duplicating effects already baked into legacy PNGs.
         }
-        // Layer 1: approved static portrait castle art, behind every weather panel.
-        // CENTER_CROP fills the screen without distortion; the center castle stays visible.
-        root.addView(ImageView(this).apply {
-            setImageResource(R.drawable.purple_charm_camada1_castelo)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            contentDescription = null
-            importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }, FrameLayout.LayoutParams(-1, -1))
 
         val scroll = ScrollView(this).apply {
             isFillViewport = true
@@ -167,7 +161,7 @@ class ExpandedWeatherActivity : Activity() {
         }
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(8), 0, dp(28))
+            setPadding(0, if (page == "home") dp(286) else dp(8), 0, dp(28))
             setBackgroundColor(Color.TRANSPARENT)
         }
 
@@ -248,15 +242,7 @@ class ExpandedWeatherActivity : Activity() {
                 // Artwork hero is a separate, non-cropped view above the data panels.
                 // The approved castle background remains Layer 1; the artwork is not
                 // used as a wallpaper or inserted inside a smoked-glass card.
-                val hero = ImageView(this).apply {
-                    setImageResource(art.resource)
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                    adjustViewBounds = true
-                    contentDescription = art.label
-                }
-                column.addView(hero, LinearLayout.LayoutParams(-1, dp(220)).apply {
-                    setMargins(dp(12), dp(4), dp(12), dp(8))
-                })
+                root.setCelestialArtwork(art.resource, art.label, dp(58), dp(220))
                 // Layer 1 is exclusively the backdrop. Original widget PNGs are
                 // never embedded inside the Layer 2 glass panels.
                 card(column, "Condições atuais • MET Norway  ›", conditions) {
@@ -340,7 +326,7 @@ class ExpandedWeatherActivity : Activity() {
             else -> card(column, "Condições atuais", conditions)
         }
         scroll.addView(column)
-        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+        root.setInformation(scroll)
         setContentView(root)
     }
 }
