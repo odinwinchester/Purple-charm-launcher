@@ -2024,10 +2024,18 @@ class MainActivity : Activity(), SensorEventListener {
             adjustViewBounds = true
             contentDescription = selectedArt.label
         }
+        // The home widget now renders through the approved four-layer container.
+        // Keep existing artwork and resize geometry intact during migration.
+        val layers = WeatherHomeLayers(this, artwork).apply {
+            setReadings(liveText)
+            // Forecast strip remains hidden until the hourly values are validated.
+            setHourlyForecast(null)
+            setEffectsEnabled(false)
+        }
         val editor = WeatherResizeLayout(this, artwork, columns, initialSpan,
             { active -> widgetResizeActive = active },
             { span -> prefs.edit().putInt(spanKey, span).apply() },
-            { expandedWeatherDetails() })
+            { expandedWeatherDetails() }, layers)
         editor.contentDescription = "Widget meteorológico Purple Charm. Toque para ver os detalhes; toque longo para redimensionar. Para configurar, abra Widgets no modo de edição."
         widgetEditor = editor
         panel.addView(editor, LinearLayout.LayoutParams(-1, 0, 1f))
