@@ -15,32 +15,31 @@ internal object WeatherArtworkCatalog {
         Art("lua_nova_gotica_orbe_lunar", "Lua Nova Gótica com Orbe Lunar", R.drawable.lua_nova_gotica_orbe_lunar, Kind.LUNAR_ALTERNATIVE, panoramic = true),
         Art("lua_crescente_gotica_emoldurada", "Lua Crescente Gótica com Moldura", R.drawable.lua_crescente_gotica_emoldurada, Kind.LUNAR_ALTERNATIVE, panoramic = true),
         Art("lua_cheia_rgba_transparente", "Lua Cheia (camada independente)", R.drawable.lua_cheia_rgba_transparente, Kind.LUNAR_ALTERNATIVE),
-        Art("lua_01_lua_nova_noite_limpa", "Lua Nova • Noite limpa", R.drawable.lua_01_lua_nova_noite_limpa),
-        Art("lua_02_lua_crescente_noite_limpa", "Lua Crescente • Noite limpa", R.drawable.lua_02_lua_crescente_noite_limpa),
-        Art("lua_03_lua_cheia_noite_limpa", "Lua Cheia • Noite limpa", R.drawable.lua_03_lua_cheia_noite_limpa),
-        Art("lua_04_lua_minguante_noite_limpa", "Lua Minguante • Noite limpa", R.drawable.lua_04_lua_minguante_noite_limpa),
-        Art("lua_05_lua_nova_noite_nublada", "Lua Nova • Noite nublada", R.drawable.lua_05_lua_nova_noite_nublada),
-        Art("lua_06_lua_crescente_noite_nublada", "Lua Crescente • Noite nublada", R.drawable.lua_06_lua_crescente_noite_nublada),
-        Art("lua_07_lua_cheia_noite_nublada", "Lua Cheia • Noite nublada", R.drawable.lua_07_lua_cheia_noite_nublada),
-        Art("lua_08_lua_minguante_noite_nublada", "Lua Minguante • Noite nublada", R.drawable.lua_08_lua_minguante_noite_nublada),
-        Art("lua_09_lua_nova_noite_chuvosa", "Lua Nova • Noite chuvosa", R.drawable.lua_09_lua_nova_noite_chuvosa),
-        Art("lua_10_lua_crescente_noite_chuvosa", "Lua Crescente • Noite chuvosa", R.drawable.lua_10_lua_crescente_noite_chuvosa),
-        Art("lua_11_lua_cheia_noite_chuvosa", "Lua Cheia • Noite chuvosa", R.drawable.lua_11_lua_cheia_noite_chuvosa),
-        Art("lua_12_lua_minguante_noite_chuvosa", "Lua Minguante • Noite chuvosa", R.drawable.lua_12_lua_minguante_noite_chuvosa),
-        Art("lua_13_lua_nova_noite_fria_neve", "Lua Nova • Noite fria / neve", R.drawable.lua_13_lua_nova_noite_fria_neve),
-        Art("lua_14_lua_crescente_noite_fria_neve", "Lua Crescente • Noite fria / neve", R.drawable.lua_14_lua_crescente_noite_fria_neve),
-        Art("lua_15_lua_cheia_noite_fria_neve", "Lua Cheia • Noite fria / neve", R.drawable.lua_15_lua_cheia_noite_fria_neve),
-        Art("lua_16_lua_minguante_noite_fria_neve", "Lua Minguante • Noite fria / neve", R.drawable.lua_16_lua_minguante_noite_fria_neve),
         Art("lua_noite_chuvosa", "Lua • Noite Chuvosa (alternativa manual)", R.drawable.lua_noite_chuvosa, Kind.LUNAR_ALTERNATIVE, panoramic = true),
         Art("lua_noite_fria", "Lua • Noite Fria (alternativa manual)", R.drawable.lua_noite_fria, Kind.LUNAR_ALTERNATIVE, panoramic = true),
         Art("eclipse_solar_frio", "Eclipse Solar • Frio (manual, evento não confirmado)", R.drawable.eclipse_solar_frio, Kind.ECLIPSE),
         Art("eclipse_lunar_limpo", "Eclipse Lunar • Limpo (manual, evento não confirmado)", R.drawable.eclipse_lunar_limpo, Kind.ECLIPSE)
     )
-    // Approved solar assets are the default; retain the lunar phase assets until
-    // a phase-correct replacement is validated, avoiding false moon phases.
     private val solarBase = listOf("sol_gotico_classico", "sol_gotico_cristal", "sol_gotico_nuvens", "sol_gotico_nascente")
-    private val lunarPhase = listOf("nova", "crescente", "cheia", "minguante")
-    private val lunarWeather = listOf("noite_limpa", "noite_nublada", "noite_chuvosa", "noite_fria_neve")
+    private val lunarBase = listOf("lua_nova_gotica_orbe_lunar", "lua_crescente_gotica_emoldurada",
+        "lua_cheia_rgba_transparente", "lua_minguante_gotica_cristal")
+    private val retiredSolar = mapOf(
+        "dia_limpo" to "sol_gotico_classico", "dia_nublado" to "sol_gotico_nuvens",
+        "dia_chuvoso" to "moldura_gotica_cristais_chuva", "dia_frio" to "sol_gotico_cristal",
+        "sol_dia_chuvoso" to "moldura_gotica_cristais_chuva", "sol_dia_frio" to "sol_gotico_cristal"
+    )
+    /** Read legacy preferences without reintroducing the retired 16-art catalog. */
+    fun resolveManual(slug: String?): String? {
+        if (slug == null) return null
+        if (all.any { it.slug == slug }) return slug
+        retiredSolar[slug]?.let { return it }
+        val oldMoon = Regex("^lua_(0[1-9]|1[0-6])_lua_").find(slug)
+        if (oldMoon != null) {
+            val index = oldMoon.groupValues[1].toInt() - 1
+            return lunarBase[index % lunarBase.size]
+        }
+        return null
+    }
     private val bySlug by lazy { all.associateBy { it.slug } }
 
     /** Consistent condition categories shared by both weather screens. */
@@ -70,7 +69,7 @@ internal object WeatherArtworkCatalog {
 
     fun select(isSun: Boolean, sunIndex: Int, condition: Int, phase: Int, manual: String?,
                automaticWeather: Boolean = true): Art {
-        manual?.let(bySlug::get)?.let { return it }
+        resolveManual(manual)?.let(bySlug::get)?.let { return it }
         val slug = if (isSun) {
             when {
                 automaticWeather && condition == 2 -> "moldura_gotica_cristais_chuva"
@@ -78,15 +77,7 @@ internal object WeatherArtworkCatalog {
                 else -> solarBase[sunIndex.coerceIn(solarBase.indices)]
             }
         } else {
-            if (phase == 0) return requireNotNull(bySlug["lua_nova_gotica_orbe_lunar"])
-            if (phase == 1) return requireNotNull(bySlug["lua_crescente_gotica_emoldurada"])
-            if (phase == 3) return requireNotNull(bySlug["lua_minguante_gotica_cristal"])
-            if (phase == 2) return requireNotNull(bySlug["lua_cheia_rgba_transparente"])
-            val weather = lunarWeather[condition.coerceIn(lunarWeather.indices)]
-            val phaseName = lunarPhase[phase.coerceIn(lunarPhase.indices)]
-            val number = 1 + condition.coerceIn(lunarWeather.indices) * lunarPhase.size +
-                phase.coerceIn(lunarPhase.indices)
-            "lua_${number.toString().padStart(2, '0')}_lua_${phaseName}_$weather"
+            lunarBase[phase.coerceIn(lunarBase.indices)]
         }
         return requireNotNull(bySlug[slug]) { "Missing weather art mapping: $slug" }
     }
