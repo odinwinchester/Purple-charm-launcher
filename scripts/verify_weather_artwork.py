@@ -32,9 +32,11 @@ print('20/20 inventory entries agree with original hashes, dimensions and associ
 import re
 catalog = Path('app/src/main/java/com/purplecharm/launcher/WeatherArtworkCatalog.kt').read_text()
 resources = re.findall(r'R\.drawable\.([a-z0-9_]+)', catalog)
-assert len(resources) == 26 and len(set(resources)) == 26
-assert set(resources[:20]) == {Path(name).stem for name in expected}
-print('20/20 original catalog entries preserved.')
+assert len(resources) == len(set(resources)), 'Duplicate drawable entries in weather catalog'
+catalog_names = set(resources)
+legacy_names = {Path(name).stem for name in expected}
+assert legacy_names.issubset(catalog_names), 'Approved original weather resources lost from catalog'
+print(f'{len(legacy_names)}/{len(legacy_names)} approved original catalog entries preserved.')
 
 additional = json.loads(Path('docs/weather-additional-artwork-inventory.json').read_text())
 assert len(additional) == 6
@@ -53,10 +55,19 @@ for item in additional:
     assert len(data) == item['bytes']
     git_blob = hashlib.sha1(f'blob {len(data)}\0'.encode() + data).hexdigest()
     assert git_blob == item['git_blob_sha'], item['path']
-all_paths = set(expected) | new_paths
-assert {str(p) for p in Path('app/src/main/res/drawable-nodpi').glob('*.png')} == all_paths
-assert set(resources) == {Path(name).stem for name in all_paths}
-print('26/26 PNGs intact; six new files match owner source blobs, sizes and SHA-256.')
+print('6/6 approved additional PNGs intact (SHA-256, dimensions, source blobs).')
+
+# New v12 assets expand the drawable directory. Do not demand only 26 PNGs;
+# verify every catalog reference exists and keep the original inventory checks.
+directory = Path('app/src/main/res/drawable-nodpi')
+available = {p.stem for p in directory.glob('*.png')}
+missing = catalog_names - available
+assert not missing, f'Catalog drawable resources missing from drawable-nodpi: {sorted(missing)}'
+assert {Path(name).stem for name in new_paths}.issubset(available)
+assert legacy_names.issubset(available)
+assert len(available) == len(list(directory.glob('*.png'))), 'Duplicate PNG resource stems'
+assert len(available) >= 26, f'Expected at least 26 original and additional assets, got {len(available)}'
+print(f'{len(available)} PNGs present; {len(catalog_names)} catalog entries resolve to PNG files.')
 
 # Consolidation protects every existing graphical resource, not only weather art.
 all_graphics = json.loads(Path("docs/graphic-resource-sha256.json").read_text())
