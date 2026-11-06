@@ -1945,19 +1945,10 @@ class MainActivity : Activity(), SensorEventListener {
     private fun gothicWeatherSettings() { weatherLocation.showOptions() }
 
     private fun gothicMoonWidget(reuseUnchanged: Boolean = false): View {
-        // Ciclo sinódico médio de 29,530588853 dias; aproximação offline.
-        // Referência: Lua Nova de 06/01/2000 às 18:14 UTC.
         val now = System.currentTimeMillis()
-        val lunarDays = ((now - 947182440000L) / 86400000.0) % 29.530588853
-        val age = if (lunarDays < 0) lunarDays + 29.530588853 else lunarDays
-        val automaticPhase = when {
-            age < 1.84566 || age >= 27.68493 -> 3 // Nova
-            age < 12.91963 -> 0 // Crescente (inclui quartos e gibosa)
-            age < 16.61096 -> 1 // Cheia
-            else -> 2 // Minguante
-        }
-        val phase = if (prefs.getBoolean("gothic_moon_auto", true)) automaticPhase
-            else prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)
+        val automaticPhase = LunarPhaseCalculator.artworkIndexAt(java.time.Instant.ofEpochMilli(now))
+        val phaseArtIndex = if (prefs.getBoolean("gothic_moon_auto", true)) automaticPhase
+            else intArrayOf(1, 2, 3, 0)[prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)]
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
         val mode = prefs.getInt("gothic_celestial_mode", 0) // 0 auto, 1 sol, 2 lua
         val forecast = weatherClient.current()
@@ -1972,27 +1963,17 @@ class MainActivity : Activity(), SensorEventListener {
         val weatherActive = prefs.contains("gothic_weather_lat")
         val weatherLoaded = weatherActive && forecast != null
         val weatherCode = forecast?.code ?: 0
-        val rainy = weatherLoaded && (weatherCode in 51..67 || weatherCode in 80..82 || weatherCode in 95..99)
-        val snowy = weatherLoaded && (weatherCode in 71..77 || weatherCode in 85..86)
-        val cold = weatherLoaded && (forecast?.temperature ?: 99.0) <= 12
+        val weatherArtIndex = if (weatherLoaded)
+            WeatherArtworkCatalog.condition(weatherCode, forecast?.temperature) else 0
         val size = prefs.getInt("gothic_moon_size", 1).coerceIn(0, 2)
         val selectedSun = if (mode == 0) {
             when {
-                rainy || snowy || cold || weatherCode in 2..3 || weatherCode == 45 -> 2
+                weatherLoaded && weatherArtIndex != 0 -> 2
                 hour in 6..9 -> 3
                 (forecast?.temperature ?: 0.0) >= 30 -> 0
                 else -> 1
             }
         } else sunStyle
-        // Ordenação das artes lunares: nova, crescente, cheia, minguante.
-        // Ordenação interna do widget: crescente, cheia, minguante, nova.
-        val phaseArtIndex = intArrayOf(1, 2, 3, 0)[phase]
-        val weatherArtIndex = when {
-            snowy || cold -> 3
-            rainy -> 2
-            weatherLoaded && (weatherCode in 2..3 || weatherCode == 45) -> 1
-            else -> 0
-        }
         val selectedArt = WeatherArtworkCatalog.select(isSun, selectedSun, weatherArtIndex,
             phaseArtIndex, prefs.getString("gothic_manual_art", null), automaticWeather = mode == 0)
         currentWeatherArtSlug = selectedArt.slug
@@ -2003,11 +1984,25 @@ class MainActivity : Activity(), SensorEventListener {
         val spanKey = if (selectedArt.panoramic) "gothic_widget_span_${selectedArt.slug}" else "gothic_widget_span"
         val defaultSpan = if (selectedArt.panoramic) columns else intArrayOf(2, 3, columns)[size]
         val initialSpan = prefs.getInt(spanKey, defaultSpan).coerceIn(1, columns)
-        val visualKey = "${selectedArt.slug}:$columns:$initialSpan"
+        val visualKey = "${selectedArt.slug}:$columns:$initialSpan:$weatherArtIndex"
         val liveText = if (forecast != null) "MET Norway: ${kotlin.math.round(forecast.temperature).toInt()}°C • previsão atual"
             else if (weatherActive) "Previsão indisponível • tocar para detalhes" else "Escolher localização • dados MET"
+        val city = prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
+            ?: "Localização não definida"
+        val readingText = forecast?.let { point ->
+            val humidity = point.humidity?.let { "${it.toInt()}%" } ?: "—"
+            val wind = point.wind?.let { "${(it * 3.6).toInt()} km/h" } ?: "—"
+            val uv = point.uvClearSky?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "—"
+            "$city • ${point.temperature.toInt()}°C\nUmid. $humidity • Vento $wind • UV céu limpo $uv"
+        } ?: "$city • previsão indisponível"
+        val hourlyText = weatherClient.upcoming().take(4).joinToString("   ") { point ->
+            val hour = java.time.Instant.ofEpochMilli(point.time)
+                .atZone(java.time.ZoneId.systemDefault()).hour
+            "${hour}h ${point.temperature.toInt()}°"
+        }.ifBlank { "Previsão horária indisponível" }
         if (reuseUnchanged && visualKey == lastCelestialKey && celestialView != null) {
             if (liveWeatherLabel?.text?.toString() != liveText) liveWeatherLabel?.text = liveText
+            widgetEditor?.updateWeatherLayers(readingText, hourlyText)
             liveWeatherLabel?.contentDescription = "Dados meteorológicos MET Norway para ${weatherLocation.summary}. Os valores impressos no PNG são ilustrativos."
             return celestialView!!
         }
@@ -2024,10 +2019,18 @@ class MainActivity : Activity(), SensorEventListener {
             adjustViewBounds = true
             contentDescription = selectedArt.label
         }
+        // The home widget now renders through the approved four-layer container.
+        // Keep existing artwork and resize geometry intact during migration.
+        val layers = WeatherHomeLayers(this, artwork).apply {
+            setReadings(readingText)
+            setHourlyForecast(hourlyText)
+            val effect = WeatherArtworkCatalog.effectFor(selectedArt, weatherArtIndex, weatherLoaded)
+            setEffectResource(effect)
+        }
         val editor = WeatherResizeLayout(this, artwork, columns, initialSpan,
             { active -> widgetResizeActive = active },
             { span -> prefs.edit().putInt(spanKey, span).apply() },
-            { expandedWeatherDetails() })
+            { expandedWeatherDetails() }, layers)
         editor.contentDescription = "Widget meteorológico Purple Charm. Toque para ver os detalhes; toque longo para redimensionar. Para configurar, abra Widgets no modo de edição."
         widgetEditor = editor
         panel.addView(editor, LinearLayout.LayoutParams(-1, 0, 1f))

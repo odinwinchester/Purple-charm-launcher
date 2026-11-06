@@ -35,7 +35,6 @@ class ExpandedWeatherActivity : Activity() {
     }
     private var page = "home"
     private var smoked = true
-    private var previewSlug: String? = null
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 
     // Fully cut-out panels: violet outline only, no opaque fill.
@@ -125,39 +124,40 @@ class ExpandedWeatherActivity : Activity() {
         val latitude = prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull()
         val longitude = prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull()
         val daylight = SolarDaylight.isDay(System.currentTimeMillis(), latitude, longitude)
-            ?: forecast?.isDay ?: true
-        val rainy = forecast?.code == 61 || forecast?.code == 95
-        val cold = forecast != null && (forecast.temperature <= 12 || forecast.code == 71)
-        val cloudy = forecast?.code == 2 || forecast?.code == 3 || forecast?.code == 45
-        val condition = when {
-            cold -> 3
-            rainy -> 2
-            cloudy -> 1
-            else -> 0
+            ?: forecast?.isDay ?: false
+        val condition = WeatherArtworkCatalog.condition(forecast?.code, forecast?.temperature)
+        val mode = prefs.getInt("gothic_celestial_mode", 0)
+        val isSun = when (mode) {
+            1 -> true
+            2 -> false
+            else -> daylight
         }
-        val sunStyle = when {
-            condition != 0 -> 2
-            (forecast?.temperature ?: 0.0) >= 30 -> 0
-            else -> 1
-        }
-        val phase = intArrayOf(1, 2, 3, 0)[prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)]
-        return WeatherArtworkCatalog.select(daylight, sunStyle, condition, phase, null)
+        val phase = if (prefs.getBoolean("gothic_moon_auto", true))
+            LunarPhaseCalculator.artworkIndexAt(Instant.now())
+        else intArrayOf(1, 2, 3, 0)[prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)]
+        val selectedSun = if (mode == 0) {
+            val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+            when {
+                forecast != null && condition != 0 -> 2
+                hour in 6..9 -> 3
+                (forecast?.temperature ?: 0.0) >= 30 -> 0
+                else -> 1
+            }
+        } else prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
+        return WeatherArtworkCatalog.select(isSun, selectedSun, condition, phase,
+            prefs.getString("gothic_manual_art", null), automaticWeather = mode == 0)
     }
 
     private fun render() {
-        val art = WeatherArtworkCatalog.all.firstOrNull { it.slug == previewSlug } ?: liveArtwork()
-        val root = FrameLayout(this).apply {
-            setBackgroundColor(Color.rgb(12, 6, 29))
-
+        val art = liveArtwork()
+        // Independent layers preserve the castle background and the glass panels.
+        val root = WeatherLayerComposer(this).apply {
+            setBackdrop(R.drawable.purple_charm_camada1_castelo)
+            val forecast = weather.current()
+            val condition = WeatherArtworkCatalog.condition(forecast?.code, forecast?.temperature)
+            val effect = WeatherArtworkCatalog.effectFor(art, condition, forecast != null)
+            setEffectArtwork(effect, dp(58), dp(220))
         }
-        // Layer 1: approved static portrait castle art, behind every weather panel.
-        // CENTER_CROP fills the screen without distortion; the center castle stays visible.
-        root.addView(ImageView(this).apply {
-            setImageResource(R.drawable.purple_charm_camada1_castelo)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            contentDescription = null
-            importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }, FrameLayout.LayoutParams(-1, -1))
 
         val scroll = ScrollView(this).apply {
             isFillViewport = true
@@ -167,7 +167,7 @@ class ExpandedWeatherActivity : Activity() {
         }
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(8), 0, dp(28))
+            setPadding(0, if (page == "home") dp(286) else dp(8), 0, dp(28))
             setBackgroundColor(Color.TRANSPARENT)
         }
 
@@ -245,6 +245,10 @@ class ExpandedWeatherActivity : Activity() {
         fun open(destination: String) { page = destination; render() }
         when (page) {
             "home" -> {
+                // Artwork hero is a separate, non-cropped view above the data panels.
+                // The approved castle background remains Layer 1; the artwork is not
+                // used as a wallpaper or inserted inside a smoked-glass card.
+                root.setCelestialArtwork(art.resource, art.label, dp(58), dp(220))
                 // Layer 1 is exclusively the backdrop. Original widget PNGs are
                 // never embedded inside the Layer 2 glass panels.
                 card(column, "Condições atuais • MET Norway  ›", conditions) {
@@ -328,7 +332,7 @@ class ExpandedWeatherActivity : Activity() {
             else -> card(column, "Condições atuais", conditions)
         }
         scroll.addView(column)
-        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+        root.setInformation(scroll)
         setContentView(root)
     }
 }

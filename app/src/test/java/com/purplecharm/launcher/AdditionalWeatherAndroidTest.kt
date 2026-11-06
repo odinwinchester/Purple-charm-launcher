@@ -58,12 +58,15 @@ class AdditionalWeatherAndroidTest {
         val dimensions = listOf("/weather-artwork-sizes.tsv", "/weather-additional-artwork-sizes.tsv").flatMap { file ->
             javaClass.getResourceAsStream(file)!!.bufferedReader().use { it.readLines() }
         }.associate { line -> val (name, w, h) = line.split('\t'); name to (w.toInt() to h.toInt()) }
-        assertEquals(26, dimensions.size)
+        assertEquals(26, dimensions.size) // Retained originals are still integrity fixtures.
         for (item in WeatherArtworkCatalog.all) {
             val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeResource(app.resources, item.resource, options)
-            assertEquals(item.slug, dimensions.getValue(item.slug).first, options.outWidth)
-            assertEquals(item.slug, dimensions.getValue(item.slug).second, options.outHeight)
+            assertTrue(item.slug, options.outWidth > 0 && options.outHeight > 0)
+            dimensions[item.slug]?.let { (width, height) ->
+                assertEquals(item.slug, width, options.outWidth)
+                assertEquals(item.slug, height, options.outHeight)
+            }
         }
     }
     private fun cached(symbol: String, temperature: Int) {
@@ -78,8 +81,8 @@ class AdditionalWeatherAndroidTest {
             .putString("met_forecast_json", json).putLong("gothic_weather_expires", System.currentTimeMillis() + 3_600_000L).commit()
     }
     @Test fun activitySelectsRainColdAndSnowFromMetCacheWithoutRealNetwork() {
-        for ((symbol, temp, expected) in listOf(Triple("rain_day", 20, "sol_dia_chuvoso"),
-            Triple("clearsky_day", -3, "sol_dia_frio"), Triple("snowandthunder_day", 1, "sol_dia_frio"))) {
+        for ((symbol, temp, expected) in listOf(Triple("rain_day", 20, "moldura_gotica_cristais_chuva"),
+            Triple("clearsky_day", -3, "sol_gotico_cristal"), Triple("snowandthunder_day", 1, "sol_gotico_cristal"))) {
             seed(); cached(symbol, temp)
             val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
             assertNotNull(art(controller.get(), expected))
@@ -98,10 +101,10 @@ class AdditionalWeatherAndroidTest {
         val originalTop = Rect().also {
             activity.window.decorView.findViewWithTag<ScrollView>("home_icons_scroll")!!.getGlobalVisibleRect(it)
         }.top
-        for (item in WeatherArtworkCatalog.all.drop(20)) {
+        for (item in WeatherArtworkCatalog.all) {
             menu(activity); click(ShadowAlertDialog.getLatestAlertDialog(), 1)
             val chooser = ShadowAlertDialog.getLatestAlertDialog()
-            assertEquals(26, chooser.listView.adapter.count)
+            assertEquals(WeatherArtworkCatalog.all.size, chooser.listView.adapter.count)
             click(chooser, WeatherArtworkCatalog.all.indexOf(item))
             assertEquals(item.slug, p.getString("gothic_manual_art", null))
             assertNotNull(art(activity, item.slug))
@@ -180,7 +183,7 @@ class AdditionalWeatherAndroidTest {
         assertTrue(readout.text.toString().contains("20°C")); assertTrue(readout.text.toString().contains("MET Norway"))
         assertEquals(1, readout.maxLines)
         assertFalse(views(panel).filterIsInstance<android.widget.TextView>().any { it.text.toString().contains("ilustrativos") })
-        assertNotNull(art(a, "sol_dia_chuvoso"))
+        assertNotNull(art(a, "moldura_gotica_cristais_chuva"))
         val location = p.getString("gothic_weather_lat", null)
         menu(a); click(ShadowAlertDialog.getLatestAlertDialog(), 6)
         val details = ShadowAlertDialog.getLatestAlertDialog()

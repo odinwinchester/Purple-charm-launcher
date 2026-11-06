@@ -16,13 +16,13 @@ import kotlin.math.roundToInt
 internal class WeatherResizeLayout(
     context: Context, image: ImageView, private val columns: Int, initialSpan: Int,
     private val onEditing: (Boolean) -> Unit, private val onCommitted: (Int) -> Unit,
-    onOptions: () -> Unit
+    onOptions: () -> Unit, layers: WeatherHomeLayers? = null
 ) : ViewGroup(context) {
     private val handleSize = (24 * resources.displayMetrics.density).toInt().coerceAtLeast(1)
     private val border = resources.displayMetrics.density.roundToInt().coerceAtLeast(1)
     private val sw = image.drawable.intrinsicWidth
     private val sh = image.drawable.intrinsicHeight
-    private val art = WeatherArtworkFrame(context, image, 2)
+    private val art = WeatherArtworkFrame(context, image, 2, layers)
     private var span = initialSpan.coerceIn(1, columns)
     private var placement = WidgetResizeGeometry.place(0, 0, columns, span, handleSize, sw, sh, border)
     var isEditing = false
@@ -92,6 +92,10 @@ internal class WeatherResizeLayout(
             }
         }
     }
+    fun updateWeatherLayers(readings: String, hourly: String) {
+        (art.getChildAt(0) as? WeatherHomeLayers)?.updateLiveData(readings, hourly)
+    }
+
     fun beginEditing() {
         if (isEditing) return
         isEditing = true

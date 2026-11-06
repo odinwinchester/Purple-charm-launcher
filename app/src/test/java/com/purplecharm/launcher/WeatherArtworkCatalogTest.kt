@@ -4,26 +4,30 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WeatherArtworkCatalogTest {
-    @Test fun preservesTwentyOriginalMappingsInsideTwentySixDistinctResources() {
+    @Test fun activeCatalogContainsOnlyLayeredArtworkAndManualExceptions() {
         val catalog = WeatherArtworkCatalog.all
-        assertEquals(26, catalog.size)
-        assertEquals(26, catalog.map { it.slug }.distinct().size)
-        assertEquals(26, catalog.map { it.resource }.distinct().size)
-        val originals = javaClass.getResourceAsStream("/weather-artwork-sizes.tsv")!!.bufferedReader()
-            .use { it.readLines().map { line -> line.substringBefore('\t') }.toSet() }
-        assertEquals(originals, catalog.take(20).map { it.slug }.toSet())
-        for (condition in 0..3) for (phase in 0..3) {
-            val art = WeatherArtworkCatalog.select(false, 0, condition, phase, null)
-            assertEquals(4 + condition * 4 + phase, catalog.indexOf(art))
+        assertEquals(13, catalog.size)
+        assertEquals(catalog.size, catalog.map { it.slug }.toSet().size)
+        assertEquals(catalog.size, catalog.map { it.resource }.toSet().size)
+        assertFalse(catalog.any { it.slug.matches(Regex("lua_\\d{2}_.*")) })
+        for (phase in 0..3) {
+            val art = WeatherArtworkCatalog.select(false, 0, 2, phase, null)
+            assertEquals(listOf("lua_nova_gotica_orbe_lunar", "lua_crescente_gotica_emoldurada",
+                "lua_cheia_rgba_transparente", "lua_minguante_gotica_cristal")[phase], art.slug)
         }
-        assertEquals(4, catalog.take(20).count { "noite_chuvosa" in it.slug })
-        assertEquals(4, catalog.count { "noite_fria_neve" in it.slug })
-        assertFalse(catalog.any { it.slug == "dia_chuvoso" || it.slug == "dia_frio" })
     }
-    @Test fun manualCustomizationIsOptionalAndUnknownSelectionReturnsToAutomatic() {
-        val manual = WeatherArtworkCatalog.all.last()
-        assertEquals(manual, WeatherArtworkCatalog.select(true, 1, 0, 0, manual.slug))
-        assertEquals("dia_limpo", WeatherArtworkCatalog.select(true, 1, 0, 0, null).slug)
-        assertEquals("dia_limpo", WeatherArtworkCatalog.select(true, 1, 0, 0, "removed_art").slug)
+
+    @Test fun retiredManualPreferencesMigrateToCurrentArtWithoutBreakingUserChoice() {
+        for (phase in 0..3) for (condition in 0..3) {
+            val index = 1 + condition * 4 + phase
+            val oldSlug = "lua_${index.toString().padStart(2, '0')}_lua_" +
+                listOf("nova", "crescente", "cheia", "minguante")[phase] + "_" +
+                listOf("noite_limpa", "noite_nublada", "noite_chuvosa", "noite_fria_neve")[condition]
+            assertEquals(WeatherArtworkCatalog.select(false, 0, 0, phase, null).slug,
+                WeatherArtworkCatalog.resolveManual(oldSlug))
+        }
+        assertEquals("moldura_gotica_cristais_chuva", WeatherArtworkCatalog.resolveManual("sol_dia_chuvoso"))
+        assertEquals("sol_gotico_cristal", WeatherArtworkCatalog.resolveManual("sol_dia_frio"))
+        assertEquals("sol_gotico_classico", WeatherArtworkCatalog.select(true, 0, 0, 0, "unknown_art").slug)
     }
 }
