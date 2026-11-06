@@ -8,6 +8,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.view.ViewGroup
 
 /**
  * Approved HOME widget composition (not the expanded weather screen).
@@ -29,29 +30,40 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         setTextColor(Color.WHITE)
         textSize = 12f
         setShadowLayer(3f, 0f, 1f, Color.BLACK)
-        gravity = Gravity.CENTER
+        gravity = Gravity.CENTER_VERTICAL or Gravity.START
+        setPadding((8 * resources.displayMetrics.density).toInt(), 0, (8 * resources.displayMetrics.density).toInt(), 0)
     }
     private val hourly = TextView(context).apply {
         setTextColor(Color.WHITE)
         textSize = 11f
         gravity = Gravity.CENTER
-        setBackgroundColor(Color.argb(165, 16, 7, 30))
+        setBackgroundColor(Color.TRANSPARENT)
     }
-    private val bottom = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.BOTTOM
-        addView(readings, LinearLayout.LayoutParams(-1, -2))
-        addView(hourly, LinearLayout.LayoutParams(-1, -2))
+    private val dataArea = FrameLayout(context).apply {
+        addView(readings, LayoutParams(-1, -1))
     }
-
     init {
         clipChildren = true
         addView(art, LayoutParams(-1, -1))
         addView(effects, LayoutParams(-1, -1))
-        addView(bottom, LayoutParams(-1, -1))
+        // Approved composition: artwork left, live data right, hourly strip inside bottom.
+        addView(dataArea, LayoutParams(-1, -1))
+        addView(hourly, LayoutParams(-1, -2, Gravity.BOTTOM))
         effects.visibility = View.GONE
         readings.visibility = View.GONE
         hourly.visibility = View.GONE
+    }
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val width = MeasureSpec.getSize(widthMeasureSpec)
+        val height = MeasureSpec.getSize(heightMeasureSpec)
+        val dataWidth = (width * 0.53f).toInt()
+        val dataHeight = (height * 0.73f).toInt()
+        dataArea.layoutParams = (dataArea.layoutParams as LayoutParams).apply {
+            this.width = dataWidth
+            this.height = dataHeight
+            gravity = Gravity.RIGHT or Gravity.TOP
+        }
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
     fun updateLiveData(readingsValue: String?, hourlyValue: String?) {
