@@ -74,7 +74,17 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         hourly.visibility = if (value.isNullOrBlank()) View.GONE else View.VISIBLE
     }
 
-    /** Only enable once independent effect assets and collision rules are validated. */
+    /** Effects are independent images; never place a second celestial body here. */
+    fun setEffectResource(resourceId: Int?) {
+        replaceEffect(resourceId?.let { id -> ImageView(context).apply {
+            setImageResource(id)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        } })
+        setEffectsEnabled(resourceId != null)
+    }
+
+    /** Only display a separately selected overlay. */
     fun setEffectsEnabled(enabled: Boolean) {
         effects.visibility = if (enabled) View.VISIBLE else View.GONE
     }
