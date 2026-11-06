@@ -151,7 +151,8 @@ class ExpandedWeatherActivity : Activity() {
         val root = WeatherLayerComposer(this).apply {
             setBackdrop(R.drawable.purple_charm_camada1_castelo)
             val independent = art.slug.startsWith("sol_gotico_") ||
-                art.slug == "lua_cheia_rgba_transparente"
+                art.slug == "lua_cheia_rgba_transparente" ||
+                art.slug == "lua_crescente_gotica_cristal"
             val code = weather.current()?.code ?: 0
             val temp = weather.current()?.temperature ?: 99.0
             val effect = if (independent) when {
