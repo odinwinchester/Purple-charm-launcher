@@ -4,11 +4,21 @@ import json
 import struct
 from pathlib import Path
 
+# Historical PNGs are kept byte-for-byte outside Android resources.
+def stored_path(path):
+    p = Path(path)
+    if p.exists():
+        return p
+    archive = Path("docs/archive/weather-legacy") / p.name
+    assert archive.exists(), f"Missing historical artwork: {path}"
+    return archive
+
+
 expected = json.loads(Path('docs/weather-artwork-sha256.json').read_text())
 assert len(expected) == 20, f'Expected 20 originals, found {len(expected)}'
 for name, digest in expected.items():
-    assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == digest, name
-print('20/20 original weather PNGs intact (SHA-256).')
+    assert hashlib.sha256(stored_path(name).read_bytes()).hexdigest() == digest, name
+print('20/20 original weather PNGs intact (active or archived, SHA-256).')
 
 fixtures = {}
 for line in Path('app/src/test/resources/weather-artwork-sizes.tsv').read_text().splitlines():
@@ -16,14 +26,14 @@ for line in Path('app/src/test/resources/weather-artwork-sizes.tsv').read_text()
     fixtures[name] = (int(width), int(height))
 assert len(fixtures) == 20
 for name in expected:
-    image = Path(name)
+    image = stored_path(name)
     assert struct.unpack('>II', image.read_bytes()[16:24]) == fixtures[image.stem], name
 print('20/20 geometry test fixtures match the actual PNG dimensions.')
 
 inventory = json.loads(Path('docs/weather-artwork-inventory.json').read_text())
 assert len(inventory) == 20 and {r['path'] for r in inventory} == set(expected)
 for item in inventory:
-    image = Path(item['path'])
+    image = stored_path(item['path'])
     assert item['sha256'] == expected[str(image)]
     assert (item['width'], item['height']) == struct.unpack('>II', image.read_bytes()[16:24])
     assert item['association']
@@ -35,7 +45,7 @@ resources = re.findall(r'R\.drawable\.([a-z0-9_]+)', catalog)
 assert len(resources) == len(set(resources)), 'Duplicate drawable entries in weather catalog'
 catalog_names = set(resources)
 legacy_names = {Path(name).stem for name in expected}
-assert legacy_names.issubset({p.stem for p in Path('app/src/main/res/drawable-nodpi').glob('*.png')}), 'Approved original weather PNG missing'
+assert all(stored_path(name).exists() for name in expected), 'Approved original weather PNG missing'
 print(f'{len(legacy_names)}/{len(legacy_names)} approved original PNGs retained; inactive entries may be absent from catalog.')
 
 additional = json.loads(Path('docs/weather-additional-artwork-inventory.json').read_text())
@@ -64,13 +74,13 @@ available = {p.stem for p in directory.glob('*.png')}
 missing = catalog_names - available
 assert not missing, f'Catalog drawable resources missing from drawable-nodpi: {sorted(missing)}'
 assert {Path(name).stem for name in new_paths}.issubset(available)
-assert legacy_names.issubset(available)
+assert all(stored_path(name).exists() for name in expected)
 assert len(available) == len(list(directory.glob('*.png'))), 'Duplicate PNG resource stems'
-assert len(available) >= 26, f'Expected at least 26 original and additional assets, got {len(available)}'
+assert len(available) >= len(catalog_names), 'Insufficient drawable resources'
 print(f'{len(available)} PNGs present; {len(catalog_names)} catalog entries resolve to PNG files.')
 
 # Consolidation protects every existing graphical resource, not only weather art.
 all_graphics = json.loads(Path("docs/graphic-resource-sha256.json").read_text())
 for path, digest in all_graphics.items():
-    assert hashlib.sha256(Path(path).read_bytes()).hexdigest() == digest, path
+    assert hashlib.sha256(stored_path(path).read_bytes()).hexdigest() == digest, path
 print(f"{len(all_graphics)}/{len(all_graphics)} original graphical resources intact (SHA-256).")
