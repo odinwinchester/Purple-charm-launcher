@@ -29,7 +29,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         setTextColor(Color.WHITE)
         textSize = 12f
         setShadowLayer(3f, 0f, 1f, Color.BLACK)
-        gravity = Gravity.CENTER_VERTICAL or Gravity.START
+        gravity = Gravity.TOP or Gravity.START
         setPadding((8 * resources.displayMetrics.density).toInt(), 0, (8 * resources.displayMetrics.density).toInt(), 0)
     }
     private val hourly = TextView(context).apply {
@@ -54,12 +54,14 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
     }
     override fun onSizeChanged(width: Int, height: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(width, height, oldw, oldh)
-        val dataWidth = (width * 0.53f).toInt()
-        val dataHeight = (height * 0.73f).toInt()
+        // Reserve the right side for live data instead of covering the sun/moon.
+        // Keep a small inset from the artwork border and the hourly strip.
+        val dataWidth = (width * 0.43f).toInt()
+        val dataHeight = (height * 0.64f).toInt()
         dataArea.layoutParams = (dataArea.layoutParams as LayoutParams).apply {
             this.width = dataWidth
             this.height = dataHeight
-            gravity = Gravity.RIGHT or Gravity.TOP
+            gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
         }
     }
 
