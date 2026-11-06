@@ -2150,6 +2150,11 @@ class MainActivity : Activity(), SensorEventListener {
             isFillViewport = true
             clipToPadding = true
             clipChildren = true
+            // A freshly constructed page must not inherit an old scroll/focus position:
+            // otherwise its first row appears clipped beneath the weather viewport.
+            isSaveEnabled = false
+            isFocusableInTouchMode = true
+            descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
             setPadding(0, 0, 0, dp(3))
         }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -2180,6 +2185,9 @@ class MainActivity : Activity(), SensorEventListener {
         }
         content.addView(grid)
         scroll.addView(content)
+        // Restore the top of the icon viewport after its first layout, even if Android
+        // attempts to restore a previous scroll offset when the home page is rebuilt.
+        scroll.post { if (!dragging && scroll.parent != null) scroll.scrollTo(0, 0) }
         // O espaço vazio pode pertencer ao conteúdo, à grade ou ao ScrollView.
         // Encaminhe o toque longo desses contêineres ao modo de edição.
         val editOnEmptySpace = View.OnLongClickListener {
@@ -2221,7 +2229,8 @@ class MainActivity : Activity(), SensorEventListener {
             else external ?: FrameLayout(this).apply { setOnLongClickListener { enterEditMode(); true } }
         // Keep weather's entire viewport. External widgets on the same page are exposed in their own scrollable zone via the center.
         return HomeWorkspaceLayout(this, if (showWeather && external != null)
-            androidWidgets.combineWithWeather(widget, external) else widget, scroll)
+            androidWidgets.combineWithWeather(widget, external) else widget, scroll,
+            dp(setting("widget_space_dp", "180").toIntOrNull()?.coerceIn(0, 300) ?: 180))
     }
 
     private fun editWorkspaceMenu() {

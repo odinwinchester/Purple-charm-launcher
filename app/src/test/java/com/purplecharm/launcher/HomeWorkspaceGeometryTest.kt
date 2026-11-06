@@ -6,7 +6,7 @@ import org.junit.Test
 class HomeWorkspaceGeometryTest {
     @Test fun widgetNeverChangesIconViewportOrOverflowsWorkspace() {
         for (height in listOf(0, 1, 240, 400, 640, 960, 1600)) {
-            val area = HomeWorkspaceGeometry.zones(height)
+            val area = HomeWorkspaceGeometry.zones(height, 180)
             assertEquals(area.widgetHeight, area.iconsTop)
             assertEquals(height, area.widgetHeight + area.iconsHeight)
             assertTrue(area.widgetHeight >= 0 && area.iconsHeight >= 0)
@@ -15,8 +15,18 @@ class HomeWorkspaceGeometryTest {
                     val image = WeatherGeometry.fitWithin(width, area.widgetHeight * 2 / 3,
                         preferred, width, imageHeight, 1)
                     assertTrue(image.height <= area.widgetHeight)
-                    assertEquals(area.iconsTop, HomeWorkspaceGeometry.zones(height).iconsTop)
+                    assertEquals(area.iconsTop, HomeWorkspaceGeometry.zones(height, 180).iconsTop)
                 }
+            }
+        }
+    }
+    @Test fun configuredWidgetSpaceIsClampedAndLeavesRemainingSpaceForIcons() {
+        for (height in listOf(0, 1, 120, 240, 400, 640, 960)) {
+            for (requested in listOf(0, 120, 180, 240, 300, 2000)) {
+                val zones = HomeWorkspaceGeometry.zones(height, requested)
+                assertEquals(requested.coerceIn(0, height), zones.widgetHeight)
+                assertEquals(zones.widgetHeight, zones.iconsTop)
+                assertEquals(height - zones.widgetHeight, zones.iconsHeight)
             }
         }
     }

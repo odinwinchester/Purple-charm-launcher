@@ -85,7 +85,7 @@ class AdditionalWeatherArtworkTest {
         for (line in data) {
             val (_, w, h) = line.split('\t')
             for (density in 1..3) for (width in listOf(280, 360, 640, 960)) for (span in 1..4) {
-                val zones = HomeWorkspaceGeometry.zones(640 * density)
+                val zones = HomeWorkspaceGeometry.zones(640 * density, 180 * density)
                 val placement = WidgetResizeGeometry.place(width * density, zones.widgetHeight * 2 / 3,
                     4, span, 24 * density, w.toInt(), h.toInt(), density)
                 assertTrue(placement.artHeight <= zones.widgetHeight * 2 / 3)
@@ -93,7 +93,7 @@ class AdditionalWeatherArtworkTest {
                 if (placement.artWidth > 2 * density) assertEquals(
                     (placement.artWidth - 2 * density) * h.toDouble() / w.toInt(),
                     (placement.artHeight - 2 * density).toDouble(), 0.5)
-                assertEquals(zones.iconsTop, HomeWorkspaceGeometry.zones(640 * density).iconsTop)
+                assertEquals(zones.iconsTop, HomeWorkspaceGeometry.zones(640 * density, 180 * density).iconsTop)
             }
         }
     }
