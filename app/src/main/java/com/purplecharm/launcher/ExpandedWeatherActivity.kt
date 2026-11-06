@@ -140,7 +140,7 @@ class ExpandedWeatherActivity : Activity() {
             (forecast?.temperature ?: 0.0) >= 30 -> 0
             else -> 1
         }
-        val phase = intArrayOf(1, 2, 3, 0)[prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)]
+        val phase = LunarPhaseCalculator.artworkIndexAt(Instant.now())
         return WeatherArtworkCatalog.select(daylight, sunStyle, condition, phase, null)
     }
 
@@ -245,6 +245,18 @@ class ExpandedWeatherActivity : Activity() {
         fun open(destination: String) { page = destination; render() }
         when (page) {
             "home" -> {
+                // Artwork hero is a separate, non-cropped view above the data panels.
+                // The approved castle background remains Layer 1; the artwork is not
+                // used as a wallpaper or inserted inside a smoked-glass card.
+                val hero = ImageView(this).apply {
+                    setImageResource(art.resource)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    adjustViewBounds = true
+                    contentDescription = art.label
+                }
+                column.addView(hero, LinearLayout.LayoutParams(-1, dp(220)).apply {
+                    setMargins(dp(12), dp(4), dp(12), dp(8))
+                })
                 // Layer 1 is exclusively the backdrop. Original widget PNGs are
                 // never embedded inside the Layer 2 glass panels.
                 card(column, "Condições atuais • MET Norway  ›", conditions) {
