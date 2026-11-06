@@ -20,11 +20,7 @@ import android.widget.TextView
  * The original PNGs are kept in the repository during migration, but must
  * not be drawn together with independent weather effects.
  */
-internal class WeatherHomeLayers(context: Context) : FrameLayout(context) {
-    private val art = ImageView(context).apply {
-        scaleType = ImageView.ScaleType.FIT_CENTER
-        adjustViewBounds = true
-    }
+internal class WeatherHomeLayers(context: Context, private val art: ImageView) : FrameLayout(context) {
     private val effects = FrameLayout(context).apply {
         isClickable = false
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
