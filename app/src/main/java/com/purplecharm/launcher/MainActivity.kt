@@ -2186,10 +2186,8 @@ class MainActivity : Activity(), SensorEventListener {
         // Fill the viewport so BOTTOM gravity actually anchors sparse pages.
         // Keep cell order and drag/drop indices unchanged.
         content.addView(grid)
-        scroll.addView(content, ScrollView.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ))
+        scroll.isFillViewport = true
+        scroll.addView(content)
         // Restore the top of the icon viewport after its first layout, even if Android
         // attempts to restore a previous scroll offset when the home page is rebuilt.
         scroll.post { if (!dragging && scroll.parent != null) scroll.scrollTo(0, 0) }
