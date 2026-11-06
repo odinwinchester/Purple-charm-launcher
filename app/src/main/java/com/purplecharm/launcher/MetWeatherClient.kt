@@ -14,7 +14,8 @@ internal data class WeatherForecast(
     val precipitationMm: Double? = null, val rainProbability: Double? = null,
     val windDirection: Double? = null, val gust: Double? = null,
     val pressure: Double? = null, val dewPoint: Double? = null,
-    val visibilityMeters: Double? = null
+    val visibilityMeters: Double? = null,
+    val uvClearSky: Double? = null
 ) {
     val code: Int get() = MetSymbols.code(symbol)
     val isDay: Boolean? get() = when {
@@ -182,7 +183,8 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                 detail("relative_humidity"), detail("wind_speed"), symbol,
                 precipitation, probability, detail("wind_from_direction"),
                 detail("wind_speed_of_gust"), detail("air_pressure_at_sea_level"),
-                detail("dew_point_temperature"), detail("visibility")
+                detail("dew_point_temperature"), detail("visibility"),
+                detail("ultraviolet_index_clear_sky")?.takeIf { it >= 0.0 }
             )
         }
 
