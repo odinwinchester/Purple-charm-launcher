@@ -124,7 +124,7 @@ class ExpandedWeatherActivity : Activity() {
         val latitude = prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull()
         val longitude = prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull()
         val daylight = SolarDaylight.isDay(System.currentTimeMillis(), latitude, longitude)
-            ?: forecast?.isDay ?: true
+            ?: forecast?.isDay ?: false
         val condition = WeatherArtworkCatalog.condition(forecast?.code, forecast?.temperature)
         val mode = prefs.getInt("gothic_celestial_mode", 0)
         val isSun = when (mode) {
