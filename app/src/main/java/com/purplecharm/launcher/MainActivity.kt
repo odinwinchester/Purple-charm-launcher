@@ -2003,7 +2003,7 @@ class MainActivity : Activity(), SensorEventListener {
         val spanKey = if (selectedArt.panoramic) "gothic_widget_span_${selectedArt.slug}" else "gothic_widget_span"
         val defaultSpan = if (selectedArt.panoramic) columns else intArrayOf(2, 3, columns)[size]
         val initialSpan = prefs.getInt(spanKey, defaultSpan).coerceIn(1, columns)
-        val visualKey = "${selectedArt.slug}:$columns:$initialSpan"
+        val visualKey = "${selectedArt.slug}:$columns:$initialSpan:$weatherArtIndex"
         val liveText = if (forecast != null) "MET Norway: ${kotlin.math.round(forecast.temperature).toInt()}°C • previsão atual"
             else if (weatherActive) "Previsão indisponível • tocar para detalhes" else "Escolher localização • dados MET"
         val city = prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
@@ -2045,7 +2045,7 @@ class MainActivity : Activity(), SensorEventListener {
             setHourlyForecast(hourlyText)
             val independent = selectedArt.slug.startsWith("sol_gotico_") ||
                 selectedArt.slug == "lua_cheia_rgba_transparente"
-            val effect = if (independent) when (weatherArtIndex) {
+            val effect = if (independent && weatherLoaded) when (weatherArtIndex) {
                 1 -> R.drawable.nuvens_roxas_widget_rgba
                 2 -> R.drawable.chuva_cristais_violeta_nuvens
                 3 -> R.drawable.sobreposicao_nuvens_geladas_roxas
