@@ -35,7 +35,6 @@ class ExpandedWeatherActivity : Activity() {
     }
     private var page = "home"
     private var smoked = true
-    private var previewSlug: String? = null
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 
     // Fully cut-out panels: violet outline only, no opaque fill.
@@ -127,21 +126,31 @@ class ExpandedWeatherActivity : Activity() {
         val daylight = SolarDaylight.isDay(System.currentTimeMillis(), latitude, longitude)
             ?: forecast?.isDay ?: true
         val condition = WeatherArtworkCatalog.condition(forecast?.code, forecast?.temperature)
-        val sunStyle = when {
-            condition != 0 -> 2
-            (forecast?.temperature ?: 0.0) >= 30 -> 0
-            else -> 1
+        val mode = prefs.getInt("gothic_celestial_mode", 0)
+        val isSun = when (mode) {
+            1 -> true
+            2 -> false
+            else -> daylight
         }
-        val phase = LunarPhaseCalculator.artworkIndexAt(Instant.now())
-        return WeatherArtworkCatalog.select(daylight, sunStyle, condition, phase,
-            prefs.getString("gothic_manual_art", null),
-            automaticWeather = prefs.getInt("gothic_celestial_mode", 0) == 0)
+        val phase = if (prefs.getBoolean("gothic_moon_auto", true))
+            LunarPhaseCalculator.artworkIndexAt(Instant.now())
+        else intArrayOf(1, 2, 3, 0)[prefs.getInt("gothic_moon_phase", 0).coerceIn(0, 3)]
+        val selectedSun = if (mode == 0) {
+            val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+            when {
+                forecast != null && condition != 0 -> 2
+                hour in 6..9 -> 3
+                (forecast?.temperature ?: 0.0) >= 30 -> 0
+                else -> 1
+            }
+        } else prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
+        return WeatherArtworkCatalog.select(isSun, selectedSun, condition, phase,
+            prefs.getString("gothic_manual_art", null), automaticWeather = mode == 0)
     }
 
     private fun render() {
-        val art = WeatherArtworkCatalog.all.firstOrNull { it.slug == previewSlug } ?: liveArtwork()
-        // Layers 0-3 are now separate containers. The legacy combined artwork
-        // remains exclusively in the celestial layer until the 13 new assets are validated.
+        val art = liveArtwork()
+        // Independent layers preserve the castle background and the glass panels.
         val root = WeatherLayerComposer(this).apply {
             setBackdrop(R.drawable.purple_charm_camada1_castelo)
             val forecast = weather.current()
