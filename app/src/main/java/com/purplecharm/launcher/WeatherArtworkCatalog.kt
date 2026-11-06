@@ -32,16 +32,30 @@ internal object WeatherArtworkCatalog {
         Art("eclipse_solar_frio", "Eclipse Solar • Frio (manual, evento não confirmado)", R.drawable.eclipse_solar_frio, Kind.ECLIPSE),
         Art("eclipse_lunar_limpo", "Eclipse Lunar • Limpo (manual, evento não confirmado)", R.drawable.eclipse_lunar_limpo, Kind.ECLIPSE)
     )
+    // Temporary legacy-resource adapter. The selector no longer depends on list positions:
+    // new layer-1 resources can replace these slugs without changing selection logic.
+    private val solarBase = listOf("dia_quente", "dia_limpo", "dia_nublado", "nascer_do_sol")
+    private val lunarPhase = listOf("nova", "crescente", "cheia", "minguante")
+    private val lunarWeather = listOf("noite_limpa", "noite_nublada", "noite_chuvosa", "noite_fria_neve")
+    private val bySlug by lazy { all.associateBy { it.slug } }
+
     fun select(isSun: Boolean, sunIndex: Int, condition: Int, phase: Int, manual: String?,
                automaticWeather: Boolean = true): Art {
-        all.firstOrNull { it.slug == manual }?.let { return it }
-        // Climate can select the new solar art, never an eclipse or phase-free lunar alternative.
-        if (isSun && automaticWeather) {
-            if (condition == 2) return all.first { it.slug == "sol_dia_chuvoso" }
-            if (condition == 3) return all.first { it.slug == "sol_dia_frio" }
+        manual?.let(bySlug::get)?.let { return it }
+        val slug = if (isSun) {
+            when {
+                automaticWeather && condition == 2 -> "sol_dia_chuvoso"
+                automaticWeather && condition == 3 -> "sol_dia_frio"
+                else -> solarBase[sunIndex.coerceIn(solarBase.indices)]
+            }
+        } else {
+            val weather = lunarWeather[condition.coerceIn(lunarWeather.indices)]
+            val phaseName = lunarPhase[phase.coerceIn(lunarPhase.indices)]
+            val number = 1 + condition.coerceIn(lunarWeather.indices) * lunarPhase.size +
+                phase.coerceIn(lunarPhase.indices)
+            "lua_${number.toString().padStart(2, '0')}_lua_${phaseName}_$weather"
         }
-        // The first 20 entries and all four phase mappings remain unchanged.
-        return all[if (isSun) sunIndex.coerceIn(0, 3) else 4 + condition.coerceIn(0, 3) * 4 + phase.coerceIn(0, 3)]
+        return requireNotNull(bySlug[slug]) { "Missing weather art mapping: $slug" }
     }
     fun note(art: Art, phase: Int): String = when (art.kind) {
         Kind.ECLIPSE -> "Arte de eclipse • seleção manual; evento e visibilidade não confirmados"
