@@ -2043,7 +2043,15 @@ class MainActivity : Activity(), SensorEventListener {
         val layers = WeatherHomeLayers(this, artwork).apply {
             setReadings(readingText)
             setHourlyForecast(hourlyText)
-            setEffectsEnabled(false)
+            val independent = selectedArt.slug.startsWith("sol_gotico_") ||
+                selectedArt.slug == "lua_cheia_rgba_transparente"
+            val effect = if (independent) when (weatherArtIndex) {
+                1 -> R.drawable.nuvens_roxas_widget_rgba
+                2 -> R.drawable.chuva_cristais_violeta_nuvens
+                3 -> R.drawable.sobreposicao_nuvens_geladas_roxas
+                else -> null
+            } else null
+            setEffectResource(effect)
         }
         val editor = WeatherResizeLayout(this, artwork, columns, initialSpan,
             { active -> widgetResizeActive = active },
