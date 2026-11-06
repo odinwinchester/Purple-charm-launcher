@@ -2153,7 +2153,11 @@ class MainActivity : Activity(), SensorEventListener {
             descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
             setPadding(0, 0, 0, dp(3))
         }
-        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            // Anchor sparse icon grids above the dock instead of the screen top.
+            gravity = Gravity.BOTTOM
+        }
         val grid = GridLayout(this).apply {
             tag = "workspace_grid_$index"
             columnCount = horizontalIconColumns()
@@ -2179,7 +2183,10 @@ class MainActivity : Activity(), SensorEventListener {
                 columnSpec = GridLayout.spec(position % horizontalIconColumns(), 1f)
             })
         }
+        // Fill the viewport so BOTTOM gravity actually anchors sparse pages.
+        // Keep cell order and drag/drop indices unchanged.
         content.addView(grid)
+        scroll.isFillViewport = true
         scroll.addView(content)
         // Restore the top of the icon viewport after its first layout, even if Android
         // attempts to restore a previous scroll offset when the home page is rebuilt.

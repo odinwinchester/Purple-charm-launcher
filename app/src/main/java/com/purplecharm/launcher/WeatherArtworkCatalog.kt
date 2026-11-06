@@ -12,7 +12,7 @@ internal object WeatherArtworkCatalog {
         Art("sol_gotico_nascente", "Sol Gótico Nascente", R.drawable.sol_gotico_nascente, Kind.SOLAR),
         Art("moldura_gotica_cristais_chuva", "Sol Dia Chuvoso (arte completa)", R.drawable.moldura_gotica_cristais_chuva, Kind.SOLAR, panoramic = true),
         Art("lua_minguante_gotica_cristal", "Lua Minguante Gótica de Cristal", R.drawable.lua_minguante_gotica_cristal, Kind.LUNAR_ALTERNATIVE),
-        Art("lua_nova_gotica_orbe_lunar", "Lua Nova Gótica com Orbe Lunar", R.drawable.lua_nova_gotica_orbe_lunar, Kind.LUNAR_ALTERNATIVE, panoramic = true),
+        Art("lua_nova_gotica_orbe_lunar", "Lua Nova Gótica com Orbe Lunar", R.drawable.moldura_gotica_roxa_orbe_lunar, Kind.LUNAR_ALTERNATIVE, panoramic = true),
         Art("lua_crescente_gotica_emoldurada", "Lua Crescente Gótica com Moldura", R.drawable.lua_crescente_gotica_emoldurada, Kind.LUNAR_ALTERNATIVE, panoramic = true),
         Art("lua_cheia_rgba_transparente", "Lua Cheia (camada independente)", R.drawable.lua_cheia_rgba_transparente, Kind.LUNAR_ALTERNATIVE),
         Art("lua_noite_chuvosa", "Lua • Noite Chuvosa (alternativa manual)", R.drawable.lua_noite_chuvosa, Kind.LUNAR_ALTERNATIVE, panoramic = true),
