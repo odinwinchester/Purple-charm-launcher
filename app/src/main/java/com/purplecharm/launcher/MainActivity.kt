@@ -2021,6 +2021,7 @@ class MainActivity : Activity(), SensorEventListener {
         }.ifBlank { "Previsão horária indisponível" }
         if (reuseUnchanged && visualKey == lastCelestialKey && celestialView != null) {
             if (liveWeatherLabel?.text?.toString() != liveText) liveWeatherLabel?.text = liveText
+            widgetEditor?.updateWeatherLayers(readingText, hourlyText)
             liveWeatherLabel?.contentDescription = "Dados meteorológicos MET Norway para ${weatherLocation.summary}. Os valores impressos no PNG são ilustrativos."
             return celestialView!!
         }
