@@ -2229,7 +2229,8 @@ class MainActivity : Activity(), SensorEventListener {
             else external ?: FrameLayout(this).apply { setOnLongClickListener { enterEditMode(); true } }
         // Keep weather's entire viewport. External widgets on the same page are exposed in their own scrollable zone via the center.
         return HomeWorkspaceLayout(this, if (showWeather && external != null)
-            androidWidgets.combineWithWeather(widget, external) else widget, scroll)
+            androidWidgets.combineWithWeather(widget, external) else widget, scroll,
+            dp(setting("widget_space_dp", "180").toIntOrNull()?.coerceIn(0, 300) ?: 180))
     }
 
     private fun editWorkspaceMenu() {
