@@ -9,9 +9,21 @@
     },
     {
       "packageName": "com.discord",
-      "version": 1,
+      "version": 2,
       "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/feat/approved-discord-brave-icons/icon-library/discord.png",
-      "sha256": "d053cf4c9107980b122094b0e59526c503a72feb46575c80365506651415e4a4"
+      "sha256": "92503b8dbd8d756a90ca38591403b8efa0795efc64d05efd1b9012e5113bf344"
+    },
+    {
+      "packageName": "com.google.android.apps.authenticator2",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/feat/approved-discord-brave-icons/icon-library/google_authenticator.png",
+      "sha256": "8ed5cff67cc3fbaf194593523c2320470fd5f814cb2abc4de0e3e97a42451636"
+    },
+    {
+      "packageName": "com.google.android.apps.walletnfcrel",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/feat/approved-discord-brave-icons/icon-library/google_wallet.png",
+      "sha256": "a939f435bf2c0f270bcde131ad510ac3128b51355d6ff75ddfda87fd923fccdb"
     }
   ]
 }
