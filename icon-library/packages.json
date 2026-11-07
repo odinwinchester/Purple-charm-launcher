@@ -4,5 +4,7 @@
   "tiktok": "com.zhiliaoapp.musically",
   "com.openai.chatgpt": "com.openai.chatgpt",
   "br.com.uol.ps.myaccount": "br.com.uol.ps.myaccount",
-  "com.zhiliaoapp.musically.go": "com.zhiliaoapp.musically.go"
+  "com.zhiliaoapp.musically.go": "com.zhiliaoapp.musically.go",
+  "google_wallet": "com.google.android.apps.walletnfcrel",
+  "google_authenticator": "com.google.android.apps.authenticator2"
 }
