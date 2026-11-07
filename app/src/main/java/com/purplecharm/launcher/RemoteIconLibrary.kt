@@ -3,6 +3,10 @@ package com.purplecharm.launcher
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import org.json.JSONObject
@@ -128,6 +132,53 @@ internal class RemoteIconLibrary(private val context: Context) {
         return File(directory, "$packageName.png")
     }
 
+    /**
+     * Normaliza apenas a apresentação dos ícones remotos; nunca regrava o PNG.
+     * A arte clássica de 168 px permanece a referência. O espaço de desenho
+     * conserva 6% de margem em cada lado para brilhos e pontas góticas.
+     */
+    private fun normalizedRemoteBitmap(source: Bitmap): Bitmap {
+        val width = source.width
+        val height = source.height
+        if (width <= 0 || height <= 0) return source
+        // Amostragem limitada para não criar arrays enormes com PNGs de até 2048 px.
+        val step = (maxOf(width, height) / 256).coerceAtLeast(1)
+        var left = width
+        var top = height
+        var right = -1
+        var bottom = -1
+        for (y in 0 until height step step) {
+            for (x in 0 until width step step) {
+                if ((source.getPixel(x, y) ushr 24) >= 32) {
+                    left = minOf(left, x)
+                    top = minOf(top, y)
+                    right = maxOf(right, x)
+                    bottom = maxOf(bottom, y)
+                }
+            }
+        }
+        if (right < left || bottom < top) return source
+        val visibleWidth = (right - left + step).coerceAtMost(width - left)
+        val visibleHeight = (bottom - top + step).coerceAtMost(height - top)
+        val coverage = maxOf(visibleWidth.toFloat() / width, visibleHeight.toFloat() / height)
+        // Não reduzir artes que já ocupam o espaço; só compensar margens excessivas.
+        val scale = (0.88f / coverage).coerceIn(1f, 1.35f)
+        if (scale <= 1.01f) return source
+        val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(result)
+        val src = Rect(0, 0, width, height)
+        val centerX = (left + right + step) / 2f
+        val centerY = (top + bottom + step) / 2f
+        val dest = RectF(
+            width / 2f - centerX * scale,
+            height / 2f - centerY * scale,
+            width / 2f + (width - centerX) * scale,
+            height / 2f + (height - centerY) * scale
+        )
+        canvas.drawBitmap(source, src, dest, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+        return result
+    }
+
     fun installedIcon(packageName: String): Drawable? {
         // Android launchers and Robolectric tests can expose synthetic/invalid
         // package identifiers. They must retain their normal system icon.
@@ -138,7 +189,32 @@ internal class RemoteIconLibrary(private val context: Context) {
         val expected = installed.optString(packageName)
         if (!hashPattern.matches(expected) || sha256(file.readBytes()) != expected) return null
         val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
-        return BitmapDrawable(context.resources, bitmap)
+        return BitmapDrawable(context.resources, normalizedRemoteBitmap(bitmap))
+    }
+
+    /** Compara o hash do catálogo sem decodificar o PNG na interface. */
+    fun isCurrent(entry: Entry): Boolean {
+        if (!packagePattern.matches(entry.packageName) || !hashPattern.matches(entry.sha256)) return false
+        val installed = runCatching { JSONObject(manifestFile.readText()) }.getOrNull() ?: return false
+        if (!installed.optString(entry.packageName).equals(entry.sha256, ignoreCase = true)) return false
+        return fileFor(entry.packageName).isFile
+    }
+
+    /** Prévia limitada a 192 px, com verificação SHA-256; não instala a arte. */
+    fun previewBitmap(entry: Entry): Bitmap {
+        require(packagePattern.matches(entry.packageName) && hashPattern.matches(entry.sha256))
+        val bytes = readUrl(entry.url, maxIconBytes)
+        require(sha256(bytes).equals(entry.sha256, ignoreCase = true)) { "SHA-256 inválido" }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        require(bounds.outWidth in 32..2048 && bounds.outHeight in 32..2048) { "Imagem inválida" }
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 192) sample *= 2
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: error("PNG inválido")
     }
 
     @Synchronized

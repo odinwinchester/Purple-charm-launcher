@@ -2361,71 +2361,84 @@ class MainActivity : Activity(), SensorEventListener {
             setLayout((resources.displayMetrics.widthPixels - dp(24)).coerceAtMost(dp(400)), -2)
         }
 
+        // Consultar catálogo e manifest em segundo plano, sem decodificar imagens na UI.
+        val installedNames = apps.associate { it.activityInfo.packageName to appLabel(it) }
         Thread {
-            val result = runCatching { library.fetchCatalogWithCache() }
+            val result = runCatching {
+                library.fetchCatalogWithCache()
+                    .filter { it.packageName in installedNames && !library.isCurrent(it) }
+                    .distinctBy { it.packageName }
+            }
             runOnUiThread {
                 if (!dialog.isShowing) return@runOnUiThread
                 result.onFailure {
                     status.text = "Não foi possível consultar a biblioteca. Verifique a conexão."
-                }.onSuccess { entries ->
-                    val installedApps = apps.map { it.activityInfo.packageName }.toSet()
-                    val available = entries.filter { it.packageName in installedApps }
+                }.onSuccess { available ->
                     status.text = if (available.isEmpty())
-                        "Nenhuma arte disponível para os aplicativos instalados."
-                    else "${available.size} arte(s) disponível(is) para seus aplicativos."
+                        "Todos os ícones disponíveis já estão atualizados."
+                    else "${available.size} novo(s) ícone(s) ou atualização(ões) disponível(is)."
                     available.forEach { entry ->
-                        val title = when (entry.packageName) {
-                            "com.discord" -> "Discord"
-                            "com.brave.browser" -> "Brave"
-                            else -> entry.packageName
-                        }
+                        val title = installedNames[entry.packageName] ?: entry.packageName
                         val row = LinearLayout(this).apply {
-                            orientation = LinearLayout.VERTICAL
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
                             setPadding(0, dp(8), 0, dp(8))
                         }
-                        row.addView(label("$title • versão ${entry.version}", 14f, true))
-                        val action = glassButton(
-                            if (library.installedIcon(entry.packageName) != null) "Restaurar ícone" else "Baixar e aplicar",
-                            13f
-                        )
-                        action.setOnClickListener {
-                            if (library.installedIcon(entry.packageName) != null) {
-                                library.restore(entry.packageName)
-                                iconCache.evictAll()
-                                action.text = "Baixar e aplicar"
-                                Toast.makeText(this, "Ícone original restaurado", Toast.LENGTH_SHORT).show()
-                                dialog.dismiss()
-                                showHome()
-                            } else {
-                                SmokeDialogBuilder(this)
-                                    .setTitle("Baixar ícone de $title?")
-                                    .setMessage("O Purple Charm baixará a arte verificada e a aplicará aos atalhos deste aplicativo.")
-                                    .setPositiveButton("Baixar") { _, _ ->
-                                        action.isEnabled = false
-                                        action.text = "Baixando..."
-                                        Thread {
-                                            val downloaded = runCatching { library.downloadAndApply(entry) }
-                                            runOnUiThread {
-                                                if (!dialog.isShowing) return@runOnUiThread
-                                                action.isEnabled = true
-                                                if (downloaded.isSuccess && downloaded.getOrDefault(false)) {
-                                                    iconCache.evictAll()
-                                                    Toast.makeText(this, "Ícone aplicado: $title", Toast.LENGTH_SHORT).show()
-                                                    dialog.dismiss()
-                                                    showHome()
-                                                } else {
-                                                    action.text = "Tentar novamente"
-                                                    Toast.makeText(this, "Falha ao baixar ou verificar a imagem", Toast.LENGTH_LONG).show()
-                                                }
-                                            }
-                                        }.start()
-                                    }
-                                    .setNegativeButton("Cancelar", null).show()
-                            }
+                        val preview = ImageView(this).apply {
+                            scaleType = ImageView.ScaleType.FIT_CENTER
+                            contentDescription = "Prévia do ícone de $title"
                         }
-                        row.addView(action)
+                        row.addView(preview, LinearLayout.LayoutParams(dp(72), dp(72)))
+                        val details = LinearLayout(this).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(dp(12), 0, 0, 0)
+                        }
+                        row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+                        details.addView(label("$title • versão ${entry.version}", 14f, true))
+                        val action = glassButton("Baixar e aplicar", 13f)
+                        action.setOnClickListener {
+                            SmokeDialogBuilder(this)
+                                .setTitle("Baixar ícone de $title?")
+                                .setMessage("O Purple Charm baixará a arte verificada e a aplicará aos atalhos deste aplicativo.")
+                                .setPositiveButton("Baixar") { _, _ ->
+                                    action.isEnabled = false
+                                    action.text = "Baixando..."
+                                    Thread {
+                                        val downloaded = runCatching { library.downloadAndApply(entry) }
+                                        runOnUiThread {
+                                            if (!dialog.isShowing) return@runOnUiThread
+                                            action.isEnabled = true
+                                            if (downloaded.isSuccess && downloaded.getOrDefault(false)) {
+                                                iconCache.evictAll()
+                                                Toast.makeText(this, "Ícone aplicado: $title", Toast.LENGTH_SHORT).show()
+                                                dialog.dismiss()
+                                                showHome()
+                                            } else {
+                                                action.text = "Tentar novamente"
+                                                Toast.makeText(this, "Falha ao baixar ou verificar a imagem", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }.start()
+                                }
+                                .setNegativeButton("Cancelar", null).show()
+                        }
+                        details.addView(action)
                         list.addView(row)
                     }
+                    // Prévia sequencial: evita downloads simultâneos e picos de memória.
+                    if (available.isNotEmpty()) Thread {
+                        available.forEachIndexed { index, entry ->
+                            val bitmap = runCatching { library.previewBitmap(entry) }.getOrNull()
+                            runOnUiThread {
+                                if (dialog.isShowing) {
+                                    val row = list.getChildAt(index) as? LinearLayout
+                                    val image = row?.getChildAt(0) as? ImageView
+                                    if (bitmap != null) image?.setImageBitmap(bitmap)
+                                    else image?.contentDescription = "Prévia indisponível"
+                                } else bitmap?.recycle()
+                            }
+                        }
+                    }.start()
                 }
             }
         }.start()
@@ -2648,19 +2661,32 @@ class MainActivity : Activity(), SensorEventListener {
     private fun drawerAppActions(app: ResolveInfo) {
         val name = appLabel(app)
         val pkg = app.activityInfo.packageName
+        val library = RemoteIconLibrary(this)
+        val hasRemoteIcon = library.installedIcon(pkg) != null
         val systemApp = (app.activityInfo.applicationInfo.flags and
             android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-        val options = if (systemApp) {
-            arrayOf("Adicionar à tela inicial", "Informações do aplicativo")
-        } else {
-            arrayOf("Adicionar à tela inicial", "Desinstalar aplicativo", "Informações do aplicativo")
-        }
+        val options = mutableListOf("Adicionar à tela inicial")
+        if (hasRemoteIcon) options.add("Restaurar ícone original")
+        if (!systemApp) options.add("Desinstalar aplicativo")
+        options.add("Informações do aplicativo")
         SmokeDialogBuilder(this)
             .setTitle(name)
-            .setItems(options) { _, choice ->
-                when {
-                    choice == 0 -> appPlacementMenu(app)
-                    !systemApp && choice == 1 -> {
+            .setItems(options.toTypedArray()) { _, choice ->
+                when (options[choice]) {
+                    "Adicionar à tela inicial" -> appPlacementMenu(app)
+                    "Restaurar ícone original" -> {
+                        SmokeDialogBuilder(this)
+                            .setTitle("Restaurar ícone de $name?")
+                            .setMessage("A arte baixada será removida deste aplicativo. O ícone original voltará a aparecer.")
+                            .setNegativeButton("Cancelar", null)
+                            .setPositiveButton("Restaurar") { _, _ ->
+                                library.restore(pkg)
+                                iconCache.evictAll()
+                                Toast.makeText(this, "Ícone original restaurado: $name", Toast.LENGTH_SHORT).show()
+                                if (drawerOpen) showDrawer() else showHome()
+                            }.show()
+                    }
+                    "Desinstalar aplicativo" -> {
                         SmokeDialogBuilder(this)
                             .setTitle("Desinstalar $name?")
                             .setMessage("O Android pedirá sua confirmação antes de desinstalar o aplicativo.")
