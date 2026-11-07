@@ -192,6 +192,31 @@ internal class RemoteIconLibrary(private val context: Context) {
         return BitmapDrawable(context.resources, normalizedRemoteBitmap(bitmap))
     }
 
+    /** Compara o hash do catálogo sem decodificar o PNG na interface. */
+    fun isCurrent(entry: Entry): Boolean {
+        if (!packagePattern.matches(entry.packageName) || !hashPattern.matches(entry.sha256)) return false
+        val installed = runCatching { JSONObject(manifestFile.readText()) }.getOrNull() ?: return false
+        if (!installed.optString(entry.packageName).equals(entry.sha256, ignoreCase = true)) return false
+        return fileFor(entry.packageName).isFile
+    }
+
+    /** Prévia limitada a 192 px, com verificação SHA-256; não instala a arte. */
+    fun previewBitmap(entry: Entry): Bitmap {
+        require(packagePattern.matches(entry.packageName) && hashPattern.matches(entry.sha256))
+        val bytes = readUrl(entry.url, maxIconBytes)
+        require(sha256(bytes).equals(entry.sha256, ignoreCase = true)) { "SHA-256 inválido" }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        require(bounds.outWidth in 32..2048 && bounds.outHeight in 32..2048) { "Imagem inválida" }
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 192) sample *= 2
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: error("PNG inválido")
+    }
+
     @Synchronized
     fun downloadAndApply(entry: Entry): Boolean {
         require(packagePattern.matches(entry.packageName) && hashPattern.matches(entry.sha256))
