@@ -2155,22 +2155,18 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            // Anchor sparse icon grids above the dock instead of the screen top.
-            gravity = Gravity.BOTTOM
+            // Start the complete grid immediately below the widget viewport.
+            // Bottom anchoring creates a variable empty band above the first row.
+            gravity = Gravity.TOP
         }
         val grid = GridLayout(this).apply {
             tag = "workspace_grid_$index"
             columnCount = horizontalIconColumns()
             setPadding(dp(1), 0, dp(1), dp(5))
         }
-        // Keep saved cell indices intact, but do not render unused trailing rows.
-        // Those invisible rows used to push the last occupied row away from the dots.
-        val cells = pageCells(index)
-        val lastOccupiedRow = cells.indexOfLast { it.isNotEmpty() }
-            .let { if (it < 0) 0 else it / horizontalIconColumns() }
-        val visibleCellCount = ((lastOccupiedRow + 1) * horizontalIconColumns())
-            .coerceAtMost(cells.size)
-        cells.take(visibleCellCount).forEachIndexed { position, key ->
+        // Preserve all five editable rows, including empty drop targets.
+        // Do not collapse rows: saved indices and drag targets must stay aligned.
+        pageCells(index).forEachIndexed { position, key ->
             val app = resolveKey(key)
             val tile = when {
                 WorkspaceItems.isFolder(key) -> folderTile(key, false)
