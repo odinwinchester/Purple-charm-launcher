@@ -2163,7 +2163,14 @@ class MainActivity : Activity(), SensorEventListener {
             columnCount = horizontalIconColumns()
             setPadding(dp(1), 0, dp(1), dp(5))
         }
-        pageCells(index).forEachIndexed { position, key ->
+        // Keep saved cell indices intact, but do not render unused trailing rows.
+        // Those invisible rows used to push the last occupied row away from the dots.
+        val cells = pageCells(index)
+        val lastOccupiedRow = cells.indexOfLast { it.isNotEmpty() }
+            .let { if (it < 0) 0 else it / horizontalIconColumns() }
+        val visibleCellCount = ((lastOccupiedRow + 1) * horizontalIconColumns())
+            .coerceAtMost(cells.size)
+        cells.take(visibleCellCount).forEachIndexed { position, key ->
             val app = resolveKey(key)
             val tile = when {
                 WorkspaceItems.isFolder(key) -> folderTile(key, false)
