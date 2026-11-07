@@ -2140,6 +2140,25 @@ class MainActivity : Activity(), SensorEventListener {
             }.setNegativeButton("Fechar", null).show()
     }
 
+    // Keep all saved cells, but collapse unused trailing rows until a drag begins.
+    // During drag every row expands again so empty positions remain drop targets.
+    private fun setTrailingWorkspaceRowsExpanded(expanded: Boolean) {
+        if (!::pages.isInitialized) return
+        for (page in 0 until pageCount()) {
+            val grid = pages.getChildAt(page)?.findViewWithTag<GridLayout>("workspace_grid_$page") ?: continue
+            val cells = pageCells(page)
+            val lastOccupied = cells.indexOfLast { it.isNotEmpty() }
+            val lastRow = if (lastOccupied < 0) 0 else lastOccupied / horizontalIconColumns()
+            for (position in 0 until grid.childCount) {
+                val tile = grid.getChildAt(position)
+                val height = if (expanded || position / horizontalIconColumns() <= lastRow) homeTileHeight() else 0
+                if (tile.layoutParams.height != height) {
+                    tile.layoutParams = (tile.layoutParams as GridLayout.LayoutParams).apply { this.height = height }
+                }
+            }
+        }
+    }
+
     private fun homePage(index: Int): View {
         val scroll = ScrollView(this).apply {
             tag = "home_icons_scroll"
@@ -2155,7 +2174,8 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            // Anchor sparse icon grids above the dock instead of the screen top.
+            // Anchor occupied rows near the page dots; trailing empty rows are
+            // temporarily expanded during drag to preserve all drop targets.
             gravity = Gravity.BOTTOM
         }
         val grid = GridLayout(this).apply {
@@ -2163,7 +2183,12 @@ class MainActivity : Activity(), SensorEventListener {
             columnCount = horizontalIconColumns()
             setPadding(dp(1), 0, dp(1), dp(5))
         }
-        pageCells(index).forEachIndexed { position, key ->
+        // Preserve all five editable rows, including empty drop targets.
+        // Do not collapse rows: saved indices and drag targets must stay aligned.
+        val cells = pageCells(index)
+        val lastOccupied = cells.indexOfLast { it.isNotEmpty() }
+        val lastOccupiedRow = if (lastOccupied < 0) 0 else lastOccupied / horizontalIconColumns()
+        cells.forEachIndexed { position, key ->
             val app = resolveKey(key)
             val tile = when {
                 WorkspaceItems.isFolder(key) -> folderTile(key, false)
@@ -2178,7 +2203,7 @@ class MainActivity : Activity(), SensorEventListener {
             }
             grid.addView(tile, GridLayout.LayoutParams().apply {
                 width = 0
-                height = homeTileHeight()
+                height = if (position / horizontalIconColumns() <= lastOccupiedRow) homeTileHeight() else 0
                 rowSpec = GridLayout.spec(position / horizontalIconColumns())
                 columnSpec = GridLayout.spec(position % horizontalIconColumns(), 1f)
             })
@@ -2204,8 +2229,11 @@ class MainActivity : Activity(), SensorEventListener {
         // A posição do dedo determina a célula de destino, inclusive no espaço vazio.
         scroll.setOnDragListener { _, event ->
             when (event.action) {
-                DragEvent.ACTION_DRAG_STARTED ->
-                    ownsDrag(event)
+                DragEvent.ACTION_DRAG_STARTED -> {
+                    val accepted = ownsDrag(event)
+                    if (accepted) setTrailingWorkspaceRowsExpanded(true)
+                    accepted
+                }
                 DragEvent.ACTION_DROP -> {
                     val key = draggedKey(event)
                     if (key != null) {
@@ -2220,7 +2248,11 @@ class MainActivity : Activity(), SensorEventListener {
                         placeOnPage(key, index, position)
                     } else false
                 }
-                DragEvent.ACTION_DRAG_ENDED -> { finishWorkspaceDrag(); true }
+                DragEvent.ACTION_DRAG_ENDED -> {
+                    finishWorkspaceDrag()
+                    scroll.post { if (!dragging) setTrailingWorkspaceRowsExpanded(false) }
+                    true
+                }
                 else -> true
             }
         }
