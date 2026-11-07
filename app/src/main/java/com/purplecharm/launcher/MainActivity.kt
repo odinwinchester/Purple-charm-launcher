@@ -2648,19 +2648,32 @@ class MainActivity : Activity(), SensorEventListener {
     private fun drawerAppActions(app: ResolveInfo) {
         val name = appLabel(app)
         val pkg = app.activityInfo.packageName
+        val library = RemoteIconLibrary(this)
+        val hasRemoteIcon = library.installedIcon(pkg) != null
         val systemApp = (app.activityInfo.applicationInfo.flags and
             android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-        val options = if (systemApp) {
-            arrayOf("Adicionar à tela inicial", "Informações do aplicativo")
-        } else {
-            arrayOf("Adicionar à tela inicial", "Desinstalar aplicativo", "Informações do aplicativo")
-        }
+        val options = mutableListOf("Adicionar à tela inicial")
+        if (hasRemoteIcon) options.add("Restaurar ícone original")
+        if (!systemApp) options.add("Desinstalar aplicativo")
+        options.add("Informações do aplicativo")
         SmokeDialogBuilder(this)
             .setTitle(name)
-            .setItems(options) { _, choice ->
-                when {
-                    choice == 0 -> appPlacementMenu(app)
-                    !systemApp && choice == 1 -> {
+            .setItems(options.toTypedArray()) { _, choice ->
+                when (options[choice]) {
+                    "Adicionar à tela inicial" -> appPlacementMenu(app)
+                    "Restaurar ícone original" -> {
+                        SmokeDialogBuilder(this)
+                            .setTitle("Restaurar ícone de $name?")
+                            .setMessage("A arte baixada será removida deste aplicativo. O ícone original voltará a aparecer.")
+                            .setNegativeButton("Cancelar", null)
+                            .setPositiveButton("Restaurar") { _, _ ->
+                                library.restore(pkg)
+                                iconCache.evictAll()
+                                Toast.makeText(this, "Ícone original restaurado: $name", Toast.LENGTH_SHORT).show()
+                                if (drawerOpen) showDrawer() else showHome()
+                            }.show()
+                    }
+                    "Desinstalar aplicativo" -> {
                         SmokeDialogBuilder(this)
                             .setTitle("Desinstalar $name?")
                             .setMessage("O Android pedirá sua confirmação antes de desinstalar o aplicativo.")
