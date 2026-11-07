@@ -20,6 +20,8 @@ REF = os.environ.get("ICON_CATALOG_REF", "main")
 PACKAGES = {
     "discord": "com.discord",
     "brave": "com.brave.browser",
+    "google_wallet": "com.google.android.apps.walletnfcrel",
+    "google_authenticator": "com.google.android.apps.authenticator2",
 }
 
 
