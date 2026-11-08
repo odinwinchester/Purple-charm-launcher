@@ -52,17 +52,23 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         readings.visibility = View.GONE
         hourly.visibility = View.GONE
     }
-    override fun onSizeChanged(width: Int, height: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(width, height, oldw, oldh)
-        // Reserve the right side for live data instead of covering the sun/moon.
-        // Keep a small inset from the artwork border and the hourly strip.
+    // Position the data overlay during measurement, not only onSizeChanged.
+    // Recreated home pages can be measured with the same size, so onSizeChanged
+    // is not guaranteed to run before the first visible frame.
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val width = MeasureSpec.getSize(widthMeasureSpec)
+        val height = MeasureSpec.getSize(heightMeasureSpec)
         val dataWidth = (width * 0.43f).toInt()
         val dataHeight = (height * 0.64f).toInt()
-        dataArea.layoutParams = (dataArea.layoutParams as LayoutParams).apply {
-            this.width = dataWidth
-            this.height = dataHeight
-            gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
+        val params = dataArea.layoutParams as LayoutParams
+        if (params.width != dataWidth || params.height != dataHeight ||
+            params.gravity != (Gravity.RIGHT or Gravity.CENTER_VERTICAL)) {
+            params.width = dataWidth
+            params.height = dataHeight
+            params.gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
+            dataArea.layoutParams = params
         }
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
     fun updateLiveData(readingsValue: String?, hourlyValue: String?) {
