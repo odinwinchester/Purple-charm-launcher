@@ -2,6 +2,30 @@
   "schemaVersion": 1,
   "icons": [
     {
+      "packageName": "com.alibaba.aliexpresshd",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/aliexpress_purple_charm_168x168.png",
+      "sha256": "ca767f2ea1a3015f0f24e8008b3e8052740586e422bc5b876784007a127dfd56"
+    },
+    {
+      "packageName": "com.mi.android.globalFileexplorer",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/arquivos_purple_charm_168x168.png",
+      "sha256": "7a8c32af5057494cb2027fcd89ca8f41e6a0a37407bddc97aedcbfde38b4b443"
+    },
+    {
+      "packageName": "org.fossify.filemanager",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/arquivos_purple_charm_168x168.png",
+      "sha256": "7a8c32af5057494cb2027fcd89ca8f41e6a0a37407bddc97aedcbfde38b4b443"
+    },
+    {
+      "packageName": "com.binance.dev",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/binance_purple_charm_168x168.png",
+      "sha256": "2cc6b2f1f301ce64ddb9047a1714f344a04027d5ca4358683680f3aa48947fa7"
+    },
+    {
       "packageName": "br.com.uol.ps.myaccount",
       "version": 1,
       "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/br.com.uol.ps.myaccount.png",
@@ -14,10 +38,22 @@
       "sha256": "8f576b5336825cb83bc69a4c9ea02cc88c3268bacfc3321bca7abe4bd785af7b"
     },
     {
-      "packageName": "com.openai.chatgpt",
+      "packageName": "com.bybit.app",
       "version": 1,
-      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/com.openai.chatgpt.png",
-      "sha256": "e9eac0f261a5e5ce201517c8b177a054304d2c9d7c61dd11dfa05bc8fb1d4a8b"
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/bybit_purple_charm_168x168.png",
+      "sha256": "c7f264f4039c82380d57d4dc9f85df1887e640d9f6646d2ad6118c92c211b5c4"
+    },
+    {
+      "packageName": "com.openai.chatgpt",
+      "version": 2,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/chatgpt_purple_charm_168x168.png",
+      "sha256": "5d6aac8ad91bd2643fefd9e4ca650779ba1cf1ebdaaee81920d2e0db24d054a6"
+    },
+    {
+      "packageName": "com.starshort.minishort",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/com.starshort.minishort.png",
+      "sha256": "d02f15f30fcbc2d9efa210b650470e6c11fef5c4681f63a3db219dc85ae5e937"
     },
     {
       "packageName": "com.zhiliaoapp.musically.go",
@@ -44,10 +80,28 @@
       "sha256": "a939f435bf2c0f270bcde131ad510ac3128b51355d6ff75ddfda87fd923fccdb"
     },
     {
+      "packageName": "com.microsoft.office.outlook",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/outlook_purple_charm_168x168.png",
+      "sha256": "6627e17b54ed0c56c87d4553b507e995301e2a14adefbc6e024610ef6e82f207"
+    },
+    {
+      "packageName": "com.recarga.recarga",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/recargapay_purple_charm_168x168.png",
+      "sha256": "d7caae5ffc7de72d0c0f1ccbc4369c52146363df736c4d1a967a1fb55494db6a"
+    },
+    {
       "packageName": "com.zhiliaoapp.musically",
       "version": 1,
       "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/tiktok.png",
       "sha256": "03630033e3c8b52131da182ddf31d0041804aa6e3a13c43b56b686434ed3505a"
+    },
+    {
+      "packageName": "org.telegram.messenger",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/%C3%8Dcone%20Neon%20de%20Avi%C3%A3o%20de%20Papel.png",
+      "sha256": "0f26701a915591ad50d9797927fc3854713a2f52d708382b45020725fdc2cba4"
     }
   ]
 }
