@@ -6,5 +6,12 @@
   "br.com.uol.ps.myaccount": "br.com.uol.ps.myaccount",
   "com.zhiliaoapp.musically.go": "com.zhiliaoapp.musically.go",
   "google_wallet": "com.google.android.apps.walletnfcrel",
-  "google_authenticator": "com.google.android.apps.authenticator2"
+  "google_authenticator": "com.google.android.apps.authenticator2",
+  "aliexpress_purple_charm_168x168": "com.alibaba.aliexpresshd",
+  "arquivos_purple_charm_168x168": "com.mi.android.globalFileexplorer",
+  "binance_purple_charm_168x168": "com.binance.dev",
+  "bybit_purple_charm_168x168": "com.bybit.app",
+  "com.starshort.minishort": "com.starshort.minishort",
+  "outlook_purple_charm_168x168": "com.microsoft.office.outlook",
+  "recargapay_purple_charm_168x168": "com.recarga.recarga"
 }
