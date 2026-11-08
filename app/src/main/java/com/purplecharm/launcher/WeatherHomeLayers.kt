@@ -65,8 +65,10 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)
         val height = MeasureSpec.getSize(heightMeasureSpec)
+        // Normalized safe zones track the ornamental frame as the art scales.
+        // Keep readings inside the right-hand panel and above the hourly band.
         val dataWidth = (width * 0.43f).toInt()
-        val dataHeight = (height * 0.64f).toInt()
+        val dataHeight = (height * 0.58f).toInt()
         val params = dataArea.layoutParams as LayoutParams
         if (params.width != dataWidth || params.height != dataHeight ||
             params.gravity != (Gravity.RIGHT or Gravity.CENTER_VERTICAL)) {
@@ -74,6 +76,15 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
             params.height = dataHeight
             params.gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
             dataArea.layoutParams = params
+        }
+        val strip = hourly.layoutParams as LayoutParams
+        val stripWidth = (width * 0.72f).toInt()
+        val bottomInset = (height * 0.045f).toInt()
+        if (strip.width != stripWidth || strip.bottomMargin != bottomInset || strip.gravity != (Gravity.BOTTOM or Gravity.RIGHT)) {
+            strip.width = stripWidth
+            strip.bottomMargin = bottomInset
+            strip.gravity = Gravity.BOTTOM or Gravity.RIGHT
+            hourly.layoutParams = strip
         }
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
