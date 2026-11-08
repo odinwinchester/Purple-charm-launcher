@@ -2,7 +2,7 @@
 """Build and verify the Purple Charm remote icon catalog.
 
 Run from the repository root. Requires only Python's standard library.
-An unknown PNG is rejected until its Android package name is registered.
+Package-named PNGs are registered automatically; custom filenames require a mapping.
 """
 import hashlib
 import json
@@ -61,15 +61,30 @@ def main() -> None:
     if not re.fullmatch(r"[A-Za-z0-9._/-]+", REF) or ".." in REF:
         raise ValueError("Unsafe catalog ref")
     packages = load_packages()
+    pngs = sorted(p for p in LIBRARY.glob("*.png") if p.name not in EXCLUDED_FILES)
+    # Existing mappings take precedence: never silently replace approved artwork.
+    registered = {package for targets in packages.values() for package in targets}
+    auto_register = {}
+    unknown = []
+    package_pattern = re.compile(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+")
+    for path in pngs:
+        if path.stem in packages:
+            continue
+        if not package_pattern.fullmatch(path.stem):
+            unknown.append(path.name)
+        elif path.stem in registered:
+            raise ValueError(f"{path.name}: package already mapped to an approved icon")
+        else:
+            auto_register[path.stem] = path.stem
+            packages[path.stem] = [path.stem]
+            registered.add(path.stem)
+    if unknown:
+        raise ValueError("Register custom filenames in icon-library/packages.json before publishing: " + ", ".join(unknown))
     previous = json.loads(CATALOG.read_text(encoding="utf-8"))
     if previous.get("schemaVersion") != 1:
         raise ValueError("Unsupported catalog schema")
     old_by_package = {e["packageName"]: e for e in previous.get("icons", [])}
     entries = []
-    pngs = sorted(p for p in LIBRARY.glob("*.png") if p.name not in EXCLUDED_FILES)
-    unknown = [p.name for p in pngs if p.stem not in packages]
-    if unknown:
-        raise ValueError("Register package names in icon-library/packages.json before publishing: " + ", ".join(unknown))
     for path in pngs:
         data = path.read_bytes()
         validate_png(data, path.name)
@@ -87,6 +102,11 @@ def main() -> None:
     if not entries:
         raise ValueError("No PNGs found; refusing to publish an empty catalog")
     output = json.dumps({"schemaVersion": 1, "icons": entries}, indent=2, ensure_ascii=False) + "\n"
+    # Publish registered names only after every PNG has passed validation.
+    if auto_register:
+        registry_contents = json.loads(REGISTRY.read_text(encoding="utf-8"))
+        registry_contents.update(auto_register)
+        REGISTRY.write_text(json.dumps(registry_contents, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     CATALOG.write_text(output, encoding="utf-8")
     print(f"Verified {len(entries)} PNGs; catalog written for {REF}")
 
