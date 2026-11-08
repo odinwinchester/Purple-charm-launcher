@@ -56,6 +56,12 @@
       "sha256": "d02f15f30fcbc2d9efa210b650470e6c11fef5c4681f63a3db219dc85ae5e937"
     },
     {
+      "packageName": "com.uprock.mining",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/com.uprock.mining.png",
+      "sha256": "ac3281f16d9154c6d82ad667968f36c5f50ec07e43468e6049a29af1640c9f83"
+    },
+    {
       "packageName": "com.zhiliaoapp.musically.go",
       "version": 1,
       "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/com.zhiliaoapp.musically.go.png",
