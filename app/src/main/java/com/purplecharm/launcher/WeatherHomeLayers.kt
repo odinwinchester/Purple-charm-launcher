@@ -33,20 +33,38 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
     }
     private val readings = TextView(context).apply {
         setTextColor(Color.WHITE)
-        textSize = 12f
+        textSize = 31f
         includeFontPadding = false
         setShadowLayer(3f, 0f, 1f, Color.BLACK)
-        gravity = Gravity.TOP or Gravity.START
+        gravity = Gravity.CENTER
         setPadding((8 * resources.displayMetrics.density).toInt(), 0, (8 * resources.displayMetrics.density).toInt(), 0)
     }
     private val hourly = TextView(context).apply {
         setTextColor(Color.WHITE)
         textSize = 11f
         gravity = Gravity.CENTER
+        maxLines = 1
         setBackgroundColor(Color.TRANSPARENT)
     }
-    private val dataArea = FrameLayout(context).apply {
-        addView(readings, LayoutParams(-1, -1))
+    private val city = TextView(context).apply {
+        setTextColor(Color.WHITE)
+        textSize = 13f
+        gravity = Gravity.CENTER
+        maxLines = 1
+    }
+    private val metrics = TextView(context).apply {
+        setTextColor(Color.WHITE)
+        textSize = 11f
+        gravity = Gravity.CENTER
+        setPadding(4, 4, 4, 4)
+        setBackgroundColor(Color.argb(150, 22, 5, 35))
+    }
+    private val dataArea = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        addView(readings, LinearLayout.LayoutParams(-1, 0, 1.5f))
+        addView(city, LinearLayout.LayoutParams(-1, 0, 0.55f))
+        addView(metrics, LinearLayout.LayoutParams(-1, 0, 0.9f))
     }
     init {
         clipChildren = true
@@ -67,19 +85,21 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         val height = MeasureSpec.getSize(heightMeasureSpec)
         // Normalized safe zones track the ornamental frame as the art scales.
         // Keep readings inside the right-hand panel and above the hourly band.
-        val dataWidth = (width * 0.43f).toInt()
-        val dataHeight = (height * 0.58f).toInt()
+        val dataWidth = (width * 0.49f).toInt()
+        val dataHeight = (height * 0.70f).toInt()
         val params = dataArea.layoutParams as LayoutParams
         if (params.width != dataWidth || params.height != dataHeight ||
-            params.gravity != (Gravity.RIGHT or Gravity.CENTER_VERTICAL)) {
+            params.gravity != (Gravity.RIGHT or Gravity.TOP)) {
             params.width = dataWidth
             params.height = dataHeight
-            params.gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
+            params.gravity = Gravity.RIGHT or Gravity.TOP
+            params.topMargin = (height * 0.12f).toInt()
+            params.rightMargin = (width * 0.035f).toInt()
             dataArea.layoutParams = params
         }
         val strip = hourly.layoutParams as LayoutParams
-        val stripWidth = (width * 0.72f).toInt()
-        val bottomInset = (height * 0.045f).toInt()
+        val stripWidth = (width * 0.87f).toInt()
+        val bottomInset = (height * 0.105f).toInt()
         if (strip.width != stripWidth || strip.bottomMargin != bottomInset || strip.gravity != (Gravity.BOTTOM or Gravity.RIGHT)) {
             strip.width = stripWidth
             strip.bottomMargin = bottomInset
@@ -100,27 +120,23 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
     }
 
     fun setReadings(value: String?) {
-        val display = value.orEmpty()
-        val styled = SpannableString(display)
-        // The first line contains the live temperature; subsequent lines are
-        // the city and secondary readings. Preserve fallback text unchanged.
-        val firstBreak = display.indexOf('\n')
-        if (firstBreak > 0 && display.substring(0, firstBreak).contains('°')) {
-            styled.setSpan(RelativeSizeSpan(2.0f), 0, firstBreak, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            styled.setSpan(ForegroundColorSpan(Color.rgb(211, 132, 255)), 0, firstBreak, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            styled.setSpan(StyleSpan(Typeface.BOLD), 0, firstBreak, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            val nextBreak = display.indexOf('\n', firstBreak + 1)
-            val cityEnd = if (nextBreak < 0) display.length else nextBreak
-            if (cityEnd > firstBreak + 1) {
-                styled.setSpan(StyleSpan(Typeface.BOLD), firstBreak + 1, cityEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            }
-        }
-        readings.text = styled
-        readings.visibility = if (value.isNullOrBlank()) View.GONE else View.VISIBLE
+        val lines = value.orEmpty().lines()
+        val temperature = lines.getOrNull(0).orEmpty()
+        val location = lines.getOrNull(1).orEmpty()
+        readings.text = temperature
+        city.text = location
+        val humidity = lines.getOrNull(2)?.removePrefix("Umid. ") ?: "—"
+        val wind = lines.getOrNull(3)?.removePrefix("Vento ") ?: "—"
+        val uv = lines.getOrNull(4)?.removePrefix("UV ") ?: "—"
+        metrics.text = "Umidade     Vento     UV\\n$humidity     $wind     $uv".replace("\\n", "\n")
+        val visible = if (value.isNullOrBlank()) View.GONE else View.VISIBLE
+        readings.visibility = visible
+        city.visibility = visible
+        metrics.visibility = visible
     }
 
     fun setHourlyForecast(value: String?) {
-        hourly.text = value.orEmpty()
+        hourly.text = value.orEmpty().replace("  ", "     ")
         hourly.visibility = if (value.isNullOrBlank()) View.GONE else View.VISIBLE
     }
 
