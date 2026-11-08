@@ -11,6 +11,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 import java.time.Instant
 import java.time.ZoneId
@@ -34,15 +35,14 @@ class ExpandedWeatherActivity : Activity() {
         }
     }
     private var page = "home"
-    private var smoked = true
+    private var glassTransparency = 75
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
 
     // Fully cut-out panels: violet outline only, no opaque fill.
     private fun glass(): GradientDrawable = GradientDrawable().apply {
-        // Fumê: black with 10 percentage points less transparency (alpha 220 -> 246).
-        // Vazado: keep the existing appearance unchanged.
-        setColor(if (smoked) Color.argb(246, 0, 0, 0)
-            else Color.argb(130, 12, 5, 27))
+        // 0% = opaque violet smoke; 100% = fully transparent panel.
+        val alpha = ((100 - glassTransparency) * 255 / 100).coerceIn(0, 255)
+        setColor(Color.argb(alpha, 35, 8, 51))
         cornerRadius = dp(18).toFloat()
         setStroke(dp(1), Color.argb(190, 193, 146, 239))
     }
@@ -56,10 +56,19 @@ class ExpandedWeatherActivity : Activity() {
             setPadding(dp(10), dp(7), dp(10), dp(7))
         }
 
+    private fun updatePanelOpacity(root: android.view.ViewGroup) {
+        for (index in 0 until root.childCount) {
+            val child = root.getChildAt(index)
+            if (child.tag == "weather_glass_panel") child.background = glass()
+            if (child is android.view.ViewGroup) updatePanelOpacity(child)
+        }
+    }
+
     private fun card(root: LinearLayout, title: String, content: String, onOpen: (() -> Unit)? = null) {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = glass()
+            tag = "weather_glass_panel"
             setPadding(dp(5), dp(4), dp(5), dp(4))
         }
         panel.addView(text(title, 17f, true))
@@ -85,7 +94,7 @@ class ExpandedWeatherActivity : Activity() {
         window.decorView.setBackgroundColor(Color.rgb(12, 6, 29))
         window.statusBarColor = Color.rgb(20, 10, 34)
         window.navigationBarColor = Color.rgb(20, 10, 34)
-        smoked = prefs.getBoolean("weather_smoked_glass", true)
+        glassTransparency = prefs.getInt("weather_glass_transparency", 75).coerceIn(0, 100)
         render()
         // First visit: ask through Android's own permission dialog. The user may
         // deny it and still choose a city manually from the location options.
@@ -254,42 +263,36 @@ class ExpandedWeatherActivity : Activity() {
                 card(column, "Condições atuais • MET Norway  ›", conditions) {
                     open("conditions")
                 }
-                val styleRow = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER
-                    setPadding(dp(4), dp(4), dp(4), dp(4))
+                val opacityRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(12), dp(4), dp(12), dp(4))
                 }
-                fun styleOption(label: String, selected: Boolean, value: Boolean): TextView =
-                    text((if (selected) "✓ " else "○ ") + label, 14f, selected).apply {
-                        gravity = Gravity.CENTER
-                        background = GradientDrawable().apply {
-                            setColor(if (selected) Color.argb(205, 73, 37, 108)
-                                else Color.argb(70, 35, 17, 63))
-                            cornerRadius = dp(14).toFloat()
-                            setStroke(dp(if (selected) 2 else 1),
-                                Color.argb(if (selected) 240 else 125, 202, 150, 246))
-                        }
-                        isClickable = true
-                        isFocusable = true
-                        contentDescription = "Selecionar estilo " + label
-                        setOnClickListener {
-                            if (smoked != value) {
-                                smoked = value
-                                prefs.edit().putBoolean("weather_smoked_glass", value).apply()
-                                render()
-                            }
-                        }
+                val opacityLabel = text("Transparência violeta: $glassTransparency%", 14f, true)
+                opacityRow.addView(opacityLabel)
+                val slider = SeekBar(this).apply {
+                    max = 100
+                    progress = glassTransparency
+                    contentDescription = "Transparência dos painéis meteorológicos"
+                }
+                opacityRow.addView(slider, LinearLayout.LayoutParams(-1, -2))
+                opacityRow.addView(text("0% Fumê violeta     •     100% Vazado", 12f))
+                column.addView(opacityRow, LinearLayout.LayoutParams(-1, -2))
+                slider.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        if (!fromUser) return
+                        glassTransparency = progress
+                        opacityLabel.text = "Transparência violeta: $progress%"
+                        prefs.edit().putInt("weather_glass_transparency", progress).apply()
+                        // Refresh only panel backgrounds; keep scroll position and live data.
+                        updatePanelOpacity(column)
                     }
-                styleRow.addView(styleOption("Fumê", smoked, true),
-                    LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(4) })
-                styleRow.addView(styleOption("Vazado", !smoked, false),
-                    LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(4) })
-                column.addView(styleRow, LinearLayout.LayoutParams(-1, -2).apply {
-                    setMargins(dp(12), dp(6), dp(12), dp(6))
+                    override fun onStartTrackingTouch(bar: SeekBar?) = Unit
+                    override fun onStopTrackingTouch(bar: SeekBar?) = Unit
                 })
                 val hourlyPanel = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     background = glass()
+                    tag = "weather_glass_panel"
                     setPadding(dp(8), dp(7), dp(8), dp(7))
                 }
                 val hourlyTitle = text("◷  Previsão horária • MET Norway  ›", 17f, true)
