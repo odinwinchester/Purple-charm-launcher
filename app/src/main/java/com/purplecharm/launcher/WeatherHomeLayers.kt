@@ -2,6 +2,12 @@ package com.purplecharm.launcher
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Typeface
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.RelativeSizeSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -28,6 +34,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
     private val readings = TextView(context).apply {
         setTextColor(Color.WHITE)
         textSize = 12f
+        includeFontPadding = false
         setShadowLayer(3f, 0f, 1f, Color.BLACK)
         gravity = Gravity.TOP or Gravity.START
         setPadding((8 * resources.displayMetrics.density).toInt(), 0, (8 * resources.displayMetrics.density).toInt(), 0)
@@ -82,7 +89,22 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
     }
 
     fun setReadings(value: String?) {
-        readings.text = value.orEmpty()
+        val display = value.orEmpty()
+        val styled = SpannableString(display)
+        // The first line contains the live temperature; subsequent lines are
+        // the city and secondary readings. Preserve fallback text unchanged.
+        val firstBreak = display.indexOf('\n')
+        if (firstBreak > 0 && display.substring(0, firstBreak).contains('°')) {
+            styled.setSpan(RelativeSizeSpan(2.0f), 0, firstBreak, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            styled.setSpan(ForegroundColorSpan(Color.rgb(211, 132, 255)), 0, firstBreak, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            styled.setSpan(StyleSpan(Typeface.BOLD), 0, firstBreak, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            val nextBreak = display.indexOf('\n', firstBreak + 1)
+            val cityEnd = if (nextBreak < 0) display.length else nextBreak
+            if (cityEnd > firstBreak + 1) {
+                styled.setSpan(StyleSpan(Typeface.BOLD), firstBreak + 1, cityEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+        }
+        readings.text = styled
         readings.visibility = if (value.isNullOrBlank()) View.GONE else View.VISIBLE
     }
 
