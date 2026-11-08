@@ -18,20 +18,29 @@ CATALOG = LIBRARY / "catalog.json"
 REPO = "odinwinchester/Purple-charm-launcher"
 REF = os.environ.get("ICON_CATALOG_REF", "main")
 REGISTRY = LIBRARY / "packages.json"
+EXCLUDED_FILES = {"com.openai.chatgpt.png"}
 
 
-def load_packages() -> dict[str, str]:
-    packages = json.loads(REGISTRY.read_text(encoding="utf-8"))
-    if not isinstance(packages, dict):
+def load_packages() -> dict[str, list[str]]:
+    raw = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
         raise ValueError("packages.json must contain a JSON object")
-    for name, package in packages.items():
-        if not re.fullmatch(r"[a-z][a-z0-9_]*(?:[.-][a-z][a-z0-9_]*)*", name):
-            raise ValueError(f"Invalid icon filename stem: {name}")
-        if not isinstance(package, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+", package):
-            raise ValueError(f"Invalid Android package for {name}")
-    if len(set(packages.values())) != len(packages):
-        raise ValueError("Duplicate Android package names")
-    return packages
+    result = {}
+    seen = set()
+    for stem, targets in raw.items():
+        if not isinstance(stem, str) or not stem or "/" in stem or chr(92) in stem:
+            raise ValueError(f"Invalid icon filename stem: {stem}")
+        targets = [targets] if isinstance(targets, str) else targets
+        if not isinstance(targets, list) or not targets:
+            raise ValueError(f"Invalid targets for {stem}")
+        for package in targets:
+            if not isinstance(package, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+", package):
+                raise ValueError(f"Invalid Android package: {package}")
+            if package in seen:
+                raise ValueError(f"Duplicate package: {package}")
+            seen.add(package)
+        result[stem] = targets
+    return result
 
 
 def validate_png(data: bytes, name: str) -> None:
@@ -57,24 +66,24 @@ def main() -> None:
         raise ValueError("Unsupported catalog schema")
     old_by_package = {e["packageName"]: e for e in previous.get("icons", [])}
     entries = []
-    pngs = sorted(LIBRARY.glob("*.png"))
+    pngs = sorted(p for p in LIBRARY.glob("*.png") if p.name not in EXCLUDED_FILES)
     unknown = [p.name for p in pngs if p.stem not in packages]
     if unknown:
         raise ValueError("Register package names in icon-library/packages.json before publishing: " + ", ".join(unknown))
     for path in pngs:
         data = path.read_bytes()
         validate_png(data, path.name)
-        package = packages[path.stem]
         digest = hashlib.sha256(data).hexdigest()
-        old = old_by_package.get(package, {})
-        old_version = int(old.get("version", 0))
-        version = max(1, old_version + (1 if old.get("sha256") and old["sha256"] != digest else 0))
-        entries.append({
-            "packageName": package,
-            "version": version,
-            "url": f"https://raw.githubusercontent.com/{REPO}/{quote(REF, safe='/')}/icon-library/{quote(path.name)}",
-            "sha256": digest,
-        })
+        for package in packages[path.stem]:
+            old = old_by_package.get(package, {})
+            old_version = int(old.get("version", 0))
+            version = max(1, old_version + (1 if old.get("sha256") and old["sha256"] != digest else 0))
+            entries.append({
+                "packageName": package,
+                "version": version,
+                "url": f"https://raw.githubusercontent.com/{REPO}/{quote(REF, safe='/')}/icon-library/{quote(path.name)}",
+                "sha256": digest,
+            })
     if not entries:
         raise ValueError("No PNGs found; refusing to publish an empty catalog")
     output = json.dumps({"schemaVersion": 1, "icons": entries}, indent=2, ensure_ascii=False) + "\n"
