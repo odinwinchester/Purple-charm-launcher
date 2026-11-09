@@ -2482,13 +2482,13 @@ class MainActivity : Activity(), SensorEventListener {
     // Mantém o papel de parede visível e evita o painel grande de seis botões.
     private fun showClassicCustomizationMenu() {
         val dialog = Dialog(this)
-        val icons = arrayOf("＋", "▧", "⚙", "⌘", "?", "⇩")
-        val names = arrayOf("Organizar", "Papel de parede", "Configurações", "Sistema", "Ajuda", "Novos ícones")
+        val icons = arrayOf("＋", "▧", "⚙", "♡", "?", "⇩")
+        val names = arrayOf("Organizar", "Papel de parede", "Configurações", "Ganhe com Nós", "Ajuda", "Novos ícones")
         val actions: Array<() -> Unit> = arrayOf(
             { editWorkspaceMenu() },
             { wallpaperMenu() },
             { settingsMenu() },
-            { openSystemSettings() },
+            { GanheComNosScreen.show(this) },
             {
                 SmokeDialogBuilder(this)
                     .setTitle("Purple Charm • Ajuda")
