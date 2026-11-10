@@ -2,10 +2,13 @@ package com.purplecharm.launcher
 
 import android.app.Activity
 import android.app.Dialog
+import android.content.Intent
+import android.net.Uri
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -16,6 +19,7 @@ import android.widget.Toast
  * adicionados depois. Não atribuir status de parceria sem confirmação.
  */
 internal object GanheComNosScreen {
+    private const val TTCOIN_REFERRAL_URL = "https://play.google.com/store/apps/details?id=com.ttcoin.network2&referrer=7QdiIalSbJgdBTb2Xbg0zjtJuQT2"
     private val recommended = listOf("TTcoin", "BixBerry", "UpRock")
 
     fun show(activity: Activity) {
@@ -74,11 +78,28 @@ internal object GanheComNosScreen {
                             if (official) setStroke(dp(2), Color.rgb(176, 116, 247))
                         }
                     }
-                    cell.addView(circle, LinearLayout.LayoutParams(dp(62), dp(62)))
+                    if (!official && name == "TTcoin") {
+                        val icon = ImageView(activity).apply {
+                            setImageResource(R.drawable.ttcoin_ganhe_com_nos)
+                            scaleType = ImageView.ScaleType.FIT_CENTER
+                            contentDescription = "TTcoin"
+                        }
+                        cell.addView(icon, LinearLayout.LayoutParams(dp(62), dp(62)))
+                    } else {
+                        cell.addView(circle, LinearLayout.LayoutParams(dp(62), dp(62)))
+                    }
                     cell.addView(text(name ?: "Disponível", 11f), LinearLayout.LayoutParams(-1, dp(32)))
                     if (!official && name != null) {
                         cell.setOnClickListener {
-                            Toast.makeText(activity, "Link de ${name} aguardando validação", Toast.LENGTH_SHORT).show()
+                            if (name == "TTcoin") {
+                                try {
+                                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TTCOIN_REFERRAL_URL)))
+                                } catch (error: android.content.ActivityNotFoundException) {
+                                    Toast.makeText(activity, "Não foi possível abrir o link da TTcoin", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                Toast.makeText(activity, "Link de ${name} aguardando validação", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                     row.addView(cell, LinearLayout.LayoutParams(0, dp(110), 1f))
