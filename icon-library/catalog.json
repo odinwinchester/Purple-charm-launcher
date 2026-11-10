@@ -2,10 +2,22 @@
   "schemaVersion": 1,
   "icons": [
     {
+      "packageName": "ai.bixberry.app",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/main/icon-library/ai.bixberry.app.png",
+      "sha256": "d713efa5c2b7b0dbd8ae82b890691c78a5f5fa9a1dad734c9944451f4c64e0e8"
+    },
+    {
       "packageName": "com.brave.browser",
       "version": 1,
       "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/main/icon-library/brave.png",
       "sha256": "8f576b5336825cb83bc69a4c9ea02cc88c3268bacfc3321bca7abe4bd785af7b"
+    },
+    {
+      "packageName": "com.ttcoin.network2",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/main/icon-library/com.ttcoin.network2.png",
+      "sha256": "ce4bf34ab061fd984777f19ea05390fa6fb50c0255d1680b60b641634ff083cb"
     },
     {
       "packageName": "com.discord",
@@ -18,12 +30,6 @@
       "version": 1,
       "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/main/icon-library/tiktok.png",
       "sha256": "03630033e3c8b52131da182ddf31d0041804aa6e3a13c43b56b686434ed3505a"
-    },
-    {
-      "packageName": "com.ttcoin.network2",
-      "version": 1,
-      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/feature/ganhe-com-nos/icon-library/com.ttcoin.network2.png",
-      "sha256": "ce4bf34ab061fd984777f19ea05390fa6fb50c0255d1680b60b641634ff083cb"
     }
   ]
 }
