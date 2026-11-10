@@ -2498,24 +2498,32 @@ class MainActivity : Activity(), SensorEventListener {
             { showNewIconsMenu() }
         )
         val strip = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(5), dp(12), dp(5), dp(12))
+            setPadding(dp(8), dp(12), dp(8), dp(12))
             background = glass(20, true)
         }
-        for (i in icons.indices) {
-            val tile = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
+        for (rowIndex in 0 until 2) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
             }
-            val symbol = label(icons[i], 23f, true).apply {
-                background = glassTile()
-                setTextColor(Color.WHITE)
+            for (columnIndex in 0 until 3) {
+                val i = rowIndex * 3 + columnIndex
+                val tile = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                }
+                val symbol = label(icons[i], 23f, true).apply {
+                    background = glassTile()
+                    setTextColor(Color.WHITE)
+                }
+                tile.addView(symbol, LinearLayout.LayoutParams(dp(39), dp(43)))
+                tile.addView(label(names[i], 10f), LinearLayout.LayoutParams(-1, dp(34)))
+                tile.setOnClickListener { dialog.dismiss(); actions[i]() }
+                row.addView(tile, LinearLayout.LayoutParams(0, dp(82), 1f))
             }
-            tile.addView(symbol, LinearLayout.LayoutParams(dp(39), dp(43)))
-            tile.addView(label(names[i], 8f), LinearLayout.LayoutParams(-1, dp(34)))
-            tile.setOnClickListener { dialog.dismiss(); actions[i]() }
-            strip.addView(tile, LinearLayout.LayoutParams(0, dp(82), 1f))
+            strip.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(82)))
         }
         dialog.setContentView(strip)
         dialog.window?.apply {
