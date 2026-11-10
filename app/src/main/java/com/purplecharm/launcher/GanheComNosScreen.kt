@@ -33,6 +33,7 @@ import javax.crypto.spec.PBEKeySpec
 internal object GanheComNosScreen {
     private const val TTCOIN_REFERRAL_URL = "https://play.google.com/store/apps/details?id=com.ttcoin.network2&referrer=7QdiIalSbJgdBTb2Xbg0zjtJuQT2"
     private const val BIXBERRY_REFERRAL_URL = "https://join.bixberry.com/MORTLA418A"
+    private const val UPROCK_REFERRAL_URL = "https://link.uprock.com/i/3dc53111"
     private val recommended = listOf("TTcoin", "BixBerry", "UpRock")
 
     private const val PREFS = "purple_charm_bixberry_admin"
@@ -242,6 +243,12 @@ internal object GanheComNosScreen {
                                     activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BIXBERRY_REFERRAL_URL)))
                                 } catch (error: android.content.ActivityNotFoundException) {
                                     Toast.makeText(activity, "Não foi possível abrir o link da BixBerry", Toast.LENGTH_SHORT).show()
+                                }
+                            } else if (name == "UpRock") {
+                                try {
+                                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UPROCK_REFERRAL_URL)))
+                                } catch (error: android.content.ActivityNotFoundException) {
+                                    Toast.makeText(activity, "Não foi possível abrir o link da UpRock", Toast.LENGTH_SHORT).show()
                                 }
                             } else {
                                 Toast.makeText(activity, "Link de ${name} aguardando validação", Toast.LENGTH_SHORT).show()
