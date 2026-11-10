@@ -1,18 +1,30 @@
 package com.purplecharm.launcher
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.Dialog
 import android.content.Intent
 import android.net.Uri
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.view.View
 import android.view.Gravity
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.NumberPicker
+import android.text.InputType
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import java.security.SecureRandom
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
 
 /**
  * Tela única de indicações. Os ícones definitivos e links verificados serão
@@ -22,6 +34,112 @@ internal object GanheComNosScreen {
     private const val TTCOIN_REFERRAL_URL = "https://play.google.com/store/apps/details?id=com.ttcoin.network2&referrer=7QdiIalSbJgdBTb2Xbg0zjtJuQT2"
     private const val BIXBERRY_REFERRAL_URL = "https://join.bixberry.com/MORTLA418A"
     private val recommended = listOf("TTcoin", "BixBerry", "UpRock")
+
+    private const val PREFS = "purple_charm_bixberry_admin"
+    private const val KEY_SALT = "pin_salt"
+    private const val KEY_HASH = "pin_hash"
+    private const val KEY_REMAINING = "remaining"
+    private const val MAX_SLOTS = 5
+
+    private fun hashPin(pin: String, salt: ByteArray): String {
+        val spec = PBEKeySpec(pin.toCharArray(), salt, 120000, 256)
+        return try {
+            val bytes = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+            android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+        } finally {
+            spec.clearPassword()
+        }
+    }
+
+    private fun pinDialog(activity: Activity, onAuthenticated: () -> Unit) {
+        val prefs = activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
+        val setup = !prefs.contains(KEY_HASH)
+        val container = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(36, 16, 36, 0)
+        }
+        fun field(hintText: String) = EditText(activity).apply {
+            hint = hintText
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            filters = arrayOf(android.text.InputFilter.LengthFilter(8))
+            container.addView(this)
+        }
+        val first = field(if (setup) "Crie um PIN (4 a 8 números)" else "PIN do Purple Charm")
+        val confirm = if (setup) field("Confirme o PIN") else null
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle(if (setup) "Proteger vagas da BixBerry" else "Editar vagas da BixBerry")
+            .setView(container)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton(if (setup) "Salvar PIN" else "Desbloquear", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val pin = first.text.toString()
+                if (setup) {
+                    if (!pin.matches(Regex("[0-9]{4,8}")) || pin != confirm?.text.toString()) {
+                        Toast.makeText(activity, "Use 4 a 8 números iguais nos dois campos", Toast.LENGTH_LONG).show()
+                        return@setOnClickListener
+                    }
+                    val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
+                    val encoded = android.util.Base64.encodeToString(salt, android.util.Base64.NO_WRAP)
+                    prefs.edit().putString(KEY_SALT, encoded).putString(KEY_HASH, hashPin(pin, salt)).apply()
+                } else {
+                    val saltText = prefs.getString(KEY_SALT, null) ?: return@setOnClickListener
+                    val stored = prefs.getString(KEY_HASH, null) ?: return@setOnClickListener
+                    val computed = hashPin(pin, android.util.Base64.decode(saltText, android.util.Base64.NO_WRAP))
+                    if (!java.security.MessageDigest.isEqual(stored.toByteArray(), computed.toByteArray())) {
+                        Toast.makeText(activity, "PIN incorreto", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                }
+                dialog.dismiss()
+                onAuthenticated()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun editSlots(activity: Activity, onChanged: () -> Unit) {
+        val prefs = activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
+        pinDialog(activity) {
+            val picker = NumberPicker(activity).apply {
+                minValue = 0
+                maxValue = MAX_SLOTS
+                value = prefs.getInt(KEY_REMAINING, MAX_SLOTS).coerceIn(0, MAX_SLOTS)
+                wrapSelectorWheel = false
+            }
+            AlertDialog.Builder(activity)
+                .setTitle("Vagas restantes da BixBerry")
+                .setMessage("Altere somente após confirmar uma indicação. Abrir o link não reduz vagas.")
+                .setView(picker)
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Salvar") { _, _ ->
+                    prefs.edit().putInt(KEY_REMAINING, picker.value).apply()
+                    onChanged()
+                }
+                .show()
+        }
+    }
+
+    private class ReferralRing(activity: Activity) : View(activity) {
+        var remaining: Int = MAX_SLOTS
+            set(value) { field = value.coerceIn(0, MAX_SLOTS); invalidate() }
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+        }
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val density = resources.displayMetrics.density
+            paint.strokeWidth = 3.5f * density
+            val inset = paint.strokeWidth / 2 + density
+            val bounds = RectF(inset, inset, width - inset, height - inset)
+            for (i in 0 until MAX_SLOTS) {
+                paint.color = if (i < remaining) Color.rgb(188, 111, 255) else Color.rgb(67, 49, 83)
+                canvas.drawArc(bounds, -90f + i * 72f + 5f, 62f, false, paint)
+            }
+        }
+    }
 
     fun show(activity: Activity) {
         val scale = activity.resources.displayMetrics.density
@@ -85,7 +203,24 @@ internal object GanheComNosScreen {
                             scaleType = ImageView.ScaleType.FIT_CENTER
                             contentDescription = name
                         }
-                        cell.addView(icon, LinearLayout.LayoutParams(dp(62), dp(62)))
+                        if (name == "BixBerry") {
+                            val prefs = activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
+                            val frame = FrameLayout(activity)
+                            frame.addView(icon, FrameLayout.LayoutParams(dp(54), dp(54), Gravity.CENTER))
+                            val ring = ReferralRing(activity).apply {
+                                remaining = prefs.getInt(KEY_REMAINING, MAX_SLOTS)
+                            }
+                            frame.addView(ring, FrameLayout.LayoutParams(dp(70), dp(70), Gravity.CENTER))
+                            cell.addView(frame, LinearLayout.LayoutParams(dp(70), dp(70)))
+                            cell.setOnLongClickListener {
+                                editSlots(activity) {
+                                    ring.remaining = prefs.getInt(KEY_REMAINING, MAX_SLOTS)
+                                }
+                                true
+                            }
+                        } else {
+                            cell.addView(icon, LinearLayout.LayoutParams(dp(62), dp(62)))
+                        }
                     } else {
                         cell.addView(circle, LinearLayout.LayoutParams(dp(62), dp(62)))
                     }
