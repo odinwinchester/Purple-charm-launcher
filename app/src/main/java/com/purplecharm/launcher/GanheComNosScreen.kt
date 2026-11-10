@@ -87,7 +87,16 @@ internal object GanheComNosScreen {
                 } else {
                     val saltText = prefs.getString(KEY_SALT, null) ?: return@setOnClickListener
                     val stored = prefs.getString(KEY_HASH, null) ?: return@setOnClickListener
-                    val computed = hashPin(pin, android.util.Base64.decode(saltText, android.util.Base64.NO_WRAP))
+                    if (!pin.matches(Regex("[0-9]{4,8}"))) {
+                        Toast.makeText(activity, "Digite seu PIN de 4 a 8 números", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    val computed = runCatching {
+                        hashPin(pin, android.util.Base64.decode(saltText, android.util.Base64.NO_WRAP))
+                    }.getOrElse {
+                        Toast.makeText(activity, "Não foi possível verificar o PIN", Toast.LENGTH_LONG).show()
+                        return@setOnClickListener
+                    }
                     if (!java.security.MessageDigest.isEqual(stored.toByteArray(), computed.toByteArray())) {
                         Toast.makeText(activity, "PIN incorreto", Toast.LENGTH_SHORT).show()
                         return@setOnClickListener
