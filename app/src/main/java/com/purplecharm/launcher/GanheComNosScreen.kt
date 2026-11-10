@@ -197,9 +197,13 @@ internal object GanheComNosScreen {
                             if (official) setStroke(dp(2), Color.rgb(176, 116, 247))
                         }
                     }
-                    if (!official && (name == "TTcoin" || name == "BixBerry")) {
+                    if (!official && (name == "TTcoin" || name == "BixBerry" || name == "UpRock")) {
                         val icon = ImageView(activity).apply {
-                            setImageResource(if (name == "TTcoin") R.drawable.ttcoin_ganhe_com_nos else R.drawable.bixberry_ganhe_com_nos)
+                            setImageResource(when (name) {
+                                "TTcoin" -> R.drawable.ttcoin_ganhe_com_nos
+                                "BixBerry" -> R.drawable.bixberry_ganhe_com_nos
+                                else -> R.drawable.uprock_ganhe_com_nos
+                            })
                             scaleType = ImageView.ScaleType.FIT_CENTER
                             contentDescription = name
                         }
