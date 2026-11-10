@@ -18,6 +18,12 @@
       "version": 1,
       "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/main/icon-library/tiktok.png",
       "sha256": "03630033e3c8b52131da182ddf31d0041804aa6e3a13c43b56b686434ed3505a"
+    },
+    {
+      "packageName": "com.ttcoin.network2",
+      "version": 1,
+      "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/feature/ganhe-com-nos/icon-library/com.ttcoin.network2.png",
+      "sha256": "ce4bf34ab061fd984777f19ea05390fa6fb50c0255d1680b60b641634ff083cb"
     }
   ]
 }

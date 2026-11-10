@@ -41,7 +41,7 @@ class ConsolidationAndroidTest {
         root.measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(1920, View.MeasureSpec.EXACTLY))
         root.layout(0, 0, 1080, 1920)
     }
-    @Test fun smokedOptionsKeepsThemeLauncherAndSystemOnlyInBottomMenu() {
+    @Test fun smokedOptionsAndUpdatedBottomMenuKeepGanheComNosAccessible() {
         seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
         call(a, "settingsMenu"); val dialog = field(a, "optionsDialog") as Dialog
         val panel = dialog.window!!.decorView.findViewWithTag<LinearLayout>("smoked_options")!!
@@ -52,9 +52,14 @@ class ConsolidationAndroidTest {
         dialog.dismiss()
         call(a, "showClassicCustomizationMenu")
         val bottom = org.robolectric.shadows.ShadowDialog.getLatestDialog()
-        val system = views(bottom.window!!.decorView).filterIsInstance<TextView>().first { it.text.toString() == "Sistema" }
-        (system.parent as View).performClick()
-        assertEquals(android.provider.Settings.ACTION_SETTINGS, shadowOf(a).nextStartedActivity.action)
+        val menu = views(bottom.window!!.decorView).filterIsInstance<TextView>()
+        val ganhe = menu.first { it.text.toString() == "Ganhe com Nós" }
+        (ganhe.parent as View).performClick()
+        val recommendations = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        assertTrue(recommendations.isShowing)
+        val labels = views(recommendations.window!!.decorView).filterIsInstance<TextView>().map { it.text.toString() }
+        assertTrue(labels.containsAll(listOf("Ganhe com Nós", "TTcoin", "BixBerry", "UpRock")))
+        recommendations.dismiss()
         c.pause().stop().destroy()
     }
     @Test fun themeAndLauncherCommandsOpenTheirExistingCategories() {
