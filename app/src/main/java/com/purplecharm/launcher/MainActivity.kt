@@ -2000,13 +2000,20 @@ class MainActivity : Activity(), SensorEventListener {
             else if (weatherActive) "Previsão indisponível • tocar para detalhes" else "Escolher localização • dados MET"
         val city = prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
             ?: "Localização não definida"
+        val lunarLabel = if (!isSun) when (LunarPhaseCalculator.phaseAt(java.time.Instant.ofEpochMilli(now))) {
+            LunarPhaseCalculator.Phase.NEW -> "☾ Lua nova (aprox.)"
+            LunarPhaseCalculator.Phase.WAXING -> "☾ Lua crescente (aprox.)"
+            LunarPhaseCalculator.Phase.FULL -> "☾ Lua cheia (aprox.)"
+            LunarPhaseCalculator.Phase.WANING -> "☾ Lua minguante (aprox.)"
+        } else ""
         val readingText = displayedForecast?.let { point ->
             val humidity = point.humidity?.let { "${it.toInt()}%" } ?: "—"
             val wind = point.wind?.let { "${(it * 3.6).toInt()} km/h" } ?: "—"
             val uv = point.uvClearSky?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "—"
             val shortCity = city.split(',').map { it.trim() }.filter { it.isNotEmpty() }
                 .take(2).joinToString(", ").ifBlank { city }
-            "${point.temperature.toInt()}°C\n${if (forecast == null) "Antiga • " else ""}$shortCity\nUmid. $humidity\nVento $wind\nUV céu limpo $uv"
+            val description = if (forecast == null) "◷ ${point.description} • dados antigos" else "☁ ${point.description}"
+            "${point.temperature.toInt()}°C\n$shortCity\nUmid. $humidity\nVento $wind\nUV céu limpo $uv\n$description\n$lunarLabel"
         } ?: "$city • previsão indisponível"
         val hourlyText = weatherClient.upcoming().take(4).joinToString("   ") { point ->
             val hour = java.time.Instant.ofEpochMilli(point.time)
