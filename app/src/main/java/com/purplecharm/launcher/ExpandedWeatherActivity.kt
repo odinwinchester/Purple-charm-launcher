@@ -202,14 +202,18 @@ class ExpandedWeatherActivity : Activity() {
         // One compact style switch; no manual weather scenarios in the live forecast.
         // The switch follows the first artwork panel below.
 
-        val current = weather.current()
+        val liveCurrent = weather.current()
+        val current = liveCurrent ?: weather.lastKnown()
+        val offlineNotice = if (liveCurrent == null && current != null)
+            "Última previsão armazenada: ${DateTimeFormatter.ofPattern("dd/MM HH:mm", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(current.time))} • dados desatualizados"
+            else ""
         val place = prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
             ?: intent.getStringExtra("place")?.takeIf {
             it.isNotBlank() && it != "Local não definido"
         } ?: "Localização não definida"
         val headline = current?.let { "${it.temperature.roundToInt()}°C • ${it.description}" }
             ?: "Previsão indisponível"
-        val conditions = "$place\n$headline\n" +
+        val conditions = "$place\n$headline\n" + (if (offlineNotice.isNotEmpty()) "$offlineNotice\n" else "") +
             if (current == null) "Configure a localização no widget para receber dados reais."
             else "Umidade: ${current.humidity?.roundToInt()?.let { "$it%" } ?: "indisponível"}" +
                 "   •   Vento: ${current.wind?.let { "${(it * 3.6).roundToInt()} km/h" } ?: "indisponível"}"
