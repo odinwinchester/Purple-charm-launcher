@@ -2004,7 +2004,8 @@ class MainActivity : Activity(), SensorEventListener {
             val humidity = point.humidity?.let { "${it.toInt()}%" } ?: "—"
             val wind = point.wind?.let { "${(it * 3.6).toInt()} km/h" } ?: "—"
             val uv = point.uvClearSky?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "—"
-            val shortCity = city.substringBefore(',').trim().ifBlank { city }
+            val shortCity = city.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                .take(2).joinToString(", ").ifBlank { city }
             "${point.temperature.toInt()}°C\n${if (forecast == null) "Antiga • " else ""}$shortCity\nUmid. $humidity\nVento $wind\nUV céu limpo $uv"
         } ?: "$city • previsão indisponível"
         val hourlyText = weatherClient.upcoming().take(4).joinToString("   ") { point ->
