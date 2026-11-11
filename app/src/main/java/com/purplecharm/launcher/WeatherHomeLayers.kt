@@ -64,6 +64,22 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         ellipsize = android.text.TextUtils.TruncateAt.END
         setShadowLayer(dp(2f).toFloat(), 0f, 0f, Color.BLACK)
     }
+    private val condition = TextView(context).apply {
+        setTextColor(Color.rgb(241, 204, 255))
+        gravity = Gravity.CENTER
+        maxLines = 1
+        ellipsize = android.text.TextUtils.TruncateAt.END
+        includeFontPadding = false
+        setShadowLayer(dp(2f).toFloat(), 0f, 0f, Color.BLACK)
+    }
+    private val lunarPhase = TextView(context).apply {
+        setTextColor(Color.rgb(218, 165, 255))
+        gravity = Gravity.CENTER
+        maxLines = 1
+        ellipsize = android.text.TextUtils.TruncateAt.END
+        includeFontPadding = false
+        setShadowLayer(dp(2f).toFloat(), 0f, 0f, Color.BLACK)
+    }
     private fun metricColumn(title: String): Pair<LinearLayout, TextView> {
         val value = TextView(context).apply {
             setTextColor(Color.WHITE)
@@ -108,9 +124,11 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
     private val dataArea = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
-        addView(readings, LinearLayout.LayoutParams(-1, 0, 1.45f))
-        addView(city, LinearLayout.LayoutParams(-1, 0, 0.65f))
-        addView(metrics, LinearLayout.LayoutParams(-1, 0, 1.0f))
+        addView(readings, LinearLayout.LayoutParams(-1, 0, 1.35f))
+        addView(city, LinearLayout.LayoutParams(-1, 0, 0.62f))
+        addView(condition, LinearLayout.LayoutParams(-1, 0, 0.42f))
+        addView(lunarPhase, LinearLayout.LayoutParams(-1, 0, 0.42f))
+        addView(metrics, LinearLayout.LayoutParams(-1, 0, 0.95f))
     }
     init {
         clipChildren = true
@@ -138,6 +156,8 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         val scale = WeatherWidgetTypography.scale(widthDp)
         resizeSp(readings, 42f * scale)
         resizeSp(city, 16f * scale)
+        resizeSp(condition, 12f * scale)
+        resizeSp(lunarPhase, 11f * scale)
         resizeSp(hourly, 12f * scale)
         listOf(humidityColumn, windColumn, uvColumn).forEach { (column, value) ->
             resizeSp(column.getChildAt(0) as TextView, 10f * scale)
@@ -187,6 +207,12 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         val humidity = lines.getOrNull(2)?.removePrefix("Umid. ") ?: "—"
         val wind = lines.getOrNull(3)?.removePrefix("Vento ") ?: "—"
         val uv = lines.getOrNull(4)?.removePrefix("UV ") ?: "—"
+        val conditionValue = lines.getOrNull(5).orEmpty().trim()
+        val lunarValue = lines.getOrNull(6).orEmpty().trim()
+        condition.text = conditionValue
+        lunarPhase.text = lunarValue
+        condition.visibility = if (conditionValue.isEmpty()) View.GONE else View.VISIBLE
+        lunarPhase.visibility = if (lunarValue.isEmpty()) View.GONE else View.VISIBLE
         humidityColumn.second.text = humidity
         windColumn.second.text = wind
         uvColumn.second.text = if (uv == "—" || uv.contains("—")) "—" else uv
@@ -194,6 +220,10 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         readings.visibility = visible
         city.visibility = visible
         metrics.visibility = visible
+        if (visible == View.GONE) {
+            condition.visibility = View.GONE
+            lunarPhase.visibility = View.GONE
+        }
     }
 
     fun setHourlyForecast(value: String?) {
