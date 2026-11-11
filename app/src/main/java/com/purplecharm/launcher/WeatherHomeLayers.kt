@@ -123,7 +123,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
     private val dataArea = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
-        addView(readings, LinearLayout.LayoutParams(-1, 0, 1.20f))
+        addView(readings, LinearLayout.LayoutParams(-1, 0, 1.70f))
         addView(city, LinearLayout.LayoutParams(-1, 0, 0.62f))
         addView(condition, LinearLayout.LayoutParams(-1, 0, 0.42f))
         addView(lunarPhase, LinearLayout.LayoutParams(-1, 0, 0.42f))
@@ -149,7 +149,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         // Normalized safe zones track the ornamental frame as the art scales.
         // Keep readings inside the right-hand panel and above the hourly band.
         val dataWidth = (width * 0.49f).toInt()
-        val dataHeight = (height * 0.66f).toInt()
+        val dataHeight = (height * 0.75f).toInt()
         val widthDp = width / resources.displayMetrics.density
         // Scale typography with the actual widget, not the phone manufacturer.
         val scale = WeatherWidgetTypography.scale(widthDp)
@@ -192,7 +192,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
             params.width = dataWidth
             params.height = dataHeight
             params.gravity = Gravity.RIGHT or Gravity.TOP
-            params.topMargin = (height * 0.10f).toInt()
+            params.topMargin = (height * 0.045f).toInt()
             params.rightMargin = (width * 0.035f).toInt()
             dataArea.layoutParams = params
         }
@@ -223,7 +223,10 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         val temperature = lines.getOrNull(0).orEmpty()
         val location = lines.getOrNull(1).orEmpty()
         readings.text = temperature
-        city.text = if (location.isBlank()) "" else "📍 ${WeatherLocationLabel.compact(location)}"
+        city.text = if (location.isBlank()) "" else android.text.SpannableString("● ${WeatherLocationLabel.compact(location)}").apply {
+            setSpan(android.text.style.ForegroundColorSpan(Color.rgb(205, 75, 255)),
+                0, 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         val humidity = lines.getOrNull(2)?.removePrefix("Umid. ") ?: "—"
         val wind = lines.getOrNull(3)?.removePrefix("Vento ") ?: "—"
         val uv = lines.getOrNull(4)?.removePrefix("UV ") ?: "—"
