@@ -61,7 +61,8 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
         gravity = Gravity.CENTER
         maxLines = 1
-        ellipsize = android.text.TextUtils.TruncateAt.END
+        ellipsize = null
+        includeFontPadding = false
         setShadowLayer(dp(2f).toFloat(), 0f, 0f, Color.BLACK)
     }
     private val condition = TextView(context).apply {
@@ -151,7 +152,17 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         // Scale typography with the actual widget, not the phone manufacturer.
         val scale = WeatherWidgetTypography.scale(widthDp)
         resizeSp(readings, 42f * scale)
-        resizeSp(city, 16f * scale)
+        // Ajusta o texto à largura real disponível, preservando o nome completo.
+        val cityMaxPx = 14f * scale * resources.displayMetrics.scaledDensity
+        val cityMinPx = 8f * scale * resources.displayMetrics.scaledDensity
+        val cityAvailablePx = (dataWidth - dp(4f)).coerceAtLeast(1).toFloat()
+        val label = city.text.toString()
+        val measuredAtMax = city.paint.apply { textSize = cityMaxPx }.measureText(label)
+        val fittedPx = if (measuredAtMax > cityAvailablePx && measuredAtMax > 0f)
+            (cityMaxPx * cityAvailablePx / measuredAtMax).coerceAtLeast(cityMinPx)
+            else cityMaxPx
+        if (kotlin.math.abs(city.textSize - fittedPx) > 0.5f)
+            city.setTextSize(TypedValue.COMPLEX_UNIT_PX, fittedPx)
         resizeSp(condition, 12f * scale)
         resizeSp(lunarPhase, 11f * scale)
         resizeSp(hourly, 12f * scale)
@@ -199,7 +210,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         val temperature = lines.getOrNull(0).orEmpty()
         val location = lines.getOrNull(1).orEmpty()
         readings.text = temperature
-        city.text = if (location.isBlank()) "" else "⌖  $location"
+        city.text = if (location.isBlank()) "" else "⌖ $location"
         val humidity = lines.getOrNull(2)?.removePrefix("Umid. ") ?: "—"
         val wind = lines.getOrNull(3)?.removePrefix("Vento ") ?: "—"
         val uv = lines.getOrNull(4)?.removePrefix("UV ") ?: "—"
