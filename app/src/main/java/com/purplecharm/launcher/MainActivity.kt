@@ -604,11 +604,15 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun folderTile(id: String, compact: Boolean): View {
         val folder = runCatching { workspaceStore.folders()[id] }.getOrNull()
+        // An unavailable app is not an empty folder. Keep its reference visible
+        // so users can distinguish it from an empty folder without data loss.
+        val unavailableCount = folder?.apps?.count { resolveKey(it) == null } ?: 0
         val tile = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(2), dp(if (compact) 2 else 6), dp(2), dp(if (compact) 2 else 8))
-            contentDescription = "Pasta ${folder?.name ?: "indisponível"}"
+            contentDescription = "Pasta ${folder?.name ?: "indisponível"}" +
+                if (unavailableCount > 0) " • $unavailableCount aplicativo(s) indisponível(is)" else ""
         }
         val preview = GridLayout(this).apply {
             columnCount = 2; rowCount = 2
