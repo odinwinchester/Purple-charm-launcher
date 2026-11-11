@@ -46,7 +46,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         includeFontPadding = false
         gravity = Gravity.CENTER
         maxLines = 1
-        setShadowLayer(dp(3f).toFloat(), 0f, dp(1f).toFloat(), Color.rgb(91, 12, 139))
+        setShadowLayer(dp(4.5f).toFloat(), 0f, 0f, Color.rgb(208, 35, 255))
     }
     private val hourly = TextView(context).apply {
         setTextColor(Color.rgb(238, 201, 255))
@@ -170,9 +170,12 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
             resizeSp(column.getChildAt(0) as TextView, 10f * scale)
             resizeSp(value, 12f * scale)
         }
-        readings.paint.shader = LinearGradient(0f, 0f, 0f, readings.textSize * 1.3f,
-            intArrayOf(Color.WHITE, Color.rgb(252, 186, 255), Color.rgb(177, 39, 238)),
-            floatArrayOf(0f, 0.43f, 1f), Shader.TileMode.CLAMP)
+        // Contraste e violeta mais saturados, sem alterar o tamanho da temperatura.
+        readings.paint.shader = LinearGradient(0f, 0f, 0f, readings.textSize * 1.15f,
+            intArrayOf(Color.WHITE, Color.rgb(255, 112, 255), Color.rgb(202, 0, 255)),
+            floatArrayOf(0f, 0.30f, 1f), Shader.TileMode.CLAMP)
+        // Aproxima somente o valor da borda direita em metade da margem original.
+        readings.translationX = width * 0.0175f
         val params = dataArea.layoutParams as LayoutParams
         if (params.width != dataWidth || params.height != dataHeight ||
             params.gravity != (Gravity.RIGHT or Gravity.TOP)) {
