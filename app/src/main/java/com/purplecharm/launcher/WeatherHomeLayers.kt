@@ -224,7 +224,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         val location = lines.getOrNull(1).orEmpty()
         readings.text = temperature
         city.text = if (location.isBlank()) "" else android.text.SpannableString("● ${WeatherLocationLabel.compact(location)}").apply {
-            setSpan(android.text.style.ForegroundColorSpan(Color.rgb(205, 75, 255)),
+            setSpan(VioletLocationPinSpan(),
                 0, 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         val humidity = lines.getOrNull(2)?.removePrefix("Umid. ") ?: "—"
@@ -305,5 +305,36 @@ internal object WeatherLocationLabel {
         val abbreviated = states.entries.firstOrNull { it.key.equals(state, ignoreCase = true) }?.value
             ?: state
         return (listOf(parts[0], abbreviated) + parts.drop(2)).joinToString(", ")
+    }
+}
+
+/** Paint a violet map pin rather than relying on the platform's red emoji glyph. */
+private class VioletLocationPinSpan : android.text.style.ReplacementSpan() {
+    override fun getSize(paint: android.graphics.Paint, text: CharSequence,
+                         start: Int, end: Int, fm: android.graphics.Paint.FontMetricsInt?): Int =
+        (paint.textSize * 0.85f).toInt()
+
+    override fun draw(canvas: android.graphics.Canvas, text: CharSequence,
+                      start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int,
+                      paint: android.graphics.Paint) {
+        val oldColor = paint.color
+        val oldStyle = paint.style
+        val size = paint.textSize * 0.70f
+        val cx = x + size * 0.50f
+        val cy = y - size * 0.62f
+        paint.color = android.graphics.Color.rgb(205, 75, 255)
+        paint.style = android.graphics.Paint.Style.FILL
+        canvas.drawCircle(cx, cy, size * 0.36f, paint)
+        val tip = android.graphics.Path().apply {
+            moveTo(cx - size * 0.26f, cy + size * 0.23f)
+            lineTo(cx + size * 0.26f, cy + size * 0.23f)
+            lineTo(cx, cy + size * 0.80f)
+            close()
+        }
+        canvas.drawPath(tip, paint)
+        paint.color = android.graphics.Color.BLACK
+        canvas.drawCircle(cx, cy, size * 0.13f, paint)
+        paint.color = oldColor
+        paint.style = oldStyle
     }
 }
