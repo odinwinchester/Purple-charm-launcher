@@ -1754,6 +1754,34 @@ class MainActivity : Activity(), SensorEventListener {
         switchingPage = false
     }
 
+    // Weather uses its own drag identity: it must never enter WorkspaceItems.
+    private var weatherDragging = false
+    private val weatherDragMime = "application/x-purple-charm-weather-widget"
+    private fun beginWeatherDrag(view: View): Boolean {
+        if (dragging || weatherDragging || widgetResizeActive || drawerOpen || !view.isAttachedToWindow) return false
+        widgetEditor?.endEditing()
+        val data = ClipData("Purple Charm weather", arrayOf(weatherDragMime), ClipData.Item("weather_widget"))
+        weatherDragging = true
+        val started = runCatching {
+            view.startDragAndDrop(data, View.DragShadowBuilder(view), view, 0)
+        }.getOrDefault(false)
+        if (!started) weatherDragging = false
+        else view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        return started
+    }
+
+    private fun ownsWeatherDrag(event: DragEvent): Boolean =
+        weatherDragging && event.clipDescription?.hasMimeType(weatherDragMime) == true &&
+            event.localState is View
+
+    private fun finishWeatherDrag() {
+        if (!weatherDragging) return
+        weatherDragging = false
+        window.decorView.findViewWithTag<WorkspaceDragLayout>("workspace_drag_surface")?.stopHover()
+        // Rebuild only after drag dispatch finishes; do not detach its source mid-event.
+        if (::pages.isInitialized) pages.post { if (!weatherDragging && !dragging) showHome() }
+    }
+
     private fun showHome() {
         widgetEditor?.endEditing()
         widgetEditor = null
@@ -1787,8 +1815,8 @@ class MainActivity : Activity(), SensorEventListener {
             clipChildren = true
             clipToPadding = true
             minimumHeight = 0
-            owns = { ownsDrag(it) }
-            canNavigate = { dragging && !dragDropCommitted && !drawerOpen }
+            owns = { ownsDrag(it) || ownsWeatherDrag(it) }
+            canNavigate = { (weatherDragging || (dragging && !dragDropCommitted)) && !drawerOpen }
             navigate = { direction ->
                 val target = pageIndex + direction
                 if (target in 0 until pageCount()) {
@@ -1800,9 +1828,17 @@ class MainActivity : Activity(), SensorEventListener {
                     true
                 } else false
             }
-            drop = { event -> dropOnVisiblePage(this, event) }
-            dropAt = { event, x, y -> dropOnVisiblePage(this, event, x, y) }
-            ended = { finishWorkspaceDrag() }
+            drop = { event ->
+                if (ownsWeatherDrag(event)) {
+                    prefs.edit().putInt("weather_widget_page", pageIndex).commit()
+                } else dropOnVisiblePage(this, event)
+            }
+            dropAt = { event, x, y ->
+                if (ownsWeatherDrag(event)) {
+                    prefs.edit().putInt("weather_widget_page", pageIndex).commit()
+                } else dropOnVisiblePage(this, event, x, y)
+            }
+            ended = { if (weatherDragging) finishWeatherDrag() else finishWorkspaceDrag() }
         }
         workspace.addView(pages, FrameLayout.LayoutParams(-1, -1))
         root.addView(
@@ -2090,7 +2126,7 @@ class MainActivity : Activity(), SensorEventListener {
         // is placed between the weather widget and the home icon grid.
         liveWeatherLabel = null
         panel.setOnClickListener { weatherDetails() }
-        panel.setOnLongClickListener { editor.beginEditing(); true }
+        panel.setOnLongClickListener { beginWeatherDrag(panel) }
         celestialView = panel
         return panel.apply { layoutParams = ViewGroup.LayoutParams(-1, -1) }
     }
