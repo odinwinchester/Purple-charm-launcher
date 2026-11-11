@@ -123,7 +123,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
     private val dataArea = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
-        addView(readings, LinearLayout.LayoutParams(-1, 0, 1.20f))
+        addView(readings, LinearLayout.LayoutParams(-1, 0, 1.70f))
         addView(city, LinearLayout.LayoutParams(-1, 0, 0.62f))
         addView(condition, LinearLayout.LayoutParams(-1, 0, 0.42f))
         addView(lunarPhase, LinearLayout.LayoutParams(-1, 0, 0.42f))
@@ -149,7 +149,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         // Normalized safe zones track the ornamental frame as the art scales.
         // Keep readings inside the right-hand panel and above the hourly band.
         val dataWidth = (width * 0.49f).toInt()
-        val dataHeight = (height * 0.66f).toInt()
+        val dataHeight = (height * 0.75f).toInt()
         val widthDp = width / resources.displayMetrics.density
         // Scale typography with the actual widget, not the phone manufacturer.
         val scale = WeatherWidgetTypography.scale(widthDp)
@@ -192,7 +192,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
             params.width = dataWidth
             params.height = dataHeight
             params.gravity = Gravity.RIGHT or Gravity.TOP
-            params.topMargin = (height * 0.10f).toInt()
+            params.topMargin = (height * 0.045f).toInt()
             params.rightMargin = (width * 0.035f).toInt()
             dataArea.layoutParams = params
         }
@@ -223,7 +223,10 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         val temperature = lines.getOrNull(0).orEmpty()
         val location = lines.getOrNull(1).orEmpty()
         readings.text = temperature
-        city.text = if (location.isBlank()) "" else "📍 ${WeatherLocationLabel.compact(location)}"
+        city.text = if (location.isBlank()) "" else android.text.SpannableString("● ${WeatherLocationLabel.compact(location)}").apply {
+            setSpan(VioletLocationPinSpan(),
+                0, 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         val humidity = lines.getOrNull(2)?.removePrefix("Umid. ") ?: "—"
         val wind = lines.getOrNull(3)?.removePrefix("Vento ") ?: "—"
         val uv = lines.getOrNull(4)?.removePrefix("UV ") ?: "—"
@@ -302,5 +305,36 @@ internal object WeatherLocationLabel {
         val abbreviated = states.entries.firstOrNull { it.key.equals(state, ignoreCase = true) }?.value
             ?: state
         return (listOf(parts[0], abbreviated) + parts.drop(2)).joinToString(", ")
+    }
+}
+
+/** Paint a violet map pin rather than relying on the platform's red emoji glyph. */
+private class VioletLocationPinSpan : android.text.style.ReplacementSpan() {
+    override fun getSize(paint: android.graphics.Paint, text: CharSequence,
+                         start: Int, end: Int, fm: android.graphics.Paint.FontMetricsInt?): Int =
+        (paint.textSize * 0.85f).toInt()
+
+    override fun draw(canvas: android.graphics.Canvas, text: CharSequence,
+                      start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int,
+                      paint: android.graphics.Paint) {
+        val oldColor = paint.color
+        val oldStyle = paint.style
+        val size = paint.textSize * 0.70f
+        val cx = x + size * 0.50f
+        val cy = y - size * 0.62f
+        paint.color = android.graphics.Color.rgb(205, 75, 255)
+        paint.style = android.graphics.Paint.Style.FILL
+        canvas.drawCircle(cx, cy, size * 0.36f, paint)
+        val tip = android.graphics.Path().apply {
+            moveTo(cx - size * 0.26f, cy + size * 0.23f)
+            lineTo(cx + size * 0.26f, cy + size * 0.23f)
+            lineTo(cx, cy + size * 0.80f)
+            close()
+        }
+        canvas.drawPath(tip, paint)
+        paint.color = android.graphics.Color.BLACK
+        canvas.drawCircle(cx, cy, size * 0.13f, paint)
+        paint.color = oldColor
+        paint.style = oldStyle
     }
 }
