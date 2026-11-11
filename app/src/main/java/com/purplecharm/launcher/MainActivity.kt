@@ -2018,7 +2018,18 @@ class MainActivity : Activity(), SensorEventListener {
         val hourlyText = weatherClient.upcoming().take(4).joinToString("   ") { point ->
             val hour = java.time.Instant.ofEpochMilli(point.time)
                 .atZone(java.time.ZoneId.systemDefault()).hour
-            "${hour}h ${point.temperature.toInt()}°"
+            val icon = when (point.code) {
+                0 -> "☀"
+                1 -> "🌤"
+                2 -> "⛅"
+                3 -> "☁"
+                45 -> "🌫"
+                61 -> "🌧"
+                71 -> "❄"
+                95 -> "⛈"
+                else -> "·"
+            }
+            "${hour}h $icon ${point.temperature.toInt()}°"
         }.ifBlank { "Previsão horária indisponível" }
         if (reuseUnchanged && visualKey == lastCelestialKey && celestialView != null) {
             if (liveWeatherLabel?.text?.toString() != liveText) liveWeatherLabel?.text = liveText
