@@ -622,7 +622,15 @@ class MainActivity : Activity(), SensorEventListener {
         val previewSize = 53
         folder?.apps?.take(4)?.forEach { key ->
             preview.addView(ImageView(this).apply {
-                resolveKey(key)?.let { setImageDrawable(customIcon(it, includeFallbackFrame = true)) }
+                val resolved = resolveKey(key)
+                if (resolved != null) {
+                    setImageDrawable(customIcon(resolved, includeFallbackFrame = true))
+                } else {
+                    // Referência preservada: não exibir pasta aparentemente vazia.
+                    setImageResource(android.R.drawable.ic_menu_help)
+                    setColorFilter(Color.rgb(218, 165, 255))
+                    contentDescription = "Aplicativo indisponível"
+                }
                 scaleType = ImageView.ScaleType.FIT_CENTER
             }, GridLayout.LayoutParams().apply {
                 width = dp((previewSize - 8) / 2); height = dp((previewSize - 8) / 2)
@@ -1747,6 +1755,15 @@ class MainActivity : Activity(), SensorEventListener {
         widgetEditor = null
         drawerOpen = false
         loadApps()
+        // Limpa pastas realmente vazias também ao reconstruir a HOME.
+        // Não exclui pastas com referências de apps temporariamente indisponíveis.
+        if (!dragging) {
+            val current = runCatching { workspaceItems() }.getOrNull()
+            val pruned = current?.let(WorkspaceEdits::pruneEmptyFolders)
+            if (current != null && pruned != null && pruned != current) {
+                workspaceStore.save(pruned)
+            }
+        }
 
         val root = buildRoot()
 
