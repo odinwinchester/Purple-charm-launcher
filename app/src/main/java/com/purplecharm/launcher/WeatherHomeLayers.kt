@@ -59,7 +59,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
     private val city = TextView(context).apply {
         setTextColor(Color.WHITE)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-        gravity = Gravity.CENTER
+        gravity = Gravity.CENTER_VERTICAL or Gravity.RIGHT
         maxLines = 1
         ellipsize = null
         includeFontPadding = false
@@ -223,7 +223,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         val temperature = lines.getOrNull(0).orEmpty()
         val location = lines.getOrNull(1).orEmpty()
         readings.text = temperature
-        city.text = if (location.isBlank()) "" else "⌖ ${WeatherLocationLabel.compact(location)}"
+        city.text = if (location.isBlank()) "" else "📍 ${WeatherLocationLabel.compact(location)}"
         val humidity = lines.getOrNull(2)?.removePrefix("Umid. ") ?: "—"
         val wind = lines.getOrNull(3)?.removePrefix("Vento ") ?: "—"
         val uv = lines.getOrNull(4)?.removePrefix("UV ") ?: "—"
