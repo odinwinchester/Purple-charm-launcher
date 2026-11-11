@@ -49,7 +49,6 @@ internal object WorkspaceEdits {
         return null
     }
     private class Edit(s: WorkspaceItems) {
-        private val populatedAtStart = s.folders.filterValues { it.apps.isNotEmpty() }.keys
         val pages = s.pages.map { it.toMutableList() }.toMutableList()
         val dock = s.dock.toMutableList()
         val folders = s.folders.toMutableMap()
@@ -71,12 +70,18 @@ internal object WorkspaceEdits {
         }
         fun done(): WorkspaceItems? {
             // Prune only after the transaction: swaps/reorders may refill a temporarily empty folder.
-            folders.filter { (id, folder) -> id in populatedAtStart && folder.apps.isEmpty() }.keys.toList().forEach { id ->
+            folders.filterValues { it.apps.isEmpty() }.keys.toList().forEach { id ->
                 remove(id)
                 folders.remove(id)
             }
             return WorkspaceItems(pages.map { it.toList() }, dock.toList(), folders.toMap()).takeIf { it.valid() }
         }
+    }
+    /** Remove persisted empty folders without moving any other workspace cell. */
+    fun pruneEmptyFolders(s: WorkspaceItems): WorkspaceItems? {
+        if (!s.valid()) return null
+        if (s.folders.values.none { it.apps.isEmpty() }) return s
+        return Edit(s).done()
     }
     fun page(s: WorkspaceItems, key: String, page: Int, cell: Int, group: Boolean = false,
              folderId: String = "folder:${java.util.UUID.randomUUID()}"): WorkspaceItems? {

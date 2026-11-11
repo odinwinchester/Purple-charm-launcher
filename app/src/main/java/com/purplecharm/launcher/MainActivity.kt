@@ -221,6 +221,14 @@ class MainActivity : Activity(), SensorEventListener {
     }
     override fun onResume() {
         super.onResume()
+        // Recover empty folders persisted by older builds, preserving all other cells.
+        if (!dragging) {
+            val before = runCatching { workspaceItems() }.getOrNull()
+            val cleaned = before?.let(WorkspaceEdits::pruneEmptyFolders)
+            if (before != null && cleaned != null && cleaned != before && workspaceStore.save(cleaned)) {
+                refreshWorkspaceSafely()
+            }
+        }
         weatherHandler.removeCallbacks(weatherTick)
         weatherLocation.start()
         weatherHandler.post(weatherTick)
@@ -1952,6 +1960,8 @@ class MainActivity : Activity(), SensorEventListener {
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
         val mode = prefs.getInt("gothic_celestial_mode", 0) // 0 auto, 1 sol, 2 lua
         val forecast = weatherClient.current()
+        val lastKnown = if (forecast == null) weatherClient.lastKnown(now) else null
+        val displayedForecast = forecast ?: lastKnown
         val daylight = SolarDaylight.isDay(now, prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull(),
             prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull()) ?: forecast?.isDay
         val isSun = when (mode) {
@@ -1986,15 +1996,24 @@ class MainActivity : Activity(), SensorEventListener {
         val initialSpan = prefs.getInt(spanKey, defaultSpan).coerceIn(1, columns)
         val visualKey = "${selectedArt.slug}:$columns:$initialSpan:$weatherArtIndex"
         val liveText = if (forecast != null) "MET Norway: ${kotlin.math.round(forecast.temperature).toInt()}°C • previsão atual"
+            else if (lastKnown != null) "MET Norway: última previsão salva • dados desatualizados"
             else if (weatherActive) "Previsão indisponível • tocar para detalhes" else "Escolher localização • dados MET"
         val city = prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
             ?: "Localização não definida"
-        val readingText = forecast?.let { point ->
+        val lunarLabel = if (!isSun) when (LunarPhaseCalculator.phaseAt(java.time.Instant.ofEpochMilli(now))) {
+            LunarPhaseCalculator.Phase.NEW -> "☾ Lua nova (aprox.)"
+            LunarPhaseCalculator.Phase.WAXING -> "☾ Lua crescente (aprox.)"
+            LunarPhaseCalculator.Phase.FULL -> "☾ Lua cheia (aprox.)"
+            LunarPhaseCalculator.Phase.WANING -> "☾ Lua minguante (aprox.)"
+        } else ""
+        val readingText = displayedForecast?.let { point ->
             val humidity = point.humidity?.let { "${it.toInt()}%" } ?: "—"
             val wind = point.wind?.let { "${(it * 3.6).toInt()} km/h" } ?: "—"
             val uv = point.uvClearSky?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "—"
-            val shortCity = city.substringBefore(',').trim().ifBlank { city }
-            "${point.temperature.toInt()}°C\n$shortCity\nUmid. $humidity\nVento $wind\nUV céu limpo $uv"
+            val shortCity = city.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                .take(2).joinToString(", ").ifBlank { city }
+            val description = if (forecast == null) "◷ ${point.description} • dados antigos" else "☁ ${point.description}"
+            "${point.temperature.toInt()}°C\n$shortCity\nUmid. $humidity\nVento $wind\nUV céu limpo $uv\n$description\n$lunarLabel"
         } ?: "$city • previsão indisponível"
         val hourlyText = weatherClient.upcoming().take(4).joinToString("   ") { point ->
             val hour = java.time.Instant.ofEpochMilli(point.time)

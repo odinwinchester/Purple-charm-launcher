@@ -74,6 +74,12 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
         return cachedBody?.let { parse(it, now) }
     }
 
+    /** Last actual cached point, explicitly marked stale by callers; never a live reading. */
+    fun lastKnown(now: Long = System.currentTimeMillis()): WeatherForecast? {
+        if (location() == null || location() != prefs.getString("met_forecast_location", null)) return null
+        return cachedBody?.let { parseLastKnown(it, now) }
+    }
+
     fun upcoming(now: Long = System.currentTimeMillis()): List<WeatherForecast> {
         if (location() == null || location() != prefs.getString("met_forecast_location", null)) return emptyList()
         return cachedBody?.let { parseUpcoming(it, now) } ?: emptyList()
@@ -191,7 +197,6 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
         }
 
         internal fun parseUpcomingDays(body: String, now: Long): List<WeatherForecast> = try {
-            require(parse(body, now) != null)
             val series = series(body)
             val end = now + 6L * 24 * 60 * 60_000L
             val result = mutableListOf<WeatherForecast>()
@@ -205,8 +210,7 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
         } catch (_: Exception) { emptyList() }
 
         internal fun parseUpcoming(body: String, now: Long): List<WeatherForecast> = try {
-            // Do not revive stale or wrong-unit cache for the hourly panel.
-            require(parse(body, now) != null)
+            // Future forecast points remain usable even when the current point has expired.
             val series = series(body)
             val result = mutableListOf<WeatherForecast>()
             for (i in 0 until series.length()) {
@@ -217,6 +221,20 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
             }
             result
         } catch (_: Exception) { emptyList() }
+
+        /** Historical fallback: at most 24 hours old, never future or wrong-unit data. */
+        internal fun parseLastKnown(body: String, now: Long): WeatherForecast? = try {
+            val points = series(body)
+            var selected: JSONObject? = null
+            for (i in 0 until points.length()) {
+                val item = points.getJSONObject(i)
+                if (Instant.parse(item.getString("time")).toEpochMilli() <= now) selected = item else break
+            }
+            selected?.let {
+                val age = now - Instant.parse(it.getString("time")).toEpochMilli()
+                if (age in 0..(24L * 60 * 60_000L)) decodePoint(it) else null
+            }
+        } catch (_: Exception) { null }
 
         internal fun parse(body: String, now: Long): WeatherForecast? = try {
             val series = series(body)

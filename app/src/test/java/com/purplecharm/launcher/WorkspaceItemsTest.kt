@@ -140,14 +140,15 @@ class WorkspaceItemsTest {
         assertEquals(a, swapped.dock[0]); assertEquals(apps(s).sorted(), apps(swapped).sorted())
     }
 
-    @Test fun pruningDoesNotRemoveUnrelatedLegacyEmptyFolder() {
+    @Test fun pruningRemovesUnrelatedLegacyEmptyFolderWithoutMovingOtherApps() {
         val s = WorkspaceEdits.removeApp(grouped(), "folder:test", b)!!
         val withLegacy = s.copy(pages = s.pages.mapIndexed { i, cells -> if (i == 1) listOf("folder:legacy") + cells.drop(1) else cells },
             folders = s.folders + ("folder:legacy" to WorkspaceFolder("Existente", emptyList())))
         val after = WorkspaceEdits.removeApp(withLegacy, "folder:test", a)!!
         assertFalse("folder:test" in after.folders)
-        assertEquals(withLegacy.folders["folder:legacy"], after.folders["folder:legacy"])
-        assertEquals(withLegacy.pages[1], after.pages[1])
+        assertFalse("folder:legacy" in after.folders)
+        assertEquals("", after.pages[1][0])
+        assertEquals(withLegacy.pages[1].drop(1), after.pages[1].drop(1))
     }
 
     @Test fun manualDockReplacementPreservesDisplacedShortcutAndCancelChangesNothing() {
@@ -165,6 +166,33 @@ class WorkspaceItemsTest {
         assertEquals(c, replaced.dock[0]); assertEquals(listOf(a, b), replaced.folders.getValue("folder:target").apps)
         assertTrue("folder:target" in replaced.pages.flatten()); assertFalse("folder:source" in replaced.folders)
         assertEquals(apps(folderDock).sorted(), apps(replaced).sorted())
+    }
+
+    @Test fun cleanupOnResumeRemovesOnlyEmptyFoldersAndPreservesLayout() {
+        val original = grouped().copy(
+            pages = grouped().pages.mapIndexed { i, cells ->
+                if (i == 1) listOf("folder:old") + cells.drop(1) else cells
+            },
+            folders = grouped().folders + ("folder:old" to WorkspaceFolder("Pasta", emptyList()))
+        )
+        val cleaned = WorkspaceEdits.pruneEmptyFolders(original)!!
+        assertFalse("folder:old" in cleaned.folders)
+        assertEquals("", cleaned.pages[1][0])
+        assertEquals(original.pages[0], cleaned.pages[0])
+        assertEquals(original.dock, cleaned.dock)
+        assertEquals(original.folders["folder:test"], cleaned.folders["folder:test"])
+        assertTrue(cleaned.valid())
+        assertEquals(cleaned, WorkspaceEdits.pruneEmptyFolders(cleaned))
+        assertTrue("folder:old" in original.folders)
+    }
+
+    @Test fun movingLastMemberOutPrunesFolderWithoutLosingApp() {
+        val one = WorkspaceEdits.removeApp(grouped(), "folder:test", b)!!
+        val moved = WorkspaceEdits.page(one, a, 2, 1)!!
+        assertFalse("folder:test" in moved.folders)
+        assertEquals("", moved.pages[0][1])
+        assertEquals(a, moved.pages[2][1])
+        assertTrue(moved.valid())
     }
 
 }
