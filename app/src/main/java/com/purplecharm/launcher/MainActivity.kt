@@ -221,6 +221,14 @@ class MainActivity : Activity(), SensorEventListener {
     }
     override fun onResume() {
         super.onResume()
+        // Recover empty folders persisted by older builds, preserving all other cells.
+        if (!dragging) {
+            val before = runCatching { workspaceItems() }.getOrNull()
+            val cleaned = before?.let(WorkspaceEdits::pruneEmptyFolders)
+            if (before != null && cleaned != null && cleaned != before && workspaceStore.save(cleaned)) {
+                refreshWorkspaceSafely()
+            }
+        }
         weatherHandler.removeCallbacks(weatherTick)
         weatherLocation.start()
         weatherHandler.post(weatherTick)
