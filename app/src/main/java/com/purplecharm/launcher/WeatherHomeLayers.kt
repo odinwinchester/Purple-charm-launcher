@@ -110,13 +110,9 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
     private val metrics = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER
-        val panel = GradientDrawable().apply {
-            setColor(Color.argb(205, 13, 4, 23))
-            cornerRadius = dp(13f).toFloat()
-            setStroke(dp(1f).coerceAtLeast(1), Color.rgb(160, 50, 200))
-        }
-        background = panel
-        setPadding(dp(2f), dp(3f), dp(2f), dp(3f))
+        // Sem placa de fundo: preserva a arte original sob os indicadores.
+        background = null
+        setPadding(0, 0, 0, 0)
         addView(humidityColumn.first, LinearLayout.LayoutParams(0, -1, 1f))
         addView(windColumn.first, LinearLayout.LayoutParams(0, -1, 1.1f))
         addView(uvColumn.first, LinearLayout.LayoutParams(0, -1, 0.75f))
@@ -128,7 +124,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         addView(city, LinearLayout.LayoutParams(-1, 0, 0.62f))
         addView(condition, LinearLayout.LayoutParams(-1, 0, 0.42f))
         addView(lunarPhase, LinearLayout.LayoutParams(-1, 0, 0.42f))
-        addView(metrics, LinearLayout.LayoutParams(-1, 0, 0.95f))
+        addView(metrics, LinearLayout.LayoutParams(-1, 0, 0.60f))
     }
     init {
         clipChildren = true
@@ -150,7 +146,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         // Normalized safe zones track the ornamental frame as the art scales.
         // Keep readings inside the right-hand panel and above the hourly band.
         val dataWidth = (width * 0.49f).toInt()
-        val dataHeight = (height * 0.70f).toInt()
+        val dataHeight = (height * 0.63f).toInt()
         val widthDp = width / resources.displayMetrics.density
         // Scale typography with the actual widget, not the phone manufacturer.
         val scale = WeatherWidgetTypography.scale(widthDp)
@@ -172,7 +168,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
             params.width = dataWidth
             params.height = dataHeight
             params.gravity = Gravity.RIGHT or Gravity.TOP
-            params.topMargin = (height * 0.12f).toInt()
+            params.topMargin = (height * 0.13f).toInt()
             params.rightMargin = (width * 0.035f).toInt()
             dataArea.layoutParams = params
         }
