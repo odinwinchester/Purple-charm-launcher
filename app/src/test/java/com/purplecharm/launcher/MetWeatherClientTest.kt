@@ -71,4 +71,33 @@ class MetWeatherClientTest {
         assertTrue(MetWeatherClient.parseUpcoming(body, Instant.parse("2026-10-24T00:30:00Z").toEpochMilli()).isEmpty())
     }
 
+    @Test fun offlineLastKnownIsNotMisrepresentedAsCurrent() {
+        val start = Instant.parse("2026-10-24T00:00:00Z").toEpochMilli()
+        val body = """{"properties":{"timeseries":[${point("2026-10-24T00:00:00Z", 22)}]}}"""
+        for (hours in listOf(1L, 3L, 12L, 24L)) {
+            val now = start + hours * 60 * 60_000L
+            assertEquals(22.0, MetWeatherClient.parseLastKnown(body, now)!!.temperature, 0.0)
+            if (hours > 2L) assertNull(MetWeatherClient.parse(body, now))
+        }
+        assertNull(MetWeatherClient.parseLastKnown(body, start + 25L * 60 * 60_000L))
+        assertNull(MetWeatherClient.parseLastKnown(body, start - 1L))
+    }
+
+    @Test fun futurePointsSurviveExpiredCurrentPointWithoutInventingReadings() {
+        val body = """{"properties":{"timeseries":[${point("2026-10-24T00:00:00Z", 10)},${point("2026-10-25T06:00:00Z", 20)}]}}"""
+        val now = Instant.parse("2026-10-24T12:00:00Z").toEpochMilli()
+        assertNull(MetWeatherClient.parse(body, now))
+        assertEquals(1, MetWeatherClient.parseUpcoming(body, now).size)
+        assertEquals(20.0, MetWeatherClient.parseUpcoming(body, now).single().temperature, 0.0)
+        assertEquals(1, MetWeatherClient.parseUpcomingDays(body, now).size)
+    }
+
+    @Test fun offlineFallbackRejectsInvalidUnitsAndMalformedData() {
+        val body = """{"properties":{"meta":{"units":{"air_temperature":"kelvin"}},"timeseries":[${point("2026-10-24T00:00:00Z", 295)}]}}"""
+        val now = Instant.parse("2026-10-24T01:00:00Z").toEpochMilli()
+        assertNull(MetWeatherClient.parseLastKnown(body, now))
+        assertTrue(MetWeatherClient.parseUpcomingDays(body, now).isEmpty())
+        assertNull(MetWeatherClient.parseLastKnown("{}", now))
+    }
+
 }
