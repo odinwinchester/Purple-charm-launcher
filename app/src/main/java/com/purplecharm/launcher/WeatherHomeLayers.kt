@@ -223,7 +223,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         val temperature = lines.getOrNull(0).orEmpty()
         val location = lines.getOrNull(1).orEmpty()
         readings.text = temperature
-        city.text = if (location.isBlank()) "" else "⌖ $location"
+        city.text = if (location.isBlank()) "" else "⌖ ${WeatherLocationLabel.compact(location)}"
         val humidity = lines.getOrNull(2)?.removePrefix("Umid. ") ?: "—"
         val wind = lines.getOrNull(3)?.removePrefix("Vento ") ?: "—"
         val uv = lines.getOrNull(4)?.removePrefix("UV ") ?: "—"
@@ -278,4 +278,29 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
 /** Pure responsive sizing policy, shared by layouts and JVM regression tests. */
 internal object WeatherWidgetTypography {
     fun scale(widgetWidthDp: Float): Float = (widgetWidthDp / 340f).coerceIn(0.60f, 1.10f)
+}
+
+/** Shortens Brazilian state names without changing the weather provider's location. */
+internal object WeatherLocationLabel {
+    private val states = mapOf(
+        "Acre" to "AC", "Alagoas" to "AL", "Amapá" to "AP",
+        "Amazonas" to "AM", "Bahia" to "BA", "Ceará" to "CE",
+        "Distrito Federal" to "DF", "Espírito Santo" to "ES",
+        "Goiás" to "GO", "Maranhão" to "MA", "Mato Grosso" to "MT",
+        "Mato Grosso do Sul" to "MS", "Minas Gerais" to "MG",
+        "Pará" to "PA", "Paraíba" to "PB", "Paraná" to "PR",
+        "Pernambuco" to "PE", "Piauí" to "PI", "Rio de Janeiro" to "RJ",
+        "Rio Grande do Norte" to "RN", "Rio Grande do Sul" to "RS",
+        "Rondônia" to "RO", "Roraima" to "RR", "Santa Catarina" to "SC",
+        "São Paulo" to "SP", "Sergipe" to "SE", "Tocantins" to "TO"
+    )
+
+    fun compact(location: String): String {
+        val parts = location.split(',').map { it.trim() }
+        if (parts.size < 2) return location.trim()
+        val state = parts[1]
+        val abbreviated = states.entries.firstOrNull { it.key.equals(state, ignoreCase = true) }?.value
+            ?: state
+        return (listOf(parts[0], abbreviated) + parts.drop(2)).joinToString(", ")
+    }
 }
