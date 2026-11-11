@@ -36,6 +36,10 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
     }
     private fun dp(value: Float): Int = (value * resources.displayMetrics.density).toInt()
+    private fun resizeSp(view: TextView, sp: Float) {
+        val px = sp * resources.displayMetrics.scaledDensity
+        if (kotlin.math.abs(view.textSize - px) > 0.5f) view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+    }
     private val readings = TextView(context).apply {
         setTextColor(Color.WHITE)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 42f)
@@ -131,13 +135,13 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         val dataHeight = (height * 0.70f).toInt()
         val widthDp = width / resources.displayMetrics.density
         // Scale typography with the actual widget, not the phone manufacturer.
-        val scale = (widthDp / 340f).coerceIn(0.60f, 1.10f)
-        readings.setTextSize(TypedValue.COMPLEX_UNIT_SP, 42f * scale)
-        city.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f * scale)
-        hourly.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f * scale)
+        val scale = WeatherWidgetTypography.scale(widthDp)
+        resizeSp(readings, 42f * scale)
+        resizeSp(city, 16f * scale)
+        resizeSp(hourly, 12f * scale)
         listOf(humidityColumn, windColumn, uvColumn).forEach { (column, value) ->
-            (column.getChildAt(0) as TextView).setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f * scale)
-            value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f * scale)
+            resizeSp(column.getChildAt(0) as TextView, 10f * scale)
+            resizeSp(value, 12f * scale)
         }
         readings.paint.shader = LinearGradient(0f, 0f, 0f, readings.textSize * 1.3f,
             intArrayOf(Color.WHITE, Color.rgb(252, 186, 255), Color.rgb(177, 39, 238)),
@@ -219,4 +223,9 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
             effects.addView(view, LayoutParams(-1, -1))
         }
     }
+}
+
+/** Pure responsive sizing policy, shared by layouts and JVM regression tests. */
+internal object WeatherWidgetTypography {
+    fun scale(widgetWidthDp: Float): Float = (widgetWidthDp / 340f).coerceIn(0.60f, 1.10f)
 }
