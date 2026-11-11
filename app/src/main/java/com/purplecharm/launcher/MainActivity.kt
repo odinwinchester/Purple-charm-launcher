@@ -604,11 +604,15 @@ class MainActivity : Activity(), SensorEventListener {
 
     private fun folderTile(id: String, compact: Boolean): View {
         val folder = runCatching { workspaceStore.folders()[id] }.getOrNull()
+        // An unavailable app is not an empty folder. Keep its reference visible
+        // so users can distinguish it from an empty folder without data loss.
+        val unavailableCount = folder?.apps?.count { resolveKey(it) == null } ?: 0
         val tile = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(2), dp(if (compact) 2 else 6), dp(2), dp(if (compact) 2 else 8))
-            contentDescription = "Pasta ${folder?.name ?: "indisponível"}"
+            contentDescription = "Pasta ${folder?.name ?: "indisponível"}" +
+                if (unavailableCount > 0) " • $unavailableCount aplicativo(s) indisponível(is)" else ""
         }
         val preview = GridLayout(this).apply {
             columnCount = 2; rowCount = 2
@@ -622,7 +626,15 @@ class MainActivity : Activity(), SensorEventListener {
         val previewSize = 53
         folder?.apps?.take(4)?.forEach { key ->
             preview.addView(ImageView(this).apply {
-                resolveKey(key)?.let { setImageDrawable(customIcon(it, includeFallbackFrame = true)) }
+                val resolved = resolveKey(key)
+                if (resolved != null) {
+                    setImageDrawable(customIcon(resolved, includeFallbackFrame = true))
+                } else {
+                    // Referência preservada: não exibir pasta aparentemente vazia.
+                    setImageResource(android.R.drawable.ic_menu_help)
+                    setColorFilter(Color.rgb(218, 165, 255))
+                    contentDescription = "Aplicativo indisponível"
+                }
                 scaleType = ImageView.ScaleType.FIT_CENTER
             }, GridLayout.LayoutParams().apply {
                 width = dp((previewSize - 8) / 2); height = dp((previewSize - 8) / 2)
@@ -1747,6 +1759,15 @@ class MainActivity : Activity(), SensorEventListener {
         widgetEditor = null
         drawerOpen = false
         loadApps()
+        // Limpa pastas realmente vazias também ao reconstruir a HOME.
+        // Não exclui pastas com referências de apps temporariamente indisponíveis.
+        if (!dragging) {
+            val current = runCatching { workspaceItems() }.getOrNull()
+            val pruned = current?.let(WorkspaceEdits::pruneEmptyFolders)
+            if (current != null && pruned != null && pruned != current) {
+                workspaceStore.save(pruned)
+            }
+        }
 
         val root = buildRoot()
 
@@ -2018,7 +2039,18 @@ class MainActivity : Activity(), SensorEventListener {
         val hourlyText = weatherClient.upcoming().take(4).joinToString("   ") { point ->
             val hour = java.time.Instant.ofEpochMilli(point.time)
                 .atZone(java.time.ZoneId.systemDefault()).hour
-            "${hour}h ${point.temperature.toInt()}°"
+            val icon = when (point.code) {
+                0 -> "☀"
+                1 -> "🌤"
+                2 -> "⛅"
+                3 -> "☁"
+                45 -> "🌫"
+                61 -> "🌧"
+                71 -> "❄"
+                95 -> "⛈"
+                else -> "·"
+            }
+            "${hour}h $icon ${point.temperature.toInt()}°"
         }.ifBlank { "Previsão horária indisponível" }
         if (reuseUnchanged && visualKey == lastCelestialKey && celestialView != null) {
             if (liveWeatherLabel?.text?.toString() != liveText) liveWeatherLabel?.text = liveText
