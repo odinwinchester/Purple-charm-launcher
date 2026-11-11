@@ -49,7 +49,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         setShadowLayer(dp(4.5f).toFloat(), 0f, 0f, Color.rgb(208, 35, 255))
     }
     private val hourly = TextView(context).apply {
-        setTextColor(Color.rgb(238, 201, 255))
+        setTextColor(Color.WHITE)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         gravity = Gravity.CENTER
         maxLines = 1
@@ -59,14 +59,14 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
     private val city = TextView(context).apply {
         setTextColor(Color.WHITE)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-        gravity = Gravity.CENTER
+        gravity = Gravity.CENTER_VERTICAL or Gravity.RIGHT
         maxLines = 1
         ellipsize = null
         includeFontPadding = false
         setShadowLayer(dp(2f).toFloat(), 0f, 0f, Color.BLACK)
     }
     private val condition = TextView(context).apply {
-        setTextColor(Color.rgb(241, 204, 255))
+        setTextColor(Color.WHITE)
         gravity = Gravity.CENTER
         maxLines = 1
         ellipsize = android.text.TextUtils.TruncateAt.END
@@ -74,7 +74,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         setShadowLayer(dp(2f).toFloat(), 0f, 0f, Color.BLACK)
     }
     private val lunarPhase = TextView(context).apply {
-        setTextColor(Color.rgb(218, 165, 255))
+        setTextColor(Color.WHITE)
         gravity = Gravity.CENTER
         maxLines = 1
         ellipsize = android.text.TextUtils.TruncateAt.END
@@ -88,14 +88,16 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
             gravity = Gravity.CENTER
             maxLines = 1
             includeFontPadding = false
+            setShadowLayer(dp(2f).toFloat(), 0f, 0f, Color.BLACK)
         }
         val label = TextView(context).apply {
             text = title
-            setTextColor(Color.rgb(232, 172, 255))
+            setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             gravity = Gravity.CENTER
             maxLines = 1
             includeFontPadding = false
+            setShadowLayer(dp(2f).toFloat(), 0f, 0f, Color.BLACK)
         }
         val column = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -121,11 +123,11 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
     private val dataArea = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
-        addView(readings, LinearLayout.LayoutParams(-1, 0, 1.35f))
+        addView(readings, LinearLayout.LayoutParams(-1, 0, 1.20f))
         addView(city, LinearLayout.LayoutParams(-1, 0, 0.62f))
         addView(condition, LinearLayout.LayoutParams(-1, 0, 0.42f))
         addView(lunarPhase, LinearLayout.LayoutParams(-1, 0, 0.42f))
-        addView(metrics, LinearLayout.LayoutParams(-1, 0, 0.60f))
+        addView(metrics, LinearLayout.LayoutParams(-1, 0, 1.05f))
     }
     init {
         clipChildren = true
@@ -147,7 +149,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         // Normalized safe zones track the ornamental frame as the art scales.
         // Keep readings inside the right-hand panel and above the hourly band.
         val dataWidth = (width * 0.49f).toInt()
-        val dataHeight = (height * 0.63f).toInt()
+        val dataHeight = (height * 0.66f).toInt()
         val widthDp = width / resources.displayMetrics.density
         // Scale typography with the actual widget, not the phone manufacturer.
         val scale = WeatherWidgetTypography.scale(widthDp)
@@ -165,10 +167,18 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
             city.setTextSize(TypedValue.COMPLEX_UNIT_PX, fittedPx)
         resizeSp(condition, 12f * scale)
         resizeSp(lunarPhase, 11f * scale)
-        resizeSp(hourly, 12f * scale)
+        // Fit the entire hourly forecast inside the ornamental frame.
+        val hourlyMaxPx = 12f * scale * resources.displayMetrics.scaledDensity
+        val hourlyAvailablePx = (width * 0.87f - dp(8f)).coerceAtLeast(1f)
+        val hourlyMeasuredPx = hourly.paint.apply { textSize = hourlyMaxPx }.measureText(hourly.text.toString())
+        val hourlyPx = if (hourlyMeasuredPx > hourlyAvailablePx && hourlyMeasuredPx > 0f)
+            (hourlyMaxPx * hourlyAvailablePx / hourlyMeasuredPx).coerceAtLeast(8f * scale * resources.displayMetrics.scaledDensity)
+            else hourlyMaxPx
+        if (kotlin.math.abs(hourly.textSize - hourlyPx) > 0.5f)
+            hourly.setTextSize(TypedValue.COMPLEX_UNIT_PX, hourlyPx)
         listOf(humidityColumn, windColumn, uvColumn).forEach { (column, value) ->
             resizeSp(column.getChildAt(0) as TextView, 10f * scale)
-            resizeSp(value, 12f * scale)
+            resizeSp(value, 11f * scale)
         }
         // Contraste e violeta mais saturados, sem alterar o tamanho da temperatura.
         readings.paint.shader = LinearGradient(0f, 0f, 0f, readings.textSize * 1.15f,
@@ -182,7 +192,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
             params.width = dataWidth
             params.height = dataHeight
             params.gravity = Gravity.RIGHT or Gravity.TOP
-            params.topMargin = (height * 0.13f).toInt()
+            params.topMargin = (height * 0.10f).toInt()
             params.rightMargin = (width * 0.035f).toInt()
             dataArea.layoutParams = params
         }
@@ -213,7 +223,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         val temperature = lines.getOrNull(0).orEmpty()
         val location = lines.getOrNull(1).orEmpty()
         readings.text = temperature
-        city.text = if (location.isBlank()) "" else "⌖ $location"
+        city.text = if (location.isBlank()) "" else "📍 ${WeatherLocationLabel.compact(location)}"
         val humidity = lines.getOrNull(2)?.removePrefix("Umid. ") ?: "—"
         val wind = lines.getOrNull(3)?.removePrefix("Vento ") ?: "—"
         val uv = lines.getOrNull(4)?.removePrefix("UV ") ?: "—"
@@ -268,4 +278,29 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
 /** Pure responsive sizing policy, shared by layouts and JVM regression tests. */
 internal object WeatherWidgetTypography {
     fun scale(widgetWidthDp: Float): Float = (widgetWidthDp / 340f).coerceIn(0.60f, 1.10f)
+}
+
+/** Shortens Brazilian state names without changing the weather provider's location. */
+internal object WeatherLocationLabel {
+    private val states = mapOf(
+        "Acre" to "AC", "Alagoas" to "AL", "Amapá" to "AP",
+        "Amazonas" to "AM", "Bahia" to "BA", "Ceará" to "CE",
+        "Distrito Federal" to "DF", "Espírito Santo" to "ES",
+        "Goiás" to "GO", "Maranhão" to "MA", "Mato Grosso" to "MT",
+        "Mato Grosso do Sul" to "MS", "Minas Gerais" to "MG",
+        "Pará" to "PA", "Paraíba" to "PB", "Paraná" to "PR",
+        "Pernambuco" to "PE", "Piauí" to "PI", "Rio de Janeiro" to "RJ",
+        "Rio Grande do Norte" to "RN", "Rio Grande do Sul" to "RS",
+        "Rondônia" to "RO", "Roraima" to "RR", "Santa Catarina" to "SC",
+        "São Paulo" to "SP", "Sergipe" to "SE", "Tocantins" to "TO"
+    )
+
+    fun compact(location: String): String {
+        val parts = location.split(',').map { it.trim() }
+        if (parts.size < 2) return location.trim()
+        val state = parts[1]
+        val abbreviated = states.entries.firstOrNull { it.key.equals(state, ignoreCase = true) }?.value
+            ?: state
+        return (listOf(parts[0], abbreviated) + parts.drop(2)).joinToString(", ")
+    }
 }
