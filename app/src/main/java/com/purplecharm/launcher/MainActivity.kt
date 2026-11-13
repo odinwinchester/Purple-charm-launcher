@@ -1911,7 +1911,8 @@ class MainActivity : Activity(), SensorEventListener {
     private val weatherLocation by lazy {
         WeatherLocationController(this, prefs) { coordinatesChanged ->
             if (coordinatesChanged) {
-                weatherClient.clearForecast()
+                if (!prefs.contains("gothic_weather_lat")) weatherClient.clearForecast()
+                else weatherClient.locationChanged()
                 refreshGothicWeather()
             }
             refreshCelestialView()
@@ -2071,16 +2072,16 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val sunStyle = prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
         val weatherActive = prefs.contains("gothic_weather_lat")
-        val weatherLoaded = weatherActive && forecast != null
-        val weatherCode = forecast?.code ?: 0
+        val weatherLoaded = weatherActive && displayedForecast != null
+        val weatherCode = displayedForecast?.code ?: 0
         val weatherArtIndex = if (weatherLoaded)
-            WeatherArtworkCatalog.condition(weatherCode, forecast?.temperature) else 0
+            WeatherArtworkCatalog.condition(weatherCode, displayedForecast?.temperature) else 0
         val size = prefs.getInt("gothic_moon_size", 1).coerceIn(0, 2)
         val selectedSun = if (mode == 0) {
             when {
                 weatherLoaded && weatherArtIndex != 0 -> 2
                 hour in 6..9 -> 3
-                (forecast?.temperature ?: 0.0) >= 30 -> 0
+                (displayedForecast?.temperature ?: 0.0) >= 30 -> 0
                 else -> 1
             }
         } else sunStyle
@@ -2098,7 +2099,7 @@ class MainActivity : Activity(), SensorEventListener {
         val liveText = if (forecast != null) "MET Norway: ${kotlin.math.round(forecast.temperature).toInt()}°C • previsão atual"
             else if (lastKnown != null) "MET Norway: última previsão salva • dados desatualizados"
             else if (weatherActive) "Previsão indisponível • tocar para detalhes" else "Escolher localização • dados MET"
-        val city = prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
+        val city = (if (displayedForecast != null) weatherClient.cachedCity() else prefs.getString("gothic_weather_city", null))?.takeIf { it.isNotBlank() }
             ?: "Localização não definida"
         val lunarLabel = if (!isSun) when (LunarPhaseCalculator.phaseAt(java.time.Instant.ofEpochMilli(now))) {
             LunarPhaseCalculator.Phase.NEW -> "☾ Lua nova (aprox.)"
@@ -2112,9 +2113,9 @@ class MainActivity : Activity(), SensorEventListener {
             val uv = point.uvClearSky?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "—"
             val shortCity = city.split(',').map { it.trim() }.filter { it.isNotEmpty() }
                 .take(2).joinToString(", ").ifBlank { city }
-            val description = if (forecast == null) "◷ ${point.description} • dados antigos" else "☁ ${point.description}"
+            val description = if (forecast == null || weatherClient.isStored()) "◷ ${point.description} • salvo" else "☁ ${point.description}"
             "${point.temperature.toInt()}°C\n$shortCity\nUmid. $humidity\nVento $wind\nUV céu limpo $uv\n$description\n$lunarLabel"
-        } ?: "$city • previsão indisponível"
+        } ?: "--°C\n$city\nUmid. —\nVento —\nUV —\nSem previsão\n"
         val hourlyText = weatherClient.upcoming().take(4).joinToString("   ") { point ->
             val hour = java.time.Instant.ofEpochMilli(point.time)
                 .atZone(java.time.ZoneId.systemDefault()).hour
@@ -2184,7 +2185,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var currentWeatherArtSlug: String? = null
 
     private fun weatherDetails() {
-        val forecast = weatherClient.current()
+        val forecast = weatherClient.current() ?: weatherClient.lastKnown()
         val weatherActive = prefs.contains("gothic_weather_lat")
         val liveText = when {
             !weatherActive -> "Escolha localização automática ou busque uma cidade"
@@ -2192,7 +2193,7 @@ class MainActivity : Activity(), SensorEventListener {
             else -> {
                 val time = java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
                     .format(java.util.Date(forecast.time))
-                val stale = if (System.currentTimeMillis() - forecast.time > 2 * 60 * 60 * 1000L)
+                val stale = if (weatherClient.isStored() || System.currentTimeMillis() - forecast.time > 2 * 60 * 60 * 1000L)
                     " • desatualizada" else ""
                 "${kotlin.math.round(forecast.temperature).toInt()}°C • ${forecast.description}" +
                     (forecast.humidity?.let { " • Umidade ${kotlin.math.round(it).toInt()}%" } ?: "") +

@@ -54,7 +54,13 @@ internal object MetSymbols {
 internal class MetWeatherClient(private val prefs: SharedPreferences) {
     private val loading = AtomicBoolean(false)
     @Volatile private var retryAfter = 0L
-    @Volatile private var cachedBody: String? = prefs.getString("met_forecast_json", null)
+    private val cachedBody: String? get() = prefs.getString("met_forecast_json", null)
+    @Volatile private var retryLocation: String? = null
+    fun locationChanged() { retryAfter = 0L }
+    fun cachedCity(): String? = if (location() == null) null else
+        prefs.getString("met_forecast_city", null) ?: if (location() == prefs.getString("met_forecast_location", null)) prefs.getString("gothic_weather_city", null) else null
+    fun isStored(): Boolean = cachedBody != null && (location() != prefs.getString("met_forecast_location", null) ||
+        prefs.contains("met_weather_error") || System.currentTimeMillis() >= prefs.getLong("gothic_weather_expires", 0L))
     private fun location(): String? {
         val lat = prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull() ?: return null
         val lon = prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull() ?: return null
@@ -63,37 +69,37 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
     }
 
     @Synchronized fun clearForecast() {
-        cachedBody = null
         retryAfter = 0L
-        prefs.edit().remove("met_forecast_json").remove("met_forecast_location")
+        prefs.edit().remove("met_forecast_json").remove("met_forecast_location").remove("met_forecast_city")
             .remove("gothic_weather_expires").remove("gothic_weather_last_modified").remove("met_forecast_received").remove("met_weather_error").apply()
     }
 
     fun current(now: Long = System.currentTimeMillis()): WeatherForecast? {
-        if (location() == null || location() != prefs.getString("met_forecast_location", null)) return null
+        if (location() == null) return null
         return cachedBody?.let { parse(it, now) }
     }
 
     /** Last actual cached point, explicitly marked stale by callers; never a live reading. */
     fun lastKnown(now: Long = System.currentTimeMillis()): WeatherForecast? {
-        if (location() == null || location() != prefs.getString("met_forecast_location", null)) return null
+        if (location() == null) return null
         return cachedBody?.let { parseLastKnown(it, now) }
     }
 
     fun upcoming(now: Long = System.currentTimeMillis()): List<WeatherForecast> {
-        if (location() == null || location() != prefs.getString("met_forecast_location", null)) return emptyList()
+        if (location() == null) return emptyList()
         return cachedBody?.let { parseUpcoming(it, now) } ?: emptyList()
     }
 
     /** Forecast points across the next five calendar days, independently of the hourly panel. */
     fun upcomingDays(now: Long = System.currentTimeMillis()): List<WeatherForecast> {
-        if (location() == null || location() != prefs.getString("met_forecast_location", null)) return emptyList()
+        if (location() == null) return emptyList()
         return cachedBody?.let { parseUpcomingDays(it, now) } ?: emptyList()
     }
 
     fun refresh(force: Boolean = false, onChanged: () -> Unit): Boolean {
         val key = location() ?: return false
         val now = System.currentTimeMillis()
+        if (retryLocation != key) { retryLocation = key; retryAfter = 0L }
         if (now < retryAfter || (!force && key == prefs.getString("met_forecast_location", null) &&
                 now < prefs.getLong("gothic_weather_expires", 0L))) return false
         if (!loading.compareAndSet(false, true)) return false
@@ -124,10 +130,10 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                     synchronized(this) {
                         // Discard an old request if the user changed or disabled the location.
                         if (location() == key) {
-                            cachedBody = body
                             val editor = prefs.edit().putString("met_forecast_json", body)
                                 .putLong("met_forecast_received", System.currentTimeMillis())
                                 .putString("met_forecast_location", key)
+                                .putString("met_forecast_city", prefs.getString("gothic_weather_city", null) ?: "Local da previsão não identificado")
                                 .putLong("gothic_weather_expires", expires)
                                 .remove("gothic_weather_last_modified").remove("met_weather_error")
                             connection.getHeaderField("Last-Modified")?.let {
@@ -222,7 +228,7 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
             result
         } catch (_: Exception) { emptyList() }
 
-        /** Historical fallback: at most 24 hours old, never future or wrong-unit data. */
+        /** Historical fallback: explicitly stale, never future or wrong-unit data. */
         internal fun parseLastKnown(body: String, now: Long): WeatherForecast? = try {
             val points = series(body)
             var selected: JSONObject? = null
@@ -232,7 +238,7 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
             }
             selected?.let {
                 val age = now - Instant.parse(it.getString("time")).toEpochMilli()
-                if (age in 0..(24L * 60 * 60_000L)) decodePoint(it) else null
+                if (age >= 0) decodePoint(it) else null
             }
         } catch (_: Exception) { null }
 

@@ -29,7 +29,9 @@ class ExpandedWeatherActivity : Activity() {
     private val graphics by lazy { GraphicResourceCache(resources) }
     private val weatherLocation by lazy {
         WeatherLocationController(this, prefs) { coordinatesChanged ->
-            if (coordinatesChanged) weather.clearForecast()
+            if (coordinatesChanged) {
+                if (!prefs.contains("gothic_weather_lat")) weather.clearForecast() else weather.locationChanged()
+            }
             weather.refresh { runOnUiThread { if (!isFinishing && !isDestroyed) render() } }
             runOnUiThread { if (!isFinishing && !isDestroyed) render() }
         }
@@ -204,10 +206,10 @@ class ExpandedWeatherActivity : Activity() {
 
         val liveCurrent = weather.current()
         val current = liveCurrent ?: weather.lastKnown()
-        val offlineNotice = if (liveCurrent == null && current != null)
+        val offlineNotice = if (current != null && (liveCurrent == null || weather.isStored()))
             "Última previsão armazenada: ${DateTimeFormatter.ofPattern("dd/MM HH:mm", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(current.time))} • dados desatualizados"
             else ""
-        val place = prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
+        val place = (if (current != null) weather.cachedCity() else prefs.getString("gothic_weather_city", null))?.takeIf { it.isNotBlank() }
             ?: intent.getStringExtra("place")?.takeIf {
             it.isNotBlank() && it != "Local não definido"
         } ?: "Localização não definida"
