@@ -48,27 +48,32 @@ internal object IconVisualNormalizer {
         var top = h
         var right = -1
         var bottom = -1
-        // Include even faint alpha so gothic glow and edge details are not clipped.
-        for (y in 0 until h) {
-            readable.getPixels(row, 0, w, 0, y, w, 1)
-            for (x in 0 until w) {
-                if ((row[x] ushr 24) != 0) {
-                    left = minOf(left, x)
-                    top = minOf(top, y)
-                    right = maxOf(right, x)
-                    bottom = maxOf(bottom, y)
+        // Measure the visible frame rather than isolated nearly transparent glow.
+        // Keep the entire source in the render; only the outer canvas limits overflow.
+        fun scan(minAlpha: Int) {
+            for (y in 0 until h) {
+                readable.getPixels(row, 0, w, 0, y, w, 1)
+                for (x in 0 until w) {
+                    if ((row[x] ushr 24) >= minAlpha) {
+                        left = minOf(left, x)
+                        top = minOf(top, y)
+                        right = maxOf(right, x)
+                        bottom = maxOf(bottom, y)
+                    }
                 }
             }
         }
+        scan(64)
+        if (right < left || bottom < top) scan(1)
         if (right < left || bottom < top) return drawable
         val visible = Rect(left, top, right + 1, bottom + 1)
         val scale = SIZE * TARGET / maxOf(visible.width(), visible.height())
-        val dw = visible.width() * scale
-        val dh = visible.height() * scale
+        val cx = (visible.left + visible.right) / 2f
+        val cy = (visible.top + visible.bottom) / 2f
         val result = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
-        val dest = RectF((SIZE - dw) / 2f, (SIZE - dh) / 2f,
-            (SIZE + dw) / 2f, (SIZE + dh) / 2f)
-        Canvas(result).drawBitmap(readable, visible, dest,
+        val dest = RectF(SIZE / 2f - cx * scale, SIZE / 2f - cy * scale,
+            SIZE / 2f + (w - cx) * scale, SIZE / 2f + (h - cy) * scale)
+        Canvas(result).drawBitmap(readable, null, dest,
             Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
         return BitmapDrawable(resources, result)
     }
