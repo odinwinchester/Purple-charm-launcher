@@ -221,6 +221,8 @@ class MainActivity : Activity(), SensorEventListener {
     }
     override fun onResume() {
         super.onResume()
+        appsLoaded = false
+        loadApps()
         cleanRemovedPackages()
         // Recover empty folders persisted by older builds, preserving all other cells.
         if (!dragging) {
@@ -985,19 +987,27 @@ class MainActivity : Activity(), SensorEventListener {
             current.folders.values.flatMap { it.apps }).filter { it.contains('/') &&
             !WorkspaceItems.isFolder(it) }.map { it.substringBefore('/') }.toSet()
         val removed = pendingRemovedPackages.toMutableSet()
-        // Recover old references only when Android positively reports an uninstalled package.
-        // An invisible or temporarily unavailable package is not proof of uninstall.
+        // Reconcile against the current launcher catalog and package records.
         for (pkg in candidates) {
             if (apps.any { it.activityInfo.packageName == pkg }) continue
             @Suppress("DEPRECATION")
-            val info = runCatching { packageManager.getApplicationInfo(pkg,
-                PackageManager.MATCH_UNINSTALLED_PACKAGES) }.getOrNull()
-            if (info != null && info.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED == 0) {
+            try {
+                val info = packageManager.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES)
+                if (info.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED == 0) removed.add(pkg)
+            } catch (_: PackageManager.NameNotFoundException) {
+                // The launcher catalog has no activity and PackageManager has no package record.
                 removed.add(pkg)
+            } catch (_: SecurityException) {
+                // A failed permission check is not evidence of uninstall.
             }
         }
-        val cleaned = WorkspaceEdits.removePackages(current, removed) ?: return
-        if (cleaned != current && !workspaceStore.save(cleaned)) return
+        val cleaned = WorkspaceEdits.reconcileComponents(current, apps.map(::appKey).toSet(), removed) ?: return
+        if (cleaned != current) {
+            if (!workspaceStore.save(cleaned)) return
+            undoWorkspaceSnapshot = null
+            undoPage = null
+            pendingWorkspaceRefresh = true
+        }
         if (removed.isNotEmpty()) {
             val favorites = selected().filterNot { it.substringBefore('/') in removed }.toSet()
             prefs.edit().putStringSet("apps", favorites).apply()
