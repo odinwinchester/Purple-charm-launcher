@@ -9,6 +9,8 @@
         </intent>
     </queries>
 
+    <!-- A launcher must distinguish uninstalled shortcuts from installed packages without a visible launcher activity. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <uses-permission android:name="android.permission.BIND_APPWIDGET" />
     <uses-permission android:name="android.permission.INTERNET" />
