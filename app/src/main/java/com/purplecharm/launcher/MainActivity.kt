@@ -224,6 +224,10 @@ class MainActivity : Activity(), SensorEventListener {
         appsLoaded = false
         loadApps()
         cleanRemovedPackages()
+        if (pendingWorkspaceRefresh && !dragging) {
+            pendingWorkspaceRefresh = false
+            refreshWorkspaceSafely()
+        }
         // Recover empty folders persisted by older builds, preserving all other cells.
         if (!dragging) {
             val before = runCatching { workspaceItems() }.getOrNull()
