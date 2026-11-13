@@ -999,8 +999,10 @@ class MainActivity : Activity(), SensorEventListener {
                 val info = packageManager.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES)
                 if (info.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED == 0) removed.add(pkg)
             } catch (_: PackageManager.NameNotFoundException) {
-                // The launcher catalog has no activity and PackageManager has no package record.
-                removed.add(pkg)
+                // Only treat absence as uninstall when package visibility is unrestricted.
+                if (Build.VERSION.SDK_INT < 30 || checkSelfPermission("android.permission.QUERY_ALL_PACKAGES") == PackageManager.PERMISSION_GRANTED) {
+                    removed.add(pkg)
+                }
             } catch (_: SecurityException) {
                 // A failed permission check is not evidence of uninstall.
             }
