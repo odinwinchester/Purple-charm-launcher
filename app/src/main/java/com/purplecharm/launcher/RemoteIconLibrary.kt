@@ -1,12 +1,7 @@
 package com.purplecharm.launcher
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Rect
-import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import org.json.JSONObject
@@ -26,6 +21,10 @@ internal class RemoteIconLibrary(private val context: Context) {
     private val manifestFile = File(directory, "installed.json")
     private val packagePattern = Regex("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+")
     private val hashPattern = Regex("[a-fA-F0-9]{64}")
+    private companion object {
+        // 16 normalized 256px bitmaps: approximately 4 MiB, keyed by verified content.
+        val normalizedCache = android.util.LruCache<String, Drawable.ConstantState>(16)
+    }
     private val maxIconBytes = 2 * 1024 * 1024
     private val maxCatalogBytes = 512 * 1024
 
@@ -141,8 +140,12 @@ internal class RemoteIconLibrary(private val context: Context) {
         val installed = runCatching { JSONObject(manifestFile.readText()) }.getOrNull() ?: return null
         val expected = installed.optString(packageName)
         if (!hashPattern.matches(expected) || sha256(file.readBytes()) != expected) return null
+        val cacheKey = "$packageName:$expected"
+        normalizedCache.get(cacheKey)?.let { return it.newDrawable(context.resources).mutate() }
         val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
-        return IconVisualNormalizer.normalize(context.resources, BitmapDrawable(context.resources, bitmap))
+        return IconVisualNormalizer.normalize(context.resources, BitmapDrawable(context.resources, bitmap)).also {
+            it.constantState?.let { state -> normalizedCache.put(cacheKey, state) }
+        }
     }
 
     /** Compara o hash do catálogo sem decodificar o PNG na interface. */
