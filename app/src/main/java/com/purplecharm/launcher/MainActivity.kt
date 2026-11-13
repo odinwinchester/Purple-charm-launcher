@@ -982,6 +982,7 @@ class MainActivity : Activity(), SensorEventListener {
         (n * resources.displayMetrics.density).toInt()
 
     private var appsLoaded = false
+    private var installedLauncherComponents: Set<String> = emptySet()
 
     private val pendingRemovedPackages = mutableSetOf<String>()
     private fun cleanRemovedPackages() {
@@ -993,7 +994,7 @@ class MainActivity : Activity(), SensorEventListener {
         val removed = pendingRemovedPackages.toMutableSet()
         // Reconcile against the current launcher catalog and package records.
         for (pkg in candidates) {
-            if (apps.any { it.activityInfo.packageName == pkg }) continue
+            if (installedLauncherComponents.any { it.substringBefore('/') == pkg }) continue
             @Suppress("DEPRECATION")
             try {
                 val info = packageManager.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES)
@@ -1007,7 +1008,9 @@ class MainActivity : Activity(), SensorEventListener {
                 // A failed permission check is not evidence of uninstall.
             }
         }
-        val cleaned = WorkspaceEdits.reconcileComponents(current, apps.map(::appKey).toSet(), removed) ?: return
+        // Only a fresh PackageManager catalog may drive component migration. The
+        // in-memory UI list can change during drag, drawer filtering and tests.
+        val cleaned = WorkspaceEdits.reconcileComponents(current, installedLauncherComponents, removed) ?: return
         if (cleaned != current) {
             if (!workspaceStore.save(cleaned)) return
             undoWorkspaceSnapshot = null
@@ -1068,6 +1071,7 @@ class MainActivity : Activity(), SensorEventListener {
                     .toString().lowercase(Locale.ROOT)
             }
         )
+        installedLauncherComponents = apps.map(::appKey).toSet()
         appsLoaded = true
     }
 
