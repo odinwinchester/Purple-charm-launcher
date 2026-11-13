@@ -221,6 +221,7 @@ class MainActivity : Activity(), SensorEventListener {
     }
     override fun onResume() {
         super.onResume()
+        cleanRemovedPackages()
         // Recover empty folders persisted by older builds, preserving all other cells.
         if (!dragging) {
             val before = runCatching { workspaceItems() }.getOrNull()
@@ -495,6 +496,7 @@ class MainActivity : Activity(), SensorEventListener {
         dragSession?.cancel()
         dragSession = null
         dragging = false
+        cleanRemovedPackages()
         dragOrigin = null
         dragSource?.parent?.requestDisallowInterceptTouchEvent(false)
         dragSource = null
@@ -975,14 +977,54 @@ class MainActivity : Activity(), SensorEventListener {
 
     private var appsLoaded = false
 
+    private val pendingRemovedPackages = mutableSetOf<String>()
+    private fun cleanRemovedPackages() {
+        if (dragging) return
+        val current = runCatching { workspaceItems() }.getOrNull() ?: return
+        val candidates = (current.pages.flatten() + current.dock +
+            current.folders.values.flatMap { it.apps }).filter { it.contains('/') &&
+            !WorkspaceItems.isFolder(it) }.map { it.substringBefore('/') }.toSet()
+        val removed = pendingRemovedPackages.toMutableSet()
+        // Recover old references only when Android positively reports an uninstalled package.
+        // An invisible or temporarily unavailable package is not proof of uninstall.
+        for (pkg in candidates) {
+            if (apps.any { it.activityInfo.packageName == pkg }) continue
+            @Suppress("DEPRECATION")
+            val info = runCatching { packageManager.getApplicationInfo(pkg,
+                PackageManager.MATCH_UNINSTALLED_PACKAGES) }.getOrNull()
+            if (info != null && info.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED == 0) {
+                removed.add(pkg)
+            }
+        }
+        val cleaned = WorkspaceEdits.removePackages(current, removed) ?: return
+        if (cleaned != current && !workspaceStore.save(cleaned)) return
+        if (removed.isNotEmpty()) {
+            val favorites = selected().filterNot { it.substringBefore('/') in removed }.toSet()
+            prefs.edit().putStringSet("apps", favorites).apply()
+            pendingRemovedPackages.removeAll(removed)
+            // Undo must not restore shortcuts to an uninstalled application.
+            undoWorkspaceSnapshot = null
+            undoPage = null
+        }
+    }
+
     private val packageChanges = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.data?.schemeSpecificPart == packageName) return
+            val changedPackage = intent?.data?.schemeSpecificPart ?: return
+            if (changedPackage == packageName) return
+            if (intent.action == Intent.ACTION_PACKAGE_REMOVED &&
+                !intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) {
+                pendingRemovedPackages.add(changedPackage)
+            } else if (intent.action == Intent.ACTION_PACKAGE_ADDED ||
+                intent.action == Intent.ACTION_PACKAGE_REPLACED) {
+                pendingRemovedPackages.remove(changedPackage)
+            }
             appsLoaded = false
             labelCache.evictAll()
             iconCache.evictAll()
             cachedDrawerHost = null
             loadApps()
+            cleanRemovedPackages()
             if (::pages.isInitialized) {
                 if (drawerOpen) showDrawer() else refreshWorkspaceSafely()
             }
@@ -1787,6 +1829,7 @@ class MainActivity : Activity(), SensorEventListener {
         widgetEditor = null
         drawerOpen = false
         loadApps()
+        cleanRemovedPackages()
         // Limpa pastas realmente vazias também ao reconstruir a HOME.
         // Não exclui pastas com referências de apps temporariamente indisponíveis.
         if (!dragging) {
