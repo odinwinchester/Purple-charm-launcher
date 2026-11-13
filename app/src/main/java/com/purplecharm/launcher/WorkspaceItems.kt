@@ -83,6 +83,17 @@ internal object WorkspaceEdits {
         if (s.folders.values.none { it.apps.isEmpty() }) return s
         return Edit(s).done()
     }
+    /** Remove all components of a confirmed uninstalled package without shifting cells. */
+    fun removePackages(s: WorkspaceItems, packages: Set<String>): WorkspaceItems? {
+        if (!s.valid()) return null
+        val keys = (s.pages.flatten() + s.dock + s.folders.values.flatMap { it.apps })
+            .filter { it.contains('/') && !WorkspaceItems.isFolder(it) &&
+                it.substringBefore('/') in packages }.distinct()
+        if (keys.isEmpty()) return pruneEmptyFolders(s)
+        val edit = Edit(s)
+        keys.forEach(edit::remove)
+        return edit.done()
+    }
     fun page(s: WorkspaceItems, key: String, page: Int, cell: Int, group: Boolean = false,
              folderId: String = "folder:${java.util.UUID.randomUUID()}"): WorkspaceItems? {
         if (!s.valid() || page !in s.pages.indices || cell !in s.pages[page].indices || key.isBlank()) return null

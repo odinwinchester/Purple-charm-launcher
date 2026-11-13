@@ -61,7 +61,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
         gravity = Gravity.CENTER_VERTICAL or Gravity.RIGHT
         maxLines = 1
-        ellipsize = null
+        ellipsize = android.text.TextUtils.TruncateAt.END
         includeFontPadding = false
         setShadowLayer(dp(2f).toFloat(), 0f, 0f, Color.BLACK)
     }
@@ -220,7 +220,7 @@ internal class WeatherHomeLayers(context: Context, private val art: ImageView) :
 
     fun setReadings(value: String?) {
         val lines = value.orEmpty().lines()
-        val temperature = lines.getOrNull(0).orEmpty()
+        val temperature = lines.getOrNull(0).orEmpty().takeIf { it.endsWith("°C") } ?: "--°C"
         val location = lines.getOrNull(1).orEmpty()
         readings.text = temperature
         city.text = if (location.isBlank()) "" else android.text.SpannableString("● ${WeatherLocationLabel.compact(location)}").apply {

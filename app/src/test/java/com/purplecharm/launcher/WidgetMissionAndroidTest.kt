@@ -66,6 +66,9 @@ class WidgetMissionAndroidTest {
             prefs().edit().putString("gothic_weather_lon", "-45").commit()
             val client = MetWeatherClient(prefs())
             assertNull(client.current(now)); assertTrue(client.upcoming(now).isEmpty())
+            assertTrue(client.upcomingDays(now).isEmpty())
+            assertTrue(client.isPreviousLocation())
+            assertNotNull(client.lastKnown(now))
         } finally {
             c.pause().stop().destroy()
             java.util.TimeZone.setDefault(previousZone)
@@ -377,20 +380,40 @@ class WidgetMissionAndroidTest {
         controller.start(); assertEquals(104, HostedWidgetStore(p).read().single().id)
         controller.close(); c.pause().stop().destroy()
     }
-    @Test fun forecastIsNeverBorrowedFromAnotherCityOrKeptAfterItsLastPointExpires() {
+    @Test fun forecastIsNeverCurrentForAnotherCityButHistoricalFallbackSurvives() {
         val p = prefs("metCity"); p.edit().clear().commit()
         val now = System.currentTimeMillis()
         val timestamp = java.time.Instant.ofEpochMilli(now - 60_000).toString()
         val body = """{"properties":{"timeseries":[{"time":"$timestamp","data":{"instant":{"details":{"air_temperature":23.25}},"next_1_hours":{"summary":{"symbol_code":"cloudy"}}}}]}}"""
         p.edit().putString("gothic_weather_lat", "0").putString("gothic_weather_lon", "0")
-            .putString("met_forecast_location", "lat=1.0000&lon=1.0000").putString("met_forecast_json", body).commit()
+            .putString("met_forecast_location", "lat=1.0000&lon=1.0000").putString("met_forecast_json", body)
+            .putString("met_forecast_city", "Cidade anterior").commit()
         val client = MetWeatherClient(p)
         assertNull(client.current(now))
-        p.edit().putString("met_forecast_location", "lat=0.0000&lon=0.0000").commit()
+        assertTrue(client.isPreviousLocation())
+        assertTrue(client.isStored())
+        assertEquals("Cidade anterior", client.cachedCity())
+        assertEquals(23.25, client.lastKnown(now)!!.temperature, 0.0)
+        assertTrue(client.upcoming(now).isEmpty())
+        assertTrue(client.upcomingDays(now).isEmpty())
+        p.edit().putString("met_forecast_location", "lat=0.0000&lon=0.0000")
+            .putString("met_forecast_city", "Cidade atual").commit()
         assertEquals(23.25, client.current(now)!!.temperature, 0.0)
-        assertNull(client.current(now + 3 * 60 * 60_000L))
+        assertFalse(client.isPreviousLocation())
+        val later = now + 72 * 60 * 60_000L
+        assertNull(client.current(later))
+        assertEquals(23.25, client.lastKnown(later)!!.temperature, 0.0)
         p.edit().putString("gothic_weather_lat", "5").commit()
         assertNull(client.current(now))
+        assertTrue(client.isPreviousLocation())
+        assertEquals("Cidade atual", client.cachedCity())
+        assertEquals(23.25, client.lastKnown(now)!!.temperature, 0.0)
+        // Disabling the weather must not expose the old cache.
+        p.edit().remove("gothic_weather_lat").remove("gothic_weather_lon").commit()
+        assertNull(client.lastKnown(now))
+        client.clearForecast()
+        assertFalse(p.contains("met_forecast_json"))
+        assertFalse(p.contains("met_forecast_city"))
     }
 
 }

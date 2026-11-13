@@ -221,6 +221,7 @@ class MainActivity : Activity(), SensorEventListener {
     }
     override fun onResume() {
         super.onResume()
+        cleanRemovedPackages()
         // Recover empty folders persisted by older builds, preserving all other cells.
         if (!dragging) {
             val before = runCatching { workspaceItems() }.getOrNull()
@@ -495,6 +496,7 @@ class MainActivity : Activity(), SensorEventListener {
         dragSession?.cancel()
         dragSession = null
         dragging = false
+        cleanRemovedPackages()
         dragOrigin = null
         dragSource?.parent?.requestDisallowInterceptTouchEvent(false)
         dragSource = null
@@ -975,14 +977,54 @@ class MainActivity : Activity(), SensorEventListener {
 
     private var appsLoaded = false
 
+    private val pendingRemovedPackages = mutableSetOf<String>()
+    private fun cleanRemovedPackages() {
+        if (dragging) return
+        val current = runCatching { workspaceItems() }.getOrNull() ?: return
+        val candidates = (current.pages.flatten() + current.dock +
+            current.folders.values.flatMap { it.apps }).filter { it.contains('/') &&
+            !WorkspaceItems.isFolder(it) }.map { it.substringBefore('/') }.toSet()
+        val removed = pendingRemovedPackages.toMutableSet()
+        // Recover old references only when Android positively reports an uninstalled package.
+        // An invisible or temporarily unavailable package is not proof of uninstall.
+        for (pkg in candidates) {
+            if (apps.any { it.activityInfo.packageName == pkg }) continue
+            @Suppress("DEPRECATION")
+            val info = runCatching { packageManager.getApplicationInfo(pkg,
+                PackageManager.MATCH_UNINSTALLED_PACKAGES) }.getOrNull()
+            if (info != null && info.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED == 0) {
+                removed.add(pkg)
+            }
+        }
+        val cleaned = WorkspaceEdits.removePackages(current, removed) ?: return
+        if (cleaned != current && !workspaceStore.save(cleaned)) return
+        if (removed.isNotEmpty()) {
+            val favorites = selected().filterNot { it.substringBefore('/') in removed }.toSet()
+            prefs.edit().putStringSet("apps", favorites).apply()
+            pendingRemovedPackages.removeAll(removed)
+            // Undo must not restore shortcuts to an uninstalled application.
+            undoWorkspaceSnapshot = null
+            undoPage = null
+        }
+    }
+
     private val packageChanges = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.data?.schemeSpecificPart == packageName) return
+            val changedPackage = intent?.data?.schemeSpecificPart ?: return
+            if (changedPackage == packageName) return
+            if (intent.action == Intent.ACTION_PACKAGE_REMOVED &&
+                !intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) {
+                pendingRemovedPackages.add(changedPackage)
+            } else if (intent.action == Intent.ACTION_PACKAGE_ADDED ||
+                intent.action == Intent.ACTION_PACKAGE_REPLACED) {
+                pendingRemovedPackages.remove(changedPackage)
+            }
             appsLoaded = false
             labelCache.evictAll()
             iconCache.evictAll()
             cachedDrawerHost = null
             loadApps()
+            cleanRemovedPackages()
             if (::pages.isInitialized) {
                 if (drawerOpen) showDrawer() else refreshWorkspaceSafely()
             }
@@ -1436,7 +1478,7 @@ class MainActivity : Activity(), SensorEventListener {
         val key = "${appKey(app)}:${setting("fallback_skin", "original")}:$includeFallbackFrame"
         RemoteIconLibrary(this).installedIcon(app.activityInfo.packageName)?.let { return it }
         iconCache.get(key)?.let { return it.state.newDrawable(resources).mutate() }
-        return uncachedIcon(app, includeFallbackFrame).also { icon ->
+        return IconVisualNormalizer.normalize(resources, uncachedIcon(app, includeFallbackFrame)).also { icon ->
             val bytes = iconBytes(icon)
             if (bytes <= iconCache.maxSize()) icon.constantState?.let { iconCache.put(key, CachedIcon(it, bytes)) }
         }
@@ -1787,6 +1829,7 @@ class MainActivity : Activity(), SensorEventListener {
         widgetEditor = null
         drawerOpen = false
         loadApps()
+        cleanRemovedPackages()
         // Limpa pastas realmente vazias também ao reconstruir a HOME.
         // Não exclui pastas com referências de apps temporariamente indisponíveis.
         if (!dragging) {
@@ -1868,7 +1911,8 @@ class MainActivity : Activity(), SensorEventListener {
     private val weatherLocation by lazy {
         WeatherLocationController(this, prefs) { coordinatesChanged ->
             if (coordinatesChanged) {
-                weatherClient.clearForecast()
+                if (!prefs.contains("gothic_weather_lat")) weatherClient.clearForecast()
+                else weatherClient.locationChanged()
                 refreshGothicWeather()
             }
             refreshCelestialView()
@@ -2028,16 +2072,16 @@ class MainActivity : Activity(), SensorEventListener {
         }
         val sunStyle = prefs.getInt("gothic_sun_style", 0).coerceIn(0, 3)
         val weatherActive = prefs.contains("gothic_weather_lat")
-        val weatherLoaded = weatherActive && forecast != null
-        val weatherCode = forecast?.code ?: 0
+        val weatherLoaded = weatherActive && displayedForecast != null
+        val weatherCode = displayedForecast?.code ?: 0
         val weatherArtIndex = if (weatherLoaded)
-            WeatherArtworkCatalog.condition(weatherCode, forecast?.temperature) else 0
+            WeatherArtworkCatalog.condition(weatherCode, displayedForecast?.temperature) else 0
         val size = prefs.getInt("gothic_moon_size", 1).coerceIn(0, 2)
         val selectedSun = if (mode == 0) {
             when {
                 weatherLoaded && weatherArtIndex != 0 -> 2
                 hour in 6..9 -> 3
-                (forecast?.temperature ?: 0.0) >= 30 -> 0
+                (displayedForecast?.temperature ?: 0.0) >= 30 -> 0
                 else -> 1
             }
         } else sunStyle
@@ -2052,10 +2096,10 @@ class MainActivity : Activity(), SensorEventListener {
         val defaultSpan = if (selectedArt.panoramic) columns else intArrayOf(2, 3, columns)[size]
         val initialSpan = prefs.getInt(spanKey, defaultSpan).coerceIn(1, columns)
         val visualKey = "${selectedArt.slug}:$columns:$initialSpan:$weatherArtIndex"
-        val liveText = if (forecast != null) "MET Norway: ${kotlin.math.round(forecast.temperature).toInt()}°C • previsão atual"
-            else if (lastKnown != null) "MET Norway: última previsão salva • dados desatualizados"
+        val liveText = if (forecast != null && !weatherClient.isStored()) "MET Norway: ${kotlin.math.round(forecast.temperature).toInt()}°C • previsão atual"
+            else if (displayedForecast != null) "MET Norway: última previsão salva • dados desatualizados"
             else if (weatherActive) "Previsão indisponível • tocar para detalhes" else "Escolher localização • dados MET"
-        val city = prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
+        val city = (if (displayedForecast != null) weatherClient.cachedCity() else prefs.getString("gothic_weather_city", null))?.takeIf { it.isNotBlank() }
             ?: "Localização não definida"
         val lunarLabel = if (!isSun) when (LunarPhaseCalculator.phaseAt(java.time.Instant.ofEpochMilli(now))) {
             LunarPhaseCalculator.Phase.NEW -> "☾ Lua nova (aprox.)"
@@ -2069,9 +2113,13 @@ class MainActivity : Activity(), SensorEventListener {
             val uv = point.uvClearSky?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "—"
             val shortCity = city.split(',').map { it.trim() }.filter { it.isNotEmpty() }
                 .take(2).joinToString(", ").ifBlank { city }
-            val description = if (forecast == null) "◷ ${point.description} • dados antigos" else "☁ ${point.description}"
+            val description = when {
+                weatherClient.isPreviousLocation() -> "◷ ${point.description} • local anterior"
+                forecast == null || weatherClient.isStored() -> "◷ ${point.description} • salvo"
+                else -> "☁ ${point.description}"
+            }
             "${point.temperature.toInt()}°C\n$shortCity\nUmid. $humidity\nVento $wind\nUV céu limpo $uv\n$description\n$lunarLabel"
-        } ?: "$city • previsão indisponível"
+        } ?: "--°C\n$city\nUmid. —\nVento —\nUV —\nSem previsão\n"
         val hourlyText = weatherClient.upcoming().take(4).joinToString("   ") { point ->
             val hour = java.time.Instant.ofEpochMilli(point.time)
                 .atZone(java.time.ZoneId.systemDefault()).hour
@@ -2141,7 +2189,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var currentWeatherArtSlug: String? = null
 
     private fun weatherDetails() {
-        val forecast = weatherClient.current()
+        val forecast = weatherClient.current() ?: weatherClient.lastKnown()
         val weatherActive = prefs.contains("gothic_weather_lat")
         val liveText = when {
             !weatherActive -> "Escolha localização automática ou busque uma cidade"
@@ -2149,7 +2197,7 @@ class MainActivity : Activity(), SensorEventListener {
             else -> {
                 val time = java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
                     .format(java.util.Date(forecast.time))
-                val stale = if (System.currentTimeMillis() - forecast.time > 2 * 60 * 60 * 1000L)
+                val stale = if (weatherClient.isStored() || System.currentTimeMillis() - forecast.time > 2 * 60 * 60 * 1000L)
                     " • desatualizada" else ""
                 "${kotlin.math.round(forecast.temperature).toInt()}°C • ${forecast.description}" +
                     (forecast.humidity?.let { " • Umidade ${kotlin.math.round(it).toInt()}%" } ?: "") +
@@ -2164,7 +2212,9 @@ class MainActivity : Activity(), SensorEventListener {
             "Próximas horas • fuso do aparelho\n" + upcoming.joinToString("\n") {
                 "${formatter.format(java.time.Instant.ofEpochMilli(it.time))} • ${kotlin.math.round(it.temperature).toInt()}°C • ${it.description}"
             }
-        val details = "${weatherLocation.summary}\nCoordenadas: ${prefs.getString("gothic_weather_lat", "—")}, ${prefs.getString("gothic_weather_lon", "—")}\n$liveText\nEstado de rede: ${prefs.getString("met_weather_error", "sem erro registrado")}.\nRecebimento/validação: ${prefs.getLong("met_forecast_received", 0).takeIf { it > 0 }?.let { java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(it)) } ?: "não registrado"}.\nHorário da previsão no fuso do aparelho (${java.time.ZoneId.systemDefault()}). Temperatura instantânea prevista, não mínima/máxima nem observação de estação.\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.\n\n$hourly"
+        val cachedLocation = if (forecast != null) weatherClient.cachedCity() ?: "Local da previsão não identificado" else ""
+        val locationNotice = if (weatherClient.isPreviousLocation()) "\nDados salvos de local anterior: $cachedLocation. Aguardando previsão da nova localização." else if (cachedLocation.isNotBlank()) "\nLocal da previsão: $cachedLocation" else ""
+        val details = "${weatherLocation.summary}$locationNotice\nCoordenadas atuais: ${prefs.getString("gothic_weather_lat", "—")}, ${prefs.getString("gothic_weather_lon", "—")}\n$liveText\nEstado de rede: ${prefs.getString("met_weather_error", "sem erro registrado")}.\nRecebimento/validação: ${prefs.getLong("met_forecast_received", 0).takeIf { it > 0 }?.let { java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(it)) } ?: "não registrado"}.\nHorário da previsão no fuso do aparelho (${java.time.ZoneId.systemDefault()}). Temperatura instantânea prevista, não mínima/máxima nem observação de estação.\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.\n\n$hourly"
         val content = label(details, 14f).apply {
             tag = "weather_hourly_details"
             setPadding(dp(16), dp(8), dp(16), dp(16))

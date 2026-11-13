@@ -2,7 +2,7 @@ name: Compilar Purple Charm Launcher
 
 on:
   push:
-    branches: [main, "codex/work-mission2-fixes", "codex/poco-072-behavior-fixes", "codex/purple-unified-navigation-performance", "fix/remote-icon-visual-normalization"]
+    branches: [main, "development/v12-continuacao"]
   pull_request:
     branches: [main, "codex/weather-widgets"]
   workflow_dispatch:
@@ -54,39 +54,6 @@ jobs:
           assert total >= 107 and failures == 0, (total, failures)
           print(f'{total} testes executados, sem falhas, erros ou testes ignorados.')
           PYTEST
-
-      - name: Compilar APK
-        run: gradle :app:assembleDebug --stacktrace
-
-      - name: Validar APK e assinatura
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
-          unzip -t "$APK" | tail -n 2
-          SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
-          "$SDK_BUILD_TOOLS/zipalign" -c -v 4 "$APK"
-          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
-          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|application-label:)"
-          PACKAGE_NAME="$("$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
-          test "$PACKAGE_NAME" = "com.purplecharm.launcher"
-          sha256sum "$APK"
-          echo "DEBUG EPHEMERAL: chave de teste do runner; nao garante atualizacao da instalacao anterior."
-          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" | grep -q "versionCode='11'"
-
-      - name: Nomear APK para instalacao
-        shell: bash
-        run: |
-          mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Purple-Charm-Crystal-Class-v10-DEBUG-EPHEMERAL.apk
-
-      - name: Disponibilizar APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Purple-Charm-Crystal-Class-v10-DEBUG-EPHEMERAL
-          path: dist/*.apk
-          if-no-files-found: error
 
   signed-release:
     name: APK oficial assinado

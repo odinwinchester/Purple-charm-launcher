@@ -113,7 +113,13 @@ internal class WeatherLocationController(
         status = "Localização automática"
         if (!moved && prefs.getString("gothic_weather_city", null) != null) { onChanged(false); return }
         if (moved) {
-            prefs.edit().putString("gothic_weather_lat", location.latitude.toString())
+            val previousCity = prefs.getString("gothic_weather_city", null)
+            val editor = prefs.edit()
+            val oldKey = if (oldLat != null && oldLon != null) String.format(Locale.US, "lat=%.4f&lon=%.4f", oldLat, oldLon) else null
+            if (!prefs.contains("met_forecast_city") && previousCity != null && oldKey != null &&
+                oldKey == prefs.getString("met_forecast_location", null) &&
+                prefs.contains("met_forecast_json")) editor.putString("met_forecast_city", previousCity)
+            editor.putString("gothic_weather_lat", location.latitude.toString())
                 .putString("gothic_weather_lon", location.longitude.toString())
                 .remove("gothic_weather_city").apply()
             onChanged(true)
@@ -123,7 +129,11 @@ internal class WeatherLocationController(
         geocode(reverse = location, query = null) { results, _ ->
             if (token != generation || version != fixVersion || !automatic()) return@geocode
             results.firstOrNull()?.let {
-                prefs.edit().putString("gothic_weather_city", cityLabel(it)).apply()
+                val label = cityLabel(it)
+                val editor = prefs.edit().putString("gothic_weather_city", label)
+                val key = String.format(Locale.US, "lat=%.4f&lon=%.4f", location.latitude, location.longitude)
+                if (key == prefs.getString("met_forecast_location", null)) editor.putString("met_forecast_city", label)
+                editor.apply()
                 onChanged(false)
             }
         }
@@ -213,7 +223,14 @@ internal class WeatherLocationController(
                             .setItems(candidates.map { cityLabel(it) }.toTypedArray()) { _, which ->
                                 val city = candidates[which]
                                 stopTracking()
-                                prefs.edit().putString("gothic_weather_location_mode", "city")
+                                val editor = prefs.edit()
+                                val previousLat = prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull()
+                                val previousLon = prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull()
+                                val previousKey = if (previousLat != null && previousLon != null) String.format(Locale.US, "lat=%.4f&lon=%.4f", previousLat, previousLon) else null
+                                if (!prefs.contains("met_forecast_city") && previousKey != null &&
+                                    previousKey == prefs.getString("met_forecast_location", null) && prefs.contains("met_forecast_json"))
+                                    prefs.getString("gothic_weather_city", null)?.let { editor.putString("met_forecast_city", it) }
+                                editor.putString("gothic_weather_location_mode", "city")
                                     .putString("gothic_weather_city", cityLabel(city))
                                     .putString("gothic_weather_lat", city.latitude.toString())
                                     .putString("gothic_weather_lon", city.longitude.toString()).apply()
