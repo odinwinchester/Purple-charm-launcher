@@ -62,6 +62,7 @@ class WorkMission2RegressionTest {
     }
 
     private fun seedApp(key: String = "test.purple.app/Main", preserveOtherCopies: Boolean = false) {
+        installWorkspaceTestPackage(key.substringBefore('/'))
         prefs().edit().clear().commit()
         val folderId = "folder:duplicate"
         val cells = List(20) { index -> when (index) {
@@ -79,6 +80,7 @@ class WorkMission2RegressionTest {
     }
 
     private fun seedAppOnFirstTwoPages(key: String = "test.purple.app/Main") {
+        installWorkspaceTestPackage(key.substringBefore('/'))
         prefs().edit().clear().commit()
         val appCell = List(20) { index -> if (index == 0) key else "" }
         val emptyPage = List(20) { "" }

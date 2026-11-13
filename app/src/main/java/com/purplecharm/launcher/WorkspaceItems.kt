@@ -94,6 +94,23 @@ internal object WorkspaceEdits {
         keys.forEach(edit::remove)
         return edit.done()
     }
+    /** Reconcile persisted components without moving unrelated cells. Unknown packages stay intact. */
+    fun reconcileComponents(s: WorkspaceItems, available: Set<String>, removed: Set<String>): WorkspaceItems? {
+        val cleaned = removePackages(s, removed) ?: return null
+        val byPackage = available.groupBy { it.substringBefore('/') }
+        fun recover(key: String): String {
+            if (!key.contains('/') || key in available || WorkspaceItems.isFolder(key)) return key
+            return byPackage[key.substringBefore('/')]?.singleOrNull() ?: key
+        }
+        val result = cleaned.copy(
+            pages = cleaned.pages.map { cells -> cells.map(::recover) },
+            dock = cleaned.dock.map(::recover),
+            folders = cleaned.folders.mapValues { (_, folder) ->
+                folder.copy(apps = folder.apps.map(::recover).distinct())
+            }
+        )
+        return result.takeIf { it.valid() }
+    }
     fun page(s: WorkspaceItems, key: String, page: Int, cell: Int, group: Boolean = false,
              folderId: String = "folder:${java.util.UUID.randomUUID()}"): WorkspaceItems? {
         if (!s.valid() || page !in s.pages.indices || cell !in s.pages[page].indices || key.isBlank()) return null

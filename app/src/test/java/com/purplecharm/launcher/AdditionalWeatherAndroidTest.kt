@@ -27,6 +27,7 @@ import java.time.Instant
 class AdditionalWeatherAndroidTest {
     private fun prefs() = RuntimeEnvironment.getApplication().getSharedPreferences("purple_charm_favorites", Context.MODE_PRIVATE)
     private fun seed() = prefs().also { p ->
+        installWorkspaceTestPackage("pkg")
         p.edit().clear().commit()
         assertTrue(WorkspaceItemsStore(p).save(WorkspaceItems(
             listOf(listOf("folder:preserve") + List(19) { "" }, List(20) { "" }, List(20) { "" }),

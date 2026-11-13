@@ -221,7 +221,13 @@ class MainActivity : Activity(), SensorEventListener {
     }
     override fun onResume() {
         super.onResume()
+        appsLoaded = false
+        loadApps()
         cleanRemovedPackages()
+        if (pendingWorkspaceRefresh && !dragging) {
+            pendingWorkspaceRefresh = false
+            refreshWorkspaceSafely()
+        }
         // Recover empty folders persisted by older builds, preserving all other cells.
         if (!dragging) {
             val before = runCatching { workspaceItems() }.getOrNull()
@@ -976,6 +982,7 @@ class MainActivity : Activity(), SensorEventListener {
         (n * resources.displayMetrics.density).toInt()
 
     private var appsLoaded = false
+    private var installedLauncherComponents: Set<String> = emptySet()
 
     private val pendingRemovedPackages = mutableSetOf<String>()
     private fun cleanRemovedPackages() {
@@ -985,19 +992,31 @@ class MainActivity : Activity(), SensorEventListener {
             current.folders.values.flatMap { it.apps }).filter { it.contains('/') &&
             !WorkspaceItems.isFolder(it) }.map { it.substringBefore('/') }.toSet()
         val removed = pendingRemovedPackages.toMutableSet()
-        // Recover old references only when Android positively reports an uninstalled package.
-        // An invisible or temporarily unavailable package is not proof of uninstall.
+        // Reconcile against the current launcher catalog and package records.
         for (pkg in candidates) {
-            if (apps.any { it.activityInfo.packageName == pkg }) continue
+            if (installedLauncherComponents.any { it.substringBefore('/') == pkg }) continue
             @Suppress("DEPRECATION")
-            val info = runCatching { packageManager.getApplicationInfo(pkg,
-                PackageManager.MATCH_UNINSTALLED_PACKAGES) }.getOrNull()
-            if (info != null && info.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED == 0) {
-                removed.add(pkg)
+            try {
+                val info = packageManager.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES)
+                if (info.flags and android.content.pm.ApplicationInfo.FLAG_INSTALLED == 0) removed.add(pkg)
+            } catch (_: PackageManager.NameNotFoundException) {
+                // Only treat absence as uninstall when package visibility is unrestricted.
+                if (Build.VERSION.SDK_INT < 30 || checkSelfPermission("android.permission.QUERY_ALL_PACKAGES") == PackageManager.PERMISSION_GRANTED) {
+                    removed.add(pkg)
+                }
+            } catch (_: SecurityException) {
+                // A failed permission check is not evidence of uninstall.
             }
         }
-        val cleaned = WorkspaceEdits.removePackages(current, removed) ?: return
-        if (cleaned != current && !workspaceStore.save(cleaned)) return
+        // Only a fresh PackageManager catalog may drive component migration. The
+        // in-memory UI list can change during drag, drawer filtering and tests.
+        val cleaned = WorkspaceEdits.reconcileComponents(current, installedLauncherComponents, removed) ?: return
+        if (cleaned != current) {
+            if (!workspaceStore.save(cleaned)) return
+            undoWorkspaceSnapshot = null
+            undoPage = null
+            pendingWorkspaceRefresh = true
+        }
         if (removed.isNotEmpty()) {
             val favorites = selected().filterNot { it.substringBefore('/') in removed }.toSet()
             prefs.edit().putStringSet("apps", favorites).apply()
@@ -1052,6 +1071,7 @@ class MainActivity : Activity(), SensorEventListener {
                     .toString().lowercase(Locale.ROOT)
             }
         )
+        installedLauncherComponents = apps.map(::appKey).toSet()
         appsLoaded = true
     }
 

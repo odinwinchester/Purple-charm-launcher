@@ -27,6 +27,7 @@ import org.robolectric.annotation.Config
 class ConsolidationAndroidTest {
     private fun prefs() = RuntimeEnvironment.getApplication().getSharedPreferences("purple_charm_favorites", Context.MODE_PRIVATE)
     private fun seed(count: Int = 2) {
+        installWorkspaceTestPackage("pkg")
         val p = prefs(); p.edit().clear().commit()
         assertTrue(WorkspaceItemsStore(p).save(WorkspaceItems(
             listOf(listOf("folder:test") + List(19) { "" }, List(20) { "" }, List(20) { "" }),

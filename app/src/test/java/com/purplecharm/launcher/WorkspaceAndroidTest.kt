@@ -26,6 +26,7 @@ class WorkspaceAndroidTest {
         List(4) { "" }, mapOf(id to WorkspaceFolder("Pasta ☾", listOf("pkg/A", "pkg/B"))))
     private fun prefs(name: String) = RuntimeEnvironment.getApplication().getSharedPreferences(name, Context.MODE_PRIVATE)
     private fun seed(): SharedPreferences = prefs("purple_charm_favorites").also {
+        installWorkspaceTestPackage("pkg")
         it.edit().clear().commit(); assertTrue(WorkspaceItemsStore(it).save(state()))
     }
     @Test fun atomicStoreReloadPreservesFoldersCellsDockAndUnrelatedAppearance() {
