@@ -1436,7 +1436,7 @@ class MainActivity : Activity(), SensorEventListener {
         val key = "${appKey(app)}:${setting("fallback_skin", "original")}:$includeFallbackFrame"
         RemoteIconLibrary(this).installedIcon(app.activityInfo.packageName)?.let { return it }
         iconCache.get(key)?.let { return it.state.newDrawable(resources).mutate() }
-        return uncachedIcon(app, includeFallbackFrame).also { icon ->
+        return IconVisualNormalizer.normalize(resources, uncachedIcon(app, includeFallbackFrame)).also { icon ->
             val bytes = iconBytes(icon)
             if (bytes <= iconCache.maxSize()) icon.constantState?.let { iconCache.put(key, CachedIcon(it, bytes)) }
         }
