@@ -74,25 +74,36 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
             .remove("gothic_weather_expires").remove("gothic_weather_last_modified").remove("met_forecast_received").remove("met_weather_error").apply()
     }
 
+    fun isPreviousLocation(): Boolean {
+        val key = location() ?: return false
+        val stored = prefs.getString("met_forecast_location", null) ?: return false
+        return cachedBody != null && key != stored
+    }
+
+    private fun matchingLocation(): Boolean {
+        val key = location() ?: return false
+        return key == prefs.getString("met_forecast_location", null)
+    }
+
     fun current(now: Long = System.currentTimeMillis()): WeatherForecast? {
-        if (location() == null) return null
+        if (!matchingLocation()) return null
         return cachedBody?.let { parse(it, now) }
     }
 
     /** Last actual cached point, explicitly marked stale by callers; never a live reading. */
     fun lastKnown(now: Long = System.currentTimeMillis()): WeatherForecast? {
-        if (location() == null) return null
+        if (location() == null || prefs.getString("met_forecast_location", null) == null) return null
         return cachedBody?.let { parseLastKnown(it, now) }
     }
 
     fun upcoming(now: Long = System.currentTimeMillis()): List<WeatherForecast> {
-        if (location() == null) return emptyList()
+        if (!matchingLocation()) return emptyList()
         return cachedBody?.let { parseUpcoming(it, now) } ?: emptyList()
     }
 
     /** Forecast points across the next five calendar days, independently of the hourly panel. */
     fun upcomingDays(now: Long = System.currentTimeMillis()): List<WeatherForecast> {
-        if (location() == null) return emptyList()
+        if (!matchingLocation()) return emptyList()
         return cachedBody?.let { parseUpcomingDays(it, now) } ?: emptyList()
     }
 
@@ -122,7 +133,7 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                     .coerceAtLeast(System.currentTimeMillis() + 60_000L)
                 if (status == 304 && cachedBody != null) {
                     synchronized(this) {
-                        if (location() == key) prefs.edit().putLong("gothic_weather_expires", expires).putLong("met_forecast_received", System.currentTimeMillis()).remove("met_weather_error").apply()
+                        if (location() == key && prefs.getString("met_forecast_location", null) == key && cachedBody != null) prefs.edit().putLong("gothic_weather_expires", expires).putLong("met_forecast_received", System.currentTimeMillis()).remove("met_weather_error").apply()
                     }
                 } else if (status == 200 || status == 203) {
                     val body = connection.inputStream.bufferedReader().use { it.readText() }

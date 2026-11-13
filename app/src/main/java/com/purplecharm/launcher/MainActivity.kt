@@ -2096,8 +2096,8 @@ class MainActivity : Activity(), SensorEventListener {
         val defaultSpan = if (selectedArt.panoramic) columns else intArrayOf(2, 3, columns)[size]
         val initialSpan = prefs.getInt(spanKey, defaultSpan).coerceIn(1, columns)
         val visualKey = "${selectedArt.slug}:$columns:$initialSpan:$weatherArtIndex"
-        val liveText = if (forecast != null) "MET Norway: ${kotlin.math.round(forecast.temperature).toInt()}°C • previsão atual"
-            else if (lastKnown != null) "MET Norway: última previsão salva • dados desatualizados"
+        val liveText = if (forecast != null && !weatherClient.isStored()) "MET Norway: ${kotlin.math.round(forecast.temperature).toInt()}°C • previsão atual"
+            else if (displayedForecast != null) "MET Norway: última previsão salva • dados desatualizados"
             else if (weatherActive) "Previsão indisponível • tocar para detalhes" else "Escolher localização • dados MET"
         val city = (if (displayedForecast != null) weatherClient.cachedCity() else prefs.getString("gothic_weather_city", null))?.takeIf { it.isNotBlank() }
             ?: "Localização não definida"
@@ -2113,7 +2113,11 @@ class MainActivity : Activity(), SensorEventListener {
             val uv = point.uvClearSky?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "—"
             val shortCity = city.split(',').map { it.trim() }.filter { it.isNotEmpty() }
                 .take(2).joinToString(", ").ifBlank { city }
-            val description = if (forecast == null || weatherClient.isStored()) "◷ ${point.description} • salvo" else "☁ ${point.description}"
+            val description = when {
+                weatherClient.isPreviousLocation() -> "◷ ${point.description} • local anterior"
+                forecast == null || weatherClient.isStored() -> "◷ ${point.description} • salvo"
+                else -> "☁ ${point.description}"
+            }
             "${point.temperature.toInt()}°C\n$shortCity\nUmid. $humidity\nVento $wind\nUV céu limpo $uv\n$description\n$lunarLabel"
         } ?: "--°C\n$city\nUmid. —\nVento —\nUV —\nSem previsão\n"
         val hourlyText = weatherClient.upcoming().take(4).joinToString("   ") { point ->
@@ -2208,7 +2212,9 @@ class MainActivity : Activity(), SensorEventListener {
             "Próximas horas • fuso do aparelho\n" + upcoming.joinToString("\n") {
                 "${formatter.format(java.time.Instant.ofEpochMilli(it.time))} • ${kotlin.math.round(it.temperature).toInt()}°C • ${it.description}"
             }
-        val details = "${weatherLocation.summary}\nCoordenadas: ${prefs.getString("gothic_weather_lat", "—")}, ${prefs.getString("gothic_weather_lon", "—")}\n$liveText\nEstado de rede: ${prefs.getString("met_weather_error", "sem erro registrado")}.\nRecebimento/validação: ${prefs.getLong("met_forecast_received", 0).takeIf { it > 0 }?.let { java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(it)) } ?: "não registrado"}.\nHorário da previsão no fuso do aparelho (${java.time.ZoneId.systemDefault()}). Temperatura instantânea prevista, não mínima/máxima nem observação de estação.\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.\n\n$hourly"
+        val cachedLocation = if (forecast != null) weatherClient.cachedCity() ?: "Local da previsão não identificado" else ""
+        val locationNotice = if (weatherClient.isPreviousLocation()) "\nDados salvos de local anterior: $cachedLocation. Aguardando previsão da nova localização." else if (cachedLocation.isNotBlank()) "\nLocal da previsão: $cachedLocation" else ""
+        val details = "${weatherLocation.summary}$locationNotice\nCoordenadas atuais: ${prefs.getString("gothic_weather_lat", "—")}, ${prefs.getString("gothic_weather_lon", "—")}\n$liveText\nEstado de rede: ${prefs.getString("met_weather_error", "sem erro registrado")}.\nRecebimento/validação: ${prefs.getLong("met_forecast_received", 0).takeIf { it > 0 }?.let { java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(java.util.Date(it)) } ?: "não registrado"}.\nHorário da previsão no fuso do aparelho (${java.time.ZoneId.systemDefault()}). Temperatura instantânea prevista, não mínima/máxima nem observação de estação.\n\nOs valores impressos nas artes são ilustrativos. Eclipses manuais não confirmam evento ou visibilidade. Dados MET Norway, CC BY 4.0.\n\n$hourly"
         val content = label(details, 14f).apply {
             tag = "weather_hourly_details"
             setPadding(dp(16), dp(8), dp(16), dp(16))

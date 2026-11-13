@@ -207,12 +207,13 @@ class ExpandedWeatherActivity : Activity() {
         val liveCurrent = weather.current()
         val current = liveCurrent ?: weather.lastKnown()
         val offlineNotice = if (current != null && (liveCurrent == null || weather.isStored()))
+            (if (weather.isPreviousLocation()) "Local anterior • aguardando previsão da nova localização.\n" else "") +
             "Última previsão armazenada: ${DateTimeFormatter.ofPattern("dd/MM HH:mm", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(current.time))} • dados desatualizados"
             else ""
-        val place = (if (current != null) weather.cachedCity() else prefs.getString("gothic_weather_city", null))?.takeIf { it.isNotBlank() }
-            ?: intent.getStringExtra("place")?.takeIf {
-            it.isNotBlank() && it != "Local não definido"
-        } ?: "Localização não definida"
+        val place = if (current != null) weather.cachedCity()?.takeIf { it.isNotBlank() }
+            ?: "Local da previsão não identificado"
+        else prefs.getString("gothic_weather_city", null)?.takeIf { it.isNotBlank() }
+            ?: "Localização não definida"
         val headline = current?.let { "${it.temperature.roundToInt()}°C • ${it.description}" }
             ?: "Previsão indisponível"
         val conditions = "$place\n$headline\n" + (if (offlineNotice.isNotEmpty()) "$offlineNotice\n" else "") +

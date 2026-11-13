@@ -79,7 +79,15 @@ class MetWeatherClientTest {
             assertEquals(22.0, MetWeatherClient.parseLastKnown(body, now)!!.temperature, 0.0)
             if (hours > 2L) assertNull(MetWeatherClient.parse(body, now))
         }
-        assertNull(MetWeatherClient.parseLastKnown(body, start + 25L * 60 * 60_000L))
+        for (hours in listOf(25L, 72L, 240L)) {
+            val now = start + hours * 60 * 60_000L
+            val saved = MetWeatherClient.parseLastKnown(body, now)!!
+            assertEquals(22.0, saved.temperature, 0.0)
+            assertEquals(start, saved.time)
+            assertNull(MetWeatherClient.parse(body, now))
+            assertTrue(MetWeatherClient.parseUpcoming(body, now).isEmpty())
+            assertTrue(MetWeatherClient.parseUpcomingDays(body, now).isEmpty())
+        }
         assertNull(MetWeatherClient.parseLastKnown(body, start - 1L))
     }
 

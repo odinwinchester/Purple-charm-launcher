@@ -115,7 +115,9 @@ internal class WeatherLocationController(
         if (moved) {
             val previousCity = prefs.getString("gothic_weather_city", null)
             val editor = prefs.edit()
-            if (!prefs.contains("met_forecast_city") && previousCity != null &&
+            val oldKey = if (oldLat != null && oldLon != null) String.format(Locale.US, "lat=%.4f&lon=%.4f", oldLat, oldLon) else null
+            if (!prefs.contains("met_forecast_city") && previousCity != null && oldKey != null &&
+                oldKey == prefs.getString("met_forecast_location", null) &&
                 prefs.contains("met_forecast_json")) editor.putString("met_forecast_city", previousCity)
             editor.putString("gothic_weather_lat", location.latitude.toString())
                 .putString("gothic_weather_lon", location.longitude.toString())
@@ -222,7 +224,11 @@ internal class WeatherLocationController(
                                 val city = candidates[which]
                                 stopTracking()
                                 val editor = prefs.edit()
-                                if (!prefs.contains("met_forecast_city") && prefs.contains("met_forecast_json"))
+                                val previousLat = prefs.getString("gothic_weather_lat", null)?.toDoubleOrNull()
+                                val previousLon = prefs.getString("gothic_weather_lon", null)?.toDoubleOrNull()
+                                val previousKey = if (previousLat != null && previousLon != null) String.format(Locale.US, "lat=%.4f&lon=%.4f", previousLat, previousLon) else null
+                                if (!prefs.contains("met_forecast_city") && previousKey != null &&
+                                    previousKey == prefs.getString("met_forecast_location", null) && prefs.contains("met_forecast_json"))
                                     prefs.getString("gothic_weather_city", null)?.let { editor.putString("met_forecast_city", it) }
                                 editor.putString("gothic_weather_location_mode", "city")
                                     .putString("gothic_weather_city", cityLabel(city))
