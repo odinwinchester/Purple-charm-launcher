@@ -27,9 +27,9 @@
     },
     {
       "packageName": "com.brave.browser",
-      "version": 1,
+      "version": 2,
       "url": "https://raw.githubusercontent.com/odinwinchester/Purple-charm-launcher/icon-library-publishing/icon-library/brave.png",
-      "sha256": "8f576b5336825cb83bc69a4c9ea02cc88c3268bacfc3321bca7abe4bd785af7b"
+      "sha256": "74fc5a794b2e8d3a1c179c8b21556aaabb6e4bec1a16637f719814c006d2d8fc"
     },
     {
       "packageName": "com.bybit.app",
