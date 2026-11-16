@@ -990,6 +990,7 @@ class MainActivity : Activity(), SensorEventListener {
         super.onCreate(savedInstanceState)
         // Atualiza apenas a lista de ícones em segundo plano, sem aplicar imagens.
         RemoteIconLibrary(this).refreshCatalogIfDue()
+        PurpleUpdateManager.schedule(applicationContext)
         // O papel de parede ocupa toda a tela, mas os controles
         // respeitam as barras do Android.
         window.statusBarColor = Color.TRANSPARENT

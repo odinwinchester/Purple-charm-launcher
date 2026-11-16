@@ -6,7 +6,12 @@ on:
       version_code:
         description: 'Código Android crescente (mínimo 10)'
         required: true
-        default: '10'
+        default: '13'
+        type: string
+      version_name:
+        description: "versionName correspondente ao APK"
+        required: true
+        default: "13"
         type: string
       publish_release:
         description: 'Assinar e solicitar publicação oficial após homologar o APK de teste'
@@ -46,12 +51,18 @@ jobs:
         id: tests
         env:
           REQUESTED_VERSION_CODE: ${{ inputs.version_code }}
+          REQUESTED_VERSION_NAME: ${{ inputs.version_name }}
         run: |
           set -euo pipefail
           [[ "$REQUESTED_VERSION_CODE" =~ ^[0-9]+$ ]] && (( REQUESTED_VERSION_CODE >= 10 && REQUESTED_VERSION_CODE <= 2100000000 )) || {
             echo "versionCode deve ser inteiro entre 10 e 2100000000."
             exit 1
           }
+          [[ "$REQUESTED_VERSION_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$ ]] || { echo "versionName inválido."; exit 1; }
+          if [[ "$REQUESTED_VERSION_NAME" =~ ^[0-9]+$ ]] && (( REQUESTED_VERSION_NAME != REQUESTED_VERSION_CODE )); then
+            echo "versionName numérico deve corresponder ao versionCode."
+            exit 1
+          fi
           python3 scripts/verify_weather_artwork.py
           gradle clean :app:testDebugUnitTest --stacktrace
           python3 - <<'PY'
@@ -67,11 +78,13 @@ jobs:
       - name: Compilar APK de teste descartável
         env:
           PURPLE_VERSION_CODE: ${{ inputs.version_code }}
+          PURPLE_VERSION_NAME: ${{ inputs.version_name }}
         run: gradle :app:assembleDebug --stacktrace
       - name: Validar APK de teste e registrar metadados
         id: inspect
         env:
           REQUESTED_VERSION_CODE: ${{ inputs.version_code }}
+          REQUESTED_VERSION_NAME: ${{ inputs.version_name }}
           TESTS_TOTAL: ${{ steps.tests.outputs.total }}
         run: |
           set -euo pipefail
@@ -91,7 +104,8 @@ jobs:
           name, code, version = package.groups()
           assert name == "com.purplecharm.launcher"
           assert code == os.environ["REQUESTED_VERSION_CODE"]
-          assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?", version)
+          assert version == os.environ["REQUESTED_VERSION_NAME"]
+          assert re.fullmatch(r"(?:[0-9]+|[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)", version)
           certs = {x.lower() for x in re.findall(r"certificate SHA-256 digest: ([0-9a-fA-F]+)", cert_text)}
           assert len(certs) == 1
           digest = hashlib.sha256(apk.read_bytes()).hexdigest()
@@ -129,6 +143,7 @@ jobs:
     uses: ./.github/workflows/stable-apk.yml
     with:
       version_code: ${{ inputs.version_code }}
+      version_name: ${{ inputs.version_name }}
 
   publish:
     needs: [validate, sign]
@@ -152,7 +167,7 @@ jobs:
             echo "Configure e proteja android-release antes de publicar."
             exit 1
           }
-          [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
+          [[ "$VERSION_NAME" =~ ^([0-9]+|[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?)$ ]]
           [[ "$VERSION_CODE" =~ ^[0-9]+$ ]]
       - name: Baixar APK assinado e metadados validados
         uses: actions/download-artifact@v4
