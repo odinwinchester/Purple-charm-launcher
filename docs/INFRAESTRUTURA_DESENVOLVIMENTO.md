@@ -11,7 +11,7 @@
 | Seis agentes Codex | Os seis TOMLs de `.codex/agents/` passaram pelo parser TOML e têm `name`, `description`, `sandbox_mode` e `developer_instructions`. As instruções seguem os limites de `AGENTS.md`. |
 | Execução real dos agentes | Pendente. A configuração foi validada estruturalmente; ainda é necessário abrir o checkout em Codex/T3 e confirmar que cada perfil é reconhecido e chamado. |
 | GitHub Actions | O run #433, no commit `c5e6178a1a6278e98789c5c093773baac6ae9af3`, passou na branch. |
-| APK debug | A CI agora compila `app-debug.apk` e envia o APK como artefato `Purple-Charm-Debug-APK`, separado do fluxo de release. A validação do novo run ainda está pendente. |
+| APK debug | Run #435 passou: compilou `app-debug.apk`, publicou o artefato `Purple-Charm-Debug-APK` (49 MB) e concluiu as verificações. O job de APK oficial assinado ficou skipped na branch de desenvolvimento. |
 | APK oficial | O job de release assinado permanece condicionado a push em `main`; não foi editado. |
 | Teste em dispositivo | Pendente. A CI atual não executa Firebase Test Lab nem instala o APK em aparelho. |
 | T3 Code / REA | Auditados; não instalados neste ambiente de trabalho temporário. |
@@ -86,10 +86,9 @@ OCI pode ser reavaliada somente se o proprietário quiser um host disponível 24
 
 ## Próxima validação
 
-1. Confirmar que o novo run do GitHub Actions compila, anexa e permite baixar `Purple-Charm-Debug-APK`.
-2. No host persistente, testar abertura do branch no T3 Code e chamada real dos seis perfis; executar revisão com sessão em modo somente leitura.
-3. Após autorização Google do proprietário, rodar primeiro um Robo test no Firebase Spark e guardar a matriz/logs como prova.
-4. Somente depois avaliar se é necessário um host 24/7; não provisionar OCI para substituir os runners gratuitos.
+1. No host persistente, testar abertura da branch no T3 Code e chamada real dos seis perfis; executar revisão com sessão em modo somente leitura.
+2. Após autorização Google do proprietário, rodar primeiro um Robo test no Firebase Spark e guardar a matriz/logs como prova.
+3. Somente depois avaliar se é necessário um host 24/7; não provisionar OCI para substituir os runners gratuitos.
 
 ## Referências externas
 
