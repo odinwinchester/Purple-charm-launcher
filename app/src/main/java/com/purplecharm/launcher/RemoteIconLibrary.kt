@@ -23,8 +23,8 @@ internal class RemoteIconLibrary(private val context: Context) {
     private val packagePattern = Regex("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+")
     private val hashPattern = Regex("[a-fA-F0-9]{64}")
     private companion object {
-        // 16 normalized 256px bitmaps: approximately 4 MiB, keyed by verified content.
-        val normalizedCache = android.util.LruCache<String, Drawable.ConstantState>(16)
+        // 32 normalized 256px bitmaps: approximately 8 MiB, keyed by verified content.
+        val normalizedCache = android.util.LruCache<String, Drawable.ConstantState>(32)
     }
     private val maxIconBytes = 2 * 1024 * 1024
     private val maxCatalogBytes = 512 * 1024
@@ -140,7 +140,9 @@ internal class RemoteIconLibrary(private val context: Context) {
         if (!file.isFile) return null
         val installed = runCatching { JSONObject(manifestFile.readText()) }.getOrNull() ?: return null
         val expected = installed.optString(packageName)
-        if (!hashPattern.matches(expected) || sha256(file.readBytes()) != expected) return null
+        if (!hashPattern.matches(expected) || file.length() !in 1L..maxIconBytes.toLong()) return null
+        // Preserve verification on every lookup, without allocating a full PNG byte array.
+        if (runCatching { sha256File(file) }.getOrNull() != expected) return null
         val cacheKey = "$packageName:$expected"
         normalizedCache.get(cacheKey)?.let { return it.newDrawable(context.resources).mutate() }
         val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
@@ -206,6 +208,22 @@ internal class RemoteIconLibrary(private val context: Context) {
         val installed = runCatching { JSONObject(manifestFile.readText()) }.getOrDefault(JSONObject())
         installed.remove(packageName)
         manifestFile.writeText(installed.toString())
+    }
+
+    private fun sha256File(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(8192)
+            var total = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= maxIconBytes.toLong()) { "PNG excede limite" }
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
