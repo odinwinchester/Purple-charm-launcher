@@ -221,7 +221,8 @@ class MainActivity : Activity(), SensorEventListener {
     }
     override fun onResume() {
         super.onResume()
-        appsLoaded = false
+        // The package receiver remains registered until onDestroy and invalidates
+        // the catalog on install, removal and update. Keep caches on ordinary resume.
         loadApps()
         cleanRemovedPackages()
         if (pendingWorkspaceRefresh && !dragging) {
@@ -2751,26 +2752,32 @@ class MainActivity : Activity(), SensorEventListener {
             addView(results)
         }
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        var previousKeys: List<String>? = null
+        var previousTiles = emptyMap<String, View>()
         fun refresh(query: String) {
-            results.removeAllViews()
             val term = normalize(query.trim())
-            val filtered = apps.filter {
-                term.isEmpty() || normalize(appLabel(it)).contains(term)
-            }.sortedWith(compareBy<ResolveInfo> {
-                val name = normalize(appLabel(it))
-                when {
-                    term.isEmpty() || name == term -> 0
-                    name.startsWith(term) -> 1
-                    else -> 2
-                }
-            }.thenBy {
-                normalize(appLabel(it))
-            })
+            val filtered = apps.map { it to normalize(appLabel(it)) }
+                .filter { (_, name) -> term.isEmpty() || name.contains(term) }
+                .sortedWith(compareBy<Pair<ResolveInfo, String>> { (_, name) ->
+                    when {
+                        term.isEmpty() || name == term -> 0
+                        name.startsWith(term) -> 1
+                        else -> 2
+                    }
+                }.thenBy { it.second })
+                .map { it.first }
+            val keys = filtered.map(::appKey)
+            if (keys == previousKeys) return
+            results.removeAllViews()
+            val nextTiles = linkedMapOf<String, View>()
             filtered.forEach { app ->
                 // Toque curto abre; toque longo oferece adicionar à página/dock.
                 // O arraste direto entre telas será implementado separadamente:
                 // trocar a tela durante ACTION_DRAG pode cancelar o gesto.
-                results.addView(appTile(app, false, false),
+                val key = appKey(app)
+                val tile = previousTiles[key] ?: appTile(app, false, false)
+                nextTiles[key] = tile
+                results.addView(tile,
                     GridLayout.LayoutParams().apply {
                         width = 0
                         height = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -2780,6 +2787,8 @@ class MainActivity : Activity(), SensorEventListener {
             if (filtered.isEmpty()) {
                 results.addView(label("Nenhum aplicativo encontrado", 14f))
             }
+            previousKeys = keys
+            previousTiles = nextTiles
         }
         input.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
