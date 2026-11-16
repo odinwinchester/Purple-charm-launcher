@@ -123,7 +123,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
         undoWorkspaceSnapshot = before
         if (dragging) dragDropCommitted = true
-        refreshWorkspaceSafely()
+        if (!refreshEditedWorkspace(current, proposed)) refreshWorkspaceSafely()
         return true
     }
     private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
@@ -521,6 +521,35 @@ class MainActivity : Activity(), SensorEventListener {
                 }
             }
         }
+    }
+
+    // Only reuse plain pages for explicit edits. Widget pages, folder changes,
+    // active drags and structural changes retain the established full refresh.
+    private fun refreshEditedWorkspace(before: WorkspaceItems, after: WorkspaceItems): Boolean {
+        if (dragging || drawerOpen || switchingPage || openFolderId != null ||
+            !::pages.isInitialized || !pages.isAttachedToWindow ||
+            before.pages.size != after.pages.size || before.folders != after.folders ||
+            pages.childCount != after.pages.size) return false
+        val changed = after.pages.indices.filter { before.pages[it] != after.pages[it] }
+        if (changed.any { pages.getChildAt(it) !is ScrollView }) return false
+        val oldDock = homeHost.findViewWithTag<View>("home_dock") ?: return false
+        val dockParent = oldDock.parent as? ViewGroup ?: return false
+        val selected = pageIndex.coerceIn(0, after.pages.lastIndex)
+        pages.inAnimation = null
+        pages.outAnimation = null
+        changed.forEach { index ->
+            pages.removeViewAt(index)
+            pages.addView(homePage(index), index)
+        }
+        if (before.dock != after.dock) {
+            val index = dockParent.indexOfChild(oldDock)
+            dockParent.removeViewAt(index)
+            dockParent.addView(dock().apply { tag = "home_dock" }, index)
+        }
+        pageIndex = selected
+        pages.displayedChild = selected
+        updateDots()
+        return true
     }
 
     private fun refreshWorkspaceSafely() {
@@ -3003,6 +3032,8 @@ class MainActivity : Activity(), SensorEventListener {
         alphabet.tag = "drawer_alphabet"
         root.addView(main, LinearLayout.LayoutParams(-1, 0, 1f))
 
+        // Reuse tiles shared by consecutive categories; discard tiles no longer visible.
+        var previousDrawerTiles = emptyMap<String, View>()
         fun render() {
             content.removeAllViews()
             val visible = if (selected == "Tudo") apps else apps.filter {
@@ -3011,11 +3042,17 @@ class MainActivity : Activity(), SensorEventListener {
             val sorted = visible.sortedBy { normalize(appLabel(it)) }
             val grid = DrawerAppGrid(this).apply { tag = "drawer_grid" }
             val anchors = linkedMapOf<String, Int>()
+            val nextDrawerTiles = linkedMapOf<String, View>()
             sorted.forEachIndexed { index, app ->
                 val letter = normalize(appLabel(app)).firstOrNull()?.uppercaseChar()?.toString() ?: "#"
                 anchors.putIfAbsent(letter, index)
-                grid.addView(appTile(app, true, false, dense = true).apply { tag = "drawer_app_${appKey(app)}" })
+                val key = appKey(app)
+                val tile = previousDrawerTiles[key] ?: appTile(app, true, false, dense = true).apply { tag = "drawer_app_$key" }
+                (tile.parent as? ViewGroup)?.removeView(tile)
+                grid.addView(tile)
+                nextDrawerTiles[key] = tile
             }
+            previousDrawerTiles = nextDrawerTiles
             content.addView(grid, LinearLayout.LayoutParams(-1, -2))
             alphabet.removeAllViews()
             val letters = anchors.keys.toList()
