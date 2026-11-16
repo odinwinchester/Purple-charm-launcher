@@ -21,17 +21,37 @@ internal class WorkspaceItemsStore(private val prefs: SharedPreferences) {
         if (!state.valid()) return false
         val safety = WorkspaceLayoutSafety(prefs)
         val before = safety.capture()
-        val edit = prefs.edit().putInt("layout_page_count", state.pages.size)
-            .putString("workspace_folders_v1", WorkspaceItems.encodeFolders(state.folders))
+        val edit = prefs.edit()
+        var changed = false
+        fun putString(key: String, value: String) {
+            if (prefs.getString(key, null) != value) {
+                edit.putString(key, value)
+                changed = true
+            }
+        }
+        fun remove(key: String) {
+            if (prefs.contains(key)) {
+                edit.remove(key)
+                changed = true
+            }
+        }
+        if (prefs.getInt("layout_page_count", -1) != state.pages.size) {
+            edit.putInt("layout_page_count", state.pages.size)
+            changed = true
+        }
+        putString("workspace_folders_v1", WorkspaceItems.encodeFolders(state.folders))
         state.pages.forEachIndexed { index, cells ->
-            edit.putString("layout_page_$index", cells.filter { it.isNotEmpty() }.distinct().joinToString("|"))
-            edit.putString("layout_page_cells_$index", cells.joinToString("|"))
+            putString("layout_page_$index", cells.filter { it.isNotEmpty() }.distinct().joinToString("|"))
+            putString("layout_page_cells_$index", cells.joinToString("|"))
         }
         for (index in state.pages.size until 8) {
-            edit.remove("layout_page_$index").remove("layout_page_cells_$index")
+            remove("layout_page_$index")
+            remove("layout_page_cells_$index")
         }
-        edit.putString("layout_dock_slots", state.dock.joinToString("|"))
-            .putString("layout_dock", state.dock.filter { it.isNotEmpty() }.joinToString("|"))
+        putString("layout_dock_slots", state.dock.joinToString("|"))
+        putString("layout_dock", state.dock.filter { it.isNotEmpty() }.joinToString("|"))
+        // Keep synchronous atomic persistence and rollback for real edits.
+        if (!changed) return true
         if (edit.commit()) return true
         // SharedPreferences may update its in-memory map even when a disk write fails.
         // Restore the pre-edit layout; unrelated theme/weather settings are untouched.
