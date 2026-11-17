@@ -2670,18 +2670,19 @@ class MainActivity : Activity(), SensorEventListener {
     // Mantém o papel de parede visível e evita o painel grande de seis botões.
     private fun showClassicCustomizationMenu() {
         val dialog = Dialog(this)
-        val icons = arrayOf("＋", "▧", "⚙", "♡", "?", "⇩")
-        val names = arrayOf("Organizar", "Papel de parede", "Configurações", "Ganhe com Nós", "Ajuda", "Novos ícones")
+        val icons = arrayOf("↻", "▧", "⚙", "♡", "?", "⇩")
+        val names = arrayOf("Atualizações", "Papel de parede", "Configurações", "Ganhe com Nós", "Ajuda", "Novos ícones")
         val actions: Array<() -> Unit> = arrayOf(
-            { editWorkspaceMenu() },
+            { startActivity(Intent(this, PurpleUpdatesActivity::class.java)) },
             { wallpaperMenu() },
             { settingsMenu() },
             { GanheComNosScreen.show(this) },
             {
                 SmokeDialogBuilder(this)
                     .setTitle("Purple Charm • Ajuda")
-                    .setMessage("Deslize para cima a partir do dock para personalizar. Toque no ícone central para abrir os aplicativos.")
-                    .setPositiveButton("Entendi", null).show()
+                    .setMessage("Deslize para cima a partir do dock para abrir as opções. Organize a tela inicial pelo botão abaixo; toque no ícone central para abrir os aplicativos.")
+                    .setPositiveButton("Organizar") { _, _ -> editWorkspaceMenu() }
+                    .setNegativeButton("Fechar", null).show()
             },
             { showNewIconsMenu() }
         )

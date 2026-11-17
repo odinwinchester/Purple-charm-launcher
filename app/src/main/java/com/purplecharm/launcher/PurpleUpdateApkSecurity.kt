@@ -17,8 +17,19 @@ internal object PurpleUpdateApkSecurity {
    archiveCode>installedCode&&archiveCode==candidateCode&&archiveName==candidateName
  internal fun signerSetsMatch(installed:Set<String>,archive:Set<String>):Boolean =
   installed.isNotEmpty()&&installed==archive
+ internal fun matchesDigest(apk:File,expected:String):Boolean {
+  if(!expected.matches(Regex("^[0-9a-fA-F]{64}$")))return false
+  return try {
+   val digest=MessageDigest.getInstance("SHA-256")
+   apk.inputStream().buffered().use { input ->
+    val buffer=ByteArray(65536)
+    while(true){val count=input.read(buffer);if(count<0)break;digest.update(buffer,0,count)}
+   }
+   digest.digest().joinToString(""){"%02x".format(it.toInt() and 0xff)}.equals(expected,true)
+  }catch(_:Exception){false}
+ }
  fun verify(context:Context,apk:File,c:PurpleUpdateRelease.Candidate):Boolean {
-  if(!apk.isFile||apk.length()!=c.sizeBytes)return false
+  if(!apk.isFile||apk.length()!=c.sizeBytes||!matchesDigest(apk,c.sha256))return false
   return try {
    val pm=context.packageManager
    val flags=if(Build.VERSION.SDK_INT>=28)PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES

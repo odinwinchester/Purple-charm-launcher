@@ -40,63 +40,121 @@ class PurpleUpdateCheckWorker(c:Context,p:WorkerParameters):Worker(c,p) {
  override fun doWork():Result {
   val c=try{PurpleUpdateHttp.connection()}catch(_:Exception){return Result.retry()}
   return try {
-   when(val status=c.responseCode){404->return Result.success();403->return Result.retry();in 500..599->return Result.retry();HttpURLConnection.HTTP_OK->{};else->return Result.failure()}
+   val statusCode=c.responseCode
+   if(statusCode==404){
+    applicationContext.getSharedPreferences("purple_update_state",Context.MODE_PRIVATE).edit()
+     .remove("available_version_code").remove("available_version_name").remove("available_tag")
+     .remove("available_url").remove("available_size").remove("available_sha")
+     .putString("last_result","up-to-date").putLong("last_check_at",System.currentTimeMillis()).apply()
+    return Result.success()
+   }
+   when(statusCode){
+    403->return Result.retry()
+    in 500..599->return Result.retry()
+    HttpURLConnection.HTTP_OK->{}
+    else->{
+     applicationContext.getSharedPreferences("purple_update_state",Context.MODE_PRIVATE).edit().putString("last_result","error").apply()
+     PurpleUpdateNotifications.failure(applicationContext,"O GitHub não retornou uma resposta válida.")
+     return Result.failure()
+    }
+   }
    val body=PurpleUpdateHttp.bounded(c)
    val current=applicationContext.packageManager.getPackageInfo(applicationContext.packageName,0).longVersionCodeCompat()
    val candidate=PurpleUpdateRelease.parseLatest(body,current)
    if(candidate==null){
     applicationContext.getSharedPreferences("purple_update_state",Context.MODE_PRIVATE).edit()
-     .remove("available_version_code").remove("available_version_name").remove("available_tag").apply()
+     .remove("available_version_code").remove("available_version_name").remove("available_tag")
+     .remove("available_url").remove("available_size").remove("available_sha")
+     .putString("last_result","up-to-date").putLong("last_check_at",System.currentTimeMillis()).apply()
     return Result.success()
    }
    applicationContext.getSharedPreferences("purple_update_state",Context.MODE_PRIVATE).edit()
     .putLong("available_version_code",candidate.versionCode).putString("available_version_name",candidate.versionName)
-    .putString("available_tag",candidate.tag).apply()
+    .putString("available_tag",candidate.tag).putString("available_url",candidate.downloadUrl)
+    .putLong("available_size",candidate.sizeBytes).putString("available_sha",candidate.sha256)
+    .putString("last_result","available").putLong("last_check_at",System.currentTimeMillis()).apply()
+   PurpleUpdateNotifications.available(applicationContext,candidate.versionName)
    PurpleUpdateDownloadWorker.enqueue(applicationContext,candidate)
    Result.success()
-  }catch(_:IOException){Result.retry()}catch(_:Exception){Result.failure()}finally{c.disconnect()}
+  }catch(_:IOException){
+   applicationContext.getSharedPreferences("purple_update_state",Context.MODE_PRIVATE).edit().putString("last_result","network-error").apply()
+   PurpleUpdateNotifications.failure(applicationContext,"Verifique a conexão e tente novamente.")
+   Result.retry()
+  }catch(_:Exception){
+   applicationContext.getSharedPreferences("purple_update_state",Context.MODE_PRIVATE).edit().putString("last_result","error").apply()
+   PurpleUpdateNotifications.failure(applicationContext,"Não foi possível verificar atualizações.")
+   Result.failure()
+  }finally{c.disconnect()}
  }
 }
 class PurpleUpdateDownloadWorker(c:Context,p:WorkerParameters):Worker(c,p) {
  override fun doWork():Result {
-  val code=inputData.getLong("code",-1);val name=inputData.getString("name")?:return Result.failure()
-  val tag=inputData.getString("tag")?:return Result.failure();var url=inputData.getString("url")?:return Result.failure()
-  val size=inputData.getLong("size",-1);val sha=inputData.getString("sha")?:return Result.failure()
+  val code=inputData.getLong("code",-1);val name=inputData.getString("name")?:return failed(code)
+  val tag=inputData.getString("tag")?:return failed(code);var url=inputData.getString("url")?:return failed(code)
+  val size=inputData.getLong("size",-1);val sha=inputData.getString("sha")?:return failed(code)
   val tagVersion=tag.removePrefix("v").removeSuffix("-stable")
   val apkName="Purple-Charm-v$tagVersion-OFFICIAL-RELEASE.apk"
   val exact="https://github.com/odinwinchester/Purple-charm-launcher/releases/download/$tag/$apkName"
   if(!tag.matches(Regex("^v[0-9]+(?:\\.[0-9]+){0,2}(?:-stable)?$"))||url!=exact||
     !name.matches(Regex("^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$"))||code !in 1..Int.MAX_VALUE.toLong()||
-    size !in 1..PurpleUpdateRelease.MAX_APK_SIZE_BYTES||!sha.matches(Regex("^[0-9a-fA-F]{64}$")))return Result.failure()
-  val dir=File(applicationContext.cacheDir,"updates");if(!dir.exists()&&!dir.mkdirs())return Result.failure()
+    size !in 1..PurpleUpdateRelease.MAX_APK_SIZE_BYTES||!sha.matches(Regex("^[0-9a-fA-F]{64}$")))return failed(code)
+  val dir=File(applicationContext.cacheDir,"updates");if(!dir.exists()&&!dir.mkdirs())return failed(code)
   val part=File(dir,"purple-$code.apk.part");val final=File(dir,"purple-$code.apk");part.delete();var success=false
+  applicationContext.getSharedPreferences("purple_update_state",Context.MODE_PRIVATE).edit()
+   .putString("last_result","downloading").putLong("downloaded_bytes",0L).apply()
   return try {
    var hops=0;var count=0L;var downloadedSha=""
    while(true){
     if(isStopped)throw IOException("stopped")
-    if(!PurpleUpdateHttp.assetUrl(url,true))return Result.failure()
+    if(!PurpleUpdateHttp.assetUrl(url,true))return failed(code)
     val c=(URL(url).openConnection() as HttpURLConnection).apply{connectTimeout=15000;readTimeout=30000;instanceFollowRedirects=false;setRequestProperty("User-Agent","Purple-Charm-Android-Updater");setRequestProperty("Accept","application/octet-stream")}
     try{
      val status=c.responseCode
-     if(status in listOf(301,302,303,307,308)){if(hops++>=PurpleUpdateHttp.MAX_REDIRECTS)return Result.failure();url=PurpleUpdateHttp.redirect(url,c.getHeaderField("Location")?:return Result.failure())?:return Result.failure();continue}
-     if(status==408||status==429||status>=500)return Result.retry()
-     if(status!=200)return Result.failure()
-     if(c.contentLengthLong>=0&&c.contentLengthLong!=size)return Result.failure()
-     val copied=c.inputStream.use{input->part.outputStream().buffered().use{out->PurpleUpdateTransfer.copy(input,out,size,{isStopped}){n->setProgressAsync(Data.Builder().putLong("downloaded",n).putLong("total",size).build())}}}
+     if(status in listOf(301,302,303,307,308)){if(hops++>=PurpleUpdateHttp.MAX_REDIRECTS)return failed(code);url=PurpleUpdateHttp.redirect(url,c.getHeaderField("Location")?:return failed(code))?:return failed(code);continue}
+     if(status==408||status==429||status>=500){
+      applicationContext.getSharedPreferences("purple_update_state",Context.MODE_PRIVATE).edit().putString("last_result","download-error").apply()
+      PurpleUpdateNotifications.failure(applicationContext,"O download será tentado novamente quando a conexão permitir.")
+      return Result.retry()
+     }
+     if(status!=200)return failed(code)
+     if(c.contentLengthLong>=0&&c.contentLengthLong!=size)return failed(code)
+     var lastNotified=0L;var lastStateAt=0L
+     val copied=c.inputStream.use{input->part.outputStream().buffered().use{out->PurpleUpdateTransfer.copy(input,out,size,{isStopped}){n->
+      val threshold=(size/20).coerceAtLeast(1024L*1024L)
+      val now=System.currentTimeMillis()
+      if(n-lastStateAt>=1000L||n==size){
+       lastStateAt=now
+       setProgressAsync(Data.Builder().putLong("downloaded",n).putLong("total",size).build())
+       applicationContext.getSharedPreferences("purple_update_state",Context.MODE_PRIVATE).edit().putLong("downloaded_bytes",n).apply()
+      }
+      if(n-lastNotified>=threshold||n==size){lastNotified=n;PurpleUpdateNotifications.progress(applicationContext,name,n,size)}
+     }}}
      count=copied.first
      val calculatedSha=copied.second
      downloadedSha=calculatedSha
-     if(count!=size||!calculatedSha.equals(sha,true))return Result.failure()
+     if(count!=size||!calculatedSha.equals(sha,true))return failed(code)
      break
     }finally{c.disconnect()}
    }
-   if(count!=size||!downloadedSha.equals(sha,true))return Result.failure()
-   if(!part.renameTo(final))return Result.failure()
+   if(count!=size||!downloadedSha.equals(sha,true))return failed(code)
+   if(!part.renameTo(final))return failed(code)
    val candidate=PurpleUpdateRelease.Candidate(code,name,tag,exact,size,sha)
-   if(!PurpleUpdateApkSecurity.verify(applicationContext,final,candidate)){final.delete();return Result.failure()}
+   if(!PurpleUpdateApkSecurity.verify(applicationContext,final,candidate)){final.delete();return failed(code)}
    success=true
+   applicationContext.getSharedPreferences("purple_update_state",Context.MODE_PRIVATE).edit()
+    .putString("last_result","ready").putLong("downloaded_bytes",size).apply()
+   PurpleUpdateNotifications.ready(applicationContext,name)
    Result.success(Data.Builder().putString("verified_apk",final.absolutePath).putLong("version_code",code).build())
-  }catch(_:IOException){Result.retry()}catch(_:Exception){Result.failure()}finally{part.delete();if(!success)final.delete()}
+  }catch(_:IOException){
+   applicationContext.getSharedPreferences("purple_update_state",Context.MODE_PRIVATE).edit().putString("last_result","download-error").apply()
+   PurpleUpdateNotifications.failure(applicationContext,"O download foi interrompido e será tentado novamente.")
+   Result.retry()
+  }catch(_:Exception){failed(code)}finally{part.delete();if(!success)final.delete()}
+ }
+ private fun failed(code:Long):Result {
+  applicationContext.getSharedPreferences("purple_update_state",Context.MODE_PRIVATE).edit().putString("last_result","failed").apply()
+  PurpleUpdateNotifications.failure(applicationContext,"O APK não passou pela validação. Verifique novamente as atualizações.")
+  return Result.failure()
  }
  companion object {
   internal fun enqueue(context:Context,c:PurpleUpdateRelease.Candidate){
