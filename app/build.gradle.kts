@@ -12,8 +12,8 @@ android {
         applicationId = "com.purplecharm.launcher"
         minSdk = 26
         targetSdk = 35
-        versionCode = providers.environmentVariable("PURPLE_VERSION_CODE").orElse("11").get().toInt()
-        versionName = "11"
+        versionCode = providers.environmentVariable("PURPLE_VERSION_CODE").orElse("13").get().toInt()
+        versionName = providers.environmentVariable("PURPLE_VERSION_NAME").orElse("13").get()
         testInstrumentationRunner = "com.purplecharm.launcher.UpgradeProbe"
     }
 
@@ -58,6 +58,8 @@ android {
 }
 
 dependencies {
+    implementation("androidx.work:work-runtime:2.11.2")
+    implementation("androidx.core:core:1.15.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("org.json:json:20240303")

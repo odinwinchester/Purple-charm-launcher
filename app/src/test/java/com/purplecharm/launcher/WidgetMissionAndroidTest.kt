@@ -165,12 +165,19 @@ class WidgetMissionAndroidTest {
         send(a, MotionEvent.ACTION_UP, x + 2f, bottom - 140f, 60)
         val options = org.robolectric.shadows.ShadowDialog.getLatestDialog()
         val optionLabels = views(options.window!!.decorView).filterIsInstance<TextView>().mapNotNull { it.text?.toString() }
-        assertTrue("Organizar" in optionLabels)
+        assertTrue("Atualizações" in optionLabels)
+        assertFalse("Organizar" in optionLabels)
         assertTrue("Papel de parede" in optionLabels)
         assertTrue("Configurações" in optionLabels)
         assertFalse(field(a, "drawerOpen") as Boolean)
         assertFalse(prefs().contains("pc_swipe_up"))
-        options.dismiss()
+
+        val helpLabel = views(options.window!!.decorView).filterIsInstance<TextView>()
+            .first { it.text?.toString() == "Ajuda" }
+        (helpLabel.parent as View).performClick()
+        val help = ShadowAlertDialog.getLatestAlertDialog()
+        assertEquals("Organizar", help.getButton(android.app.AlertDialog.BUTTON_POSITIVE).text.toString())
+        help.dismiss()
 
         val top = bounds.top + 20f
         send(a, MotionEvent.ACTION_DOWN, x, top, 100)

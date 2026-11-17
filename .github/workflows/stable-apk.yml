@@ -6,12 +6,21 @@ on:
       version_code:
         description: 'versionCode maior que o instalado (mínimo 9)'
         required: true
-        default: '9'
+        default: '13'
+        type: string
+      version_name:
+        description: "versionName do APK aprovado"
+        required: true
+        default: "13"
         type: string
   workflow_call:
     inputs:
       version_code:
         description: 'versionCode da versão aprovada'
+        required: true
+        type: string
+      version_name:
+        description: 'versionName da versão aprovada'
         required: true
         type: string
 
@@ -65,6 +74,7 @@ jobs:
           STORE_PASSWORD: ${{ secrets.PURPLE_STORE_PASSWORD }}
           EXPECTED_CERT: ${{ vars.PURPLE_SIGNING_CERT_SHA256 }}
           VERSION_CODE: ${{ inputs.version_code }}
+          VERSION_NAME: ${{ inputs.version_name }}
           PROTECTION_ACK: ${{ vars.PURPLE_SIGNING_ENVIRONMENT_PROTECTED }}
         run: |
           set -euo pipefail
@@ -79,6 +89,11 @@ jobs:
             echo "versionCode inválido."
             exit 1
           }
+          [[ "$VERSION_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$ ]] || { echo "versionName inválido."; exit 1; }
+          if [[ "$VERSION_NAME" =~ ^[0-9]+$ ]] && (( VERSION_NAME != VERSION_CODE )); then
+            echo "versionName numérico deve corresponder ao versionCode."
+            exit 1
+          fi
           umask 077
           printf '%s' "$STORE_PASSWORD" > "$RUNNER_TEMP/store.pass"
           chmod 600 "$RUNNER_TEMP/store.pass"
@@ -96,6 +111,7 @@ jobs:
           test "$ACTUAL_CERT" = "$EXPECTED_CERT" || { echo "Fingerprint diverge do valor protegido; APK bloqueado."; exit 1; }
           echo "PURPLE_KEYSTORE_PATH=$RUNNER_TEMP/purple-release.jks" >> "$GITHUB_ENV"
           echo "PURPLE_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "PURPLE_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "EXPECTED_CERT=$EXPECTED_CERT" >> "$GITHUB_ENV"
           echo "Certificado SHA-256 validado antes da compilação e publicação."
       - name: Compilar APK release com segredo limitado a este passo
@@ -125,6 +141,7 @@ jobs:
           package, code, version = match.groups()
           assert package == 'com.purplecharm.launcher'
           assert code == os.environ['PURPLE_VERSION_CODE']
+          assert version == os.environ['PURPLE_VERSION_NAME']
           apk = pathlib.Path(sys.argv[3])
           digest = hashlib.sha256(apk.read_bytes()).hexdigest()
           metadata = {
