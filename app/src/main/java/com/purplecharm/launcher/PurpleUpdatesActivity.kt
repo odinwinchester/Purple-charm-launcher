@@ -166,51 +166,88 @@ class PurpleUpdatesActivity : Activity() {
     }
 
     private fun buildScreen() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(24), dp(20), dp(24))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.rgb(25, 9, 48), Color.rgb(67, 24, 101), Color.rgb(17, 11, 39))
-            ).apply {
-                cornerRadius = dp(22).toFloat()
-                setStroke(dp(1), Color.argb(175, 220, 169, 255))
-            }
+        window.statusBarColor = Color.rgb(12, 5, 24)
+        window.navigationBarColor = Color.rgb(12, 5, 24)
+
+        val root = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(Color.rgb(12, 5, 24))
         }
-        val scroll = ScrollView(this)
+        val artwork = android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.purple_update_background)
+            scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+            contentDescription = null
+        }
+        root.addView(artwork, android.widget.FrameLayout.LayoutParams(-1, -1))
+
+        // The illustration is decorative; Android renders every status and action live.
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            setBackgroundColor(Color.TRANSPARENT)
+        }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(20), dp(34), dp(20), dp(26))
         }
-        content.addView(text("✦  Atualizações", 24f, true))
+        val heading = text("✦  Atualização", 27f, true).apply {
+            setShadowLayer(dp(5).toFloat(), 0f, dp(2).toFloat(), Color.BLACK)
+        }
+        content.addView(heading, params(top = 10))
+
+        val infoPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(16), dp(18), dp(16), dp(18))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(218, 15, 5, 32))
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), Color.rgb(206, 120, 245))
+            }
+        }
         installed = text("", 16f)
-        content.addView(installed, params(top = 18))
+        infoPanel.addView(installed)
         available = text("", 15f)
-        content.addView(available, params(top = 8))
+        infoPanel.addView(available, params(top = 12))
         status = text("", 15f)
-        content.addView(status, params(top = 18))
+        infoPanel.addView(status, params(top = 12))
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             visibility = View.GONE
+            progressTintList = android.content.res.ColorStateList.valueOf(Color.rgb(207, 116, 255))
         }
-        content.addView(progress, LinearLayout.LayoutParams(-1, dp(10)).apply { topMargin = dp(12) })
+        infoPanel.addView(progress, LinearLayout.LayoutParams(-1, dp(10)).apply {
+            topMargin = dp(12)
+        })
         progressLabel = text("", 13f)
-        content.addView(progressLabel, params(top = 5))
+        infoPanel.addView(progressLabel, params(top = 5))
+        content.addView(infoPanel, params(top = 24))
+
+        // Keep the moon and castle visible between the information panel and actions.
+        content.addView(android.widget.Space(this), LinearLayout.LayoutParams(1, 0, 1f))
+
         val check = button("Verificar atualizações").apply {
             tag = "purple_update_check"
             setOnClickListener { requestCheck() }
         }
-        content.addView(check, params(top = 22))
+        content.addView(check, LinearLayout.LayoutParams(-1, dp(52)).apply {
+            topMargin = dp(24)
+        })
         installButton = button("Instalar atualização").apply {
             tag = "purple_update_install"
             visibility = View.GONE
             setOnClickListener { verifyAndInstall() }
         }
-        content.addView(installButton, params(top = 10))
+        content.addView(installButton, LinearLayout.LayoutParams(-1, dp(52)).apply {
+            topMargin = dp(10)
+        })
         val close = button("Voltar").apply { setOnClickListener { finish() } }
-        content.addView(close, params(top = 10))
+        content.addView(close, LinearLayout.LayoutParams(-1, dp(52)).apply {
+            topMargin = dp(10)
+        })
         scroll.addView(content)
-        setContentView(scroll)
+        root.addView(scroll, android.widget.FrameLayout.LayoutParams(-1, -1))
+        setContentView(root)
     }
 
     private fun requestCheck() {

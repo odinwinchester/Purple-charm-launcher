@@ -36,12 +36,12 @@ jobs:
       - name: Compilar APK debug para testes de dispositivo
         run: gradle :app:assembleDebug --stacktrace
 
-      - name: Validar metadados v13 do APK debug
+      - name: Validar metadados v14 do APK debug
         if: ${{ github.ref == 'refs/heads/development/v12-continuacao' }}
         run: |
           set -euo pipefail
           TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
-          "$TOOLS/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "package: name='com.purplecharm.launcher' versionCode='13' versionName='13'"
+          "$TOOLS/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "package: name='com.purplecharm.launcher' versionCode='14' versionName='14'"
 
       - name: Disponibilizar APK debug
         uses: actions/upload-artifact@v4
@@ -116,8 +116,8 @@ jobs:
           test "$ACTUAL_CERT" = "$EXPECTED_CERT"
           echo "PURPLE_KEYSTORE_PATH=$RUNNER_TEMP/purple-release.jks" >> "$GITHUB_ENV"
           echo "PURPLE_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "PURPLE_VERSION_CODE=13" >> "$GITHUB_ENV"
-          echo "PURPLE_VERSION_NAME=13" >> "$GITHUB_ENV"
+          echo "PURPLE_VERSION_CODE=14" >> "$GITHUB_ENV"
+          echo "PURPLE_VERSION_NAME=14" >> "$GITHUB_ENV"
           echo "EXPECTED_SIGNING_CERT=$EXPECTED_CERT" >> "$GITHUB_ENV"
       - name: Compilar release com assinatura oficial
         run: gradle :app:assembleRelease --stacktrace
@@ -140,16 +140,16 @@ jobs:
           fi
           test "$ACTUAL_CERT" = "$EXPECTED_SIGNING_CERT" || { echo "Certificado do APK não corresponde ao certificado oficial esperado."; exit 1; }
           BADGING="$("$SDK_BUILD_TOOLS/aapt" dump badging "$APK")"
-          printf '%s\n' "$BADGING" | grep -q "versionCode='13'" || { echo "versionCode incorreto."; exit 1; }
+          printf '%s\n' "$BADGING" | grep -q "versionCode='14'" || { echo "versionCode incorreto."; exit 1; }
           printf '%s\n' "$BADGING" | grep -q "package: name='com.purplecharm.launcher'" || { echo "applicationId incorreto."; exit 1; }
-          printf '%s\n' "$BADGING" | grep -F "versionName='13'" || { echo "versionName incorreto."; exit 1; }
+          printf '%s\n' "$BADGING" | grep -F "versionName='14'" || { echo "versionName incorreto."; exit 1; }
           mkdir -p dist
-          cp "$APK" dist/Purple-Charm-v13-OFFICIAL-RELEASE.apk
+          cp "$APK" dist/Purple-Charm-v14-OFFICIAL-RELEASE.apk
       - name: Publicar APK oficial
         uses: actions/upload-artifact@v4
         with:
-          name: Purple-Charm-v13-OFFICIAL-RELEASE
-          path: dist/Purple-Charm-v13-OFFICIAL-RELEASE.apk
+          name: Purple-Charm-v14-OFFICIAL-RELEASE
+          path: dist/Purple-Charm-v14-OFFICIAL-RELEASE.apk
           if-no-files-found: error
       - name: Apagar chave e senha temporárias
         if: always()

@@ -27,7 +27,7 @@ class PurpleUpdatesActivityTest {
             assertNotNull(install)
             assertEquals(View.GONE, install.visibility)
             val labels = collectText(root as ViewGroup)
-            assertTrue(labels.any { it.contains("Atualizações") })
+            assertTrue(labels.any { it.contains("Atualização") })
             assertTrue(labels.any { it.startsWith("Instalada:") })
         } finally {
             activity.finish()
