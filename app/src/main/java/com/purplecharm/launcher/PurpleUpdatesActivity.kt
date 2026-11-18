@@ -93,8 +93,9 @@ internal object PurpleUpdateNotifications {
         show(context, READY_ID, "APK pronto para instalar", "Purple Charm $version foi validado. Toque para revisar e instalar.", false)
     }
 
-    fun failure(context: Context, message: String) =
-        show(context, FAILURE_ID, "Atualização Purple Charm", message, false)
+    // Routine check/download failures remain visible in the update screen, not the notification bar.
+    @Suppress("UNUSED_PARAMETER")
+    fun failure(context: Context, message: String) = Unit
 
     private fun show(context: Context, id: Int, title: String, text: String, ongoing: Boolean) {
         post(context, id, builder(context, title).setContentText(text).setOngoing(ongoing).build())
@@ -246,8 +247,20 @@ class PurpleUpdatesActivity : Activity() {
             topMargin = dp(10)
         })
         scroll.addView(content)
+        // Keep the last action above the Android navigation area, including edge-to-edge layouts.
+        scroll.setOnApplyWindowInsetsListener { view, insets ->
+            val navigationBottom = if (Build.VERSION.SDK_INT >= 30) {
+                insets.getInsets(android.view.WindowInsets.Type.navigationBars()).bottom
+            } else {
+                @Suppress("DEPRECATION")
+                insets.systemWindowInsetBottom
+            }
+            view.setPadding(0, 0, 0, navigationBottom + dp(16))
+            insets
+        }
         root.addView(scroll, android.widget.FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
+        scroll.requestApplyInsets()
     }
 
     private fun requestCheck() {
