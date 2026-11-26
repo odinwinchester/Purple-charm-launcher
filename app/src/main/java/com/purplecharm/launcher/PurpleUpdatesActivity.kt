@@ -132,14 +132,21 @@ class PurpleUpdatesActivity : Activity() {
     private lateinit var progressLabel: TextView
     private lateinit var installButton: Button
     private val handler = Handler(Looper.getMainLooper())
+    private val verificationWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
     private var verifiedFileKey: String? = null
+    private var pendingFileKey: String? = null
     private var verifiedFileValue = false
-    private val refreshTask = object : Runnable {
-        override fun run() {
-            refreshState()
-            handler.postDelayed(this, 1000L)
-        }
+    private var resumed = false
+    private var installing = false
+    private val statePrefs by lazy { getSharedPreferences("purple_update_state", MODE_PRIVATE) }
+    private val refreshTask = Runnable { if (resumed) refreshState() }
+    private val stateChanged = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        handler.removeCallbacks(refreshTask)
+        handler.post(refreshTask)
     }
+
+    private fun fileKey(apk: File, candidate: PurpleUpdateRelease.Candidate): String? =
+        if (apk.isFile) "${candidate.versionCode}:${candidate.sha256}:${apk.length()}:${apk.lastModified()}" else null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -151,17 +158,21 @@ class PurpleUpdatesActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        handler.removeCallbacks(refreshTask)
+        resumed = true
+        statePrefs.registerOnSharedPreferenceChangeListener(stateChanged)
         handler.post(refreshTask)
     }
 
     override fun onPause() {
+        resumed = false
+        statePrefs.unregisterOnSharedPreferenceChangeListener(stateChanged)
         handler.removeCallbacks(refreshTask)
         super.onPause()
     }
 
     override fun onDestroy() {
         handler.removeCallbacks(refreshTask)
+        verificationWorker.shutdownNow()
         super.onDestroy()
     }
 
@@ -275,16 +286,9 @@ class PurpleUpdatesActivity : Activity() {
             candidate = null
         }
         val apk = candidate?.let { File(File(cacheDir, "updates"), "purple-${it.versionCode}.apk") }
-        val verificationKey = if (candidate != null && apk != null && apk.isFile)
-            "${candidate.sha256}:${apk.length()}:${apk.lastModified()}" else null
-        val verified = if (candidate != null && apk != null && verificationKey != null) {
-            if (verificationKey == verifiedFileKey) verifiedFileValue
-            else PurpleUpdateApkSecurity.verify(this, apk, candidate).also {
-                verifiedFileKey = verificationKey
-                verifiedFileValue = it
-            }
-        } else false
-        if (candidate != null && apk?.exists() == true && !verified) apk.delete()
+        if (candidate != null && apk != null) scheduleVerification(apk, candidate)
+        val key = if (candidate != null && apk != null) fileKey(apk, candidate) else null
+        val verified = key != null && key == verifiedFileKey && verifiedFileValue
 
         available.text = candidate?.let { "Disponível: ${it.versionName} (code ${it.versionCode})" }
             ?: "Nenhuma atualização validada encontrada."
@@ -306,17 +310,52 @@ class PurpleUpdatesActivity : Activity() {
         installButton.visibility = if (PurpleUpdateUiState.canInstall(currentCode, candidate?.versionCode ?: -1L, verified)) View.VISIBLE else View.GONE
     }
 
-    private fun verifyAndInstall() {
-        val prefs = getSharedPreferences("purple_update_state", MODE_PRIVATE)
-        val candidate = readCandidate(prefs)
-        val apk = candidate?.let { File(File(cacheDir, "updates"), "purple-${it.versionCode}.apk") }
-        if (candidate == null || apk == null || !PurpleUpdateApkSecurity.verify(this, apk, candidate)) {
-            apk?.delete()
-            prefs.edit().putString("last_result", "failed").apply()
-            Toast.makeText(this, "O APK não passou na validação e não será instalado.", Toast.LENGTH_LONG).show()
-            refreshState()
-            return
+    private fun scheduleVerification(apk: File, candidate: PurpleUpdateRelease.Candidate) {
+        val key = fileKey(apk, candidate) ?: return
+        if (pendingFileKey != null || key == verifiedFileKey) return
+        pendingFileKey = key
+        verificationWorker.execute {
+            val valid = PurpleUpdateApkSecurity.verify(this, apk, candidate)
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                pendingFileKey = null
+                if (key == fileKey(apk, candidate) && candidate == readCandidate(statePrefs)) {
+                    verifiedFileKey = key
+                    verifiedFileValue = valid
+                    if (!valid) apk.delete()
+                }
+                if (resumed) refreshState()
+            }
         }
+    }
+
+    private fun verifyAndInstall() {
+        if (installing) return
+        val candidate = readCandidate(statePrefs) ?: return
+        val apk = File(File(cacheDir, "updates"), "purple-${candidate.versionCode}.apk")
+        val key = fileKey(apk, candidate)
+        installing = true
+        verificationWorker.execute {
+            val valid = key != null && PurpleUpdateApkSecurity.verify(this, apk, candidate)
+            runOnUiThread {
+                installing = false
+                if (!resumed || isFinishing || isDestroyed || candidate != readCandidate(statePrefs)) return@runOnUiThread
+                if (key != fileKey(apk, candidate)) {
+                    refreshState()
+                    return@runOnUiThread
+                }
+                if (valid) launchVerifiedInstaller(apk, candidate)
+                else {
+                    apk.delete()
+                    statePrefs.edit().putString("last_result", "failed").apply()
+                    Toast.makeText(this, "O APK não passou na validação e não será instalado.", Toast.LENGTH_LONG).show()
+                    refreshState()
+                }
+            }
+        }
+    }
+
+    private fun launchVerifiedInstaller(apk: File, candidate: PurpleUpdateRelease.Candidate) {
         if (!PurpleUpdateUiState.canInstall(installedVersionCode(), candidate.versionCode, true)) {
             Toast.makeText(this, "A versão baixada não é posterior à versão instalada.", Toast.LENGTH_LONG).show()
             return
