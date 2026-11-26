@@ -2722,25 +2722,37 @@ class MainActivity : Activity(), SensorEventListener {
                         details.addView(action)
                         list.addView(row)
                     }
-                    // Prévia sequencial: evita downloads simultâneos e picos de memória.
-                    if (available.isNotEmpty()) {
-                        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
-                        dialog.setOnDismissListener { cancelled.set(true) }
+                    val attempted = BooleanArray(available.size)
+                    var previewInFlight = false
+                    fun loadVisiblePreview() {
+                        if (!dialog.isShowing || previewInFlight || scroll.height == 0) return
+                        val top = scroll.scrollY
+                        val bottom = top + scroll.height
+                        val index = available.indices.firstOrNull { position ->
+                            val row = list.getChildAt(position)
+                            !attempted[position] && row.height > 0 && row.bottom > top && row.top < bottom
+                        } ?: return
+                        attempted[index] = true
+                        previewInFlight = true
                         Thread {
-                        available.forEachIndexed { index, entry ->
-                            if (cancelled.get()) return@Thread
-                            val bitmap = runCatching { library.previewBitmap(entry) }.getOrNull()
+                            val bitmap = runCatching { library.previewBitmap(available[index]) }.getOrNull()
                             runOnUiThread {
-                                if (dialog.isShowing) {
-                                    val row = list.getChildAt(index) as? LinearLayout
-                                    val image = row?.getChildAt(0) as? ImageView
-                                    if (bitmap != null) image?.setImageBitmap(bitmap)
-                                    else image?.contentDescription = "Prévia indisponível"
-                                } else bitmap?.recycle()
+                                previewInFlight = false
+                                if (!dialog.isShowing) {
+                                    bitmap?.recycle()
+                                    return@runOnUiThread
+                                }
+                                val row = list.getChildAt(index) as LinearLayout
+                                val image = row.getChildAt(0) as ImageView
+                                if (bitmap != null) image.setImageBitmap(bitmap)
+                                else image.contentDescription = "Prévia indisponível"
+                                loadVisiblePreview()
                             }
-                        }
                         }.start()
                     }
+                    scroll.setOnScrollChangeListener { _, _, _, _, _ -> loadVisiblePreview() }
+                    scroll.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> loadVisiblePreview() }
+                    scroll.post { loadVisiblePreview() }
                 }
             }
         }.start()
