@@ -12,8 +12,14 @@ on:
         type: boolean
         default: false
 
+      publish_existing_v15:
+        description: Publicar APK v15 previamente assinado, sem recompilar
+        type: boolean
+        default: false
+
 jobs:
   safe-selftests:
+    if: ${{ inputs.publish_existing_v15 != true }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -165,3 +171,26 @@ jobs:
         shell: bash
         run: |
           rm -f "$RUNNER_TEMP/purple-release.jks" "$RUNNER_TEMP/keystore.pccks" "$RUNNER_TEMP/store.pass" "$RUNNER_TEMP/cert.der"
+
+  publish-v15:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/development/v15-performance' && inputs.publish_existing_v15 == true }}
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Conferir artefato e publicar v15
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo=odinwinchester/Purple-charm-launcher
+          name=Purple-Charm-v15-OFFICIAL-RELEASE.apk
+          sha=07d4102ac4f699e792a9440a42ea9fed980bed15afae511f8fd53d7066aca906
+          cd "$RUNNER_TEMP"
+          gh run download 45823901095 -R "$repo" -n Purple-Charm-v15-OFFICIAL-RELEASE
+          printf '%s  %s\n' "$sha" "$name" | sha256sum -c
+          gh api "repos/$repo/releases/459440012" | jq -e '.draft and (.prerelease|not) and .tag_name=="v15" and .target_commitish=="49b9e7794330fe75f3372349e4cd766257495e07" and (.body|contains("versionCode: 15") and contains("versionName: 15"))' >/dev/null
+          gh release upload v15 "./$name" -R "$repo"
+          gh api "repos/$repo/releases/459440012" | jq -e --arg name "$name" --arg digest "sha256:$sha" '.assets | length==1 and .[0].name==$name and .[0].size==50106455 and .[0].digest==$digest and .[0].state=="uploaded"' >/dev/null
+          gh release edit v15 -R "$repo" --draft=false --prerelease=false --latest
