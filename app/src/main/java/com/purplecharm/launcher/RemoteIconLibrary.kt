@@ -22,6 +22,12 @@ internal class RemoteIconLibrary(private val context: Context) {
     private val manifestFile = File(directory, "installed.json")
     private val packagePattern = Regex("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+")
     private val hashPattern = Regex("[a-fA-F0-9]{64}")
+    private data class FileStamp(val size: Long, val modified: Long)
+    private fun stamp(file: File) = FileStamp(file.length(), file.lastModified())
+    private var installedStamp: FileStamp? = null
+    private var installedManifest: JSONObject? = null
+    private val verifiedStamps = android.util.LruCache<String, FileStamp>(32)
+
     private companion object {
         // 32 normalized 256px bitmaps: approximately 8 MiB, keyed by verified content.
         val normalizedCache = android.util.LruCache<String, Drawable.ConstantState>(32)
@@ -132,22 +138,47 @@ internal class RemoteIconLibrary(private val context: Context) {
         return File(directory, "$packageName.png")
     }
 
+    @Synchronized
     fun installedIcon(packageName: String): Drawable? {
         // Android launchers and Robolectric tests can expose synthetic/invalid
         // package identifiers. They must retain their normal system icon.
         if (!packagePattern.matches(packageName)) return null
         val file = fileFor(packageName)
         if (!file.isFile) return null
-        val installed = runCatching { JSONObject(manifestFile.readText()) }.getOrNull() ?: return null
-        val expected = installed.optString(packageName)
-        if (!hashPattern.matches(expected) || file.length() !in 1L..maxIconBytes.toLong()) return null
-        // Preserve verification on every lookup, without allocating a full PNG byte array.
-        if (runCatching { sha256File(file) }.getOrNull() != expected) return null
+        val manifestStamp = stamp(manifestFile)
+        if (installedStamp != manifestStamp) {
+            installedManifest = runCatching { JSONObject(manifestFile.readText()) }.getOrNull()
+            installedStamp = manifestStamp
+            verifiedStamps.evictAll()
+        }
+        val expected = installedManifest?.optString(packageName) ?: return null
+        val fileStamp = stamp(file)
+        if (!hashPattern.matches(expected) || fileStamp.size !in 1L..maxIconBytes.toLong()) return null
         val cacheKey = "$packageName:$expected"
-        normalizedCache.get(cacheKey)?.let { return it.newDrawable(context.resources).mutate() }
-        val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
+        if (verifiedStamps.get(cacheKey) == fileStamp) {
+            normalizedCache.get(cacheKey)?.let { return it.newDrawable(context.resources).mutate() }
+        }
+        val bytes = runCatching {
+            file.inputStream().use { stream ->
+                val output = java.io.ByteArrayOutputStream(fileStamp.size.toInt())
+                val buffer = ByteArray(8192)
+                var remaining = maxIconBytes + 1
+                while (remaining > 0) {
+                    val count = stream.read(buffer, 0, minOf(buffer.size, remaining))
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                    remaining -= count
+                }
+                output.toByteArray()
+            }
+        }.getOrNull() ?: return null
+        if (bytes.size.toLong() != fileStamp.size || sha256(bytes) != expected || stamp(file) != fileStamp) return null
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
         return IconVisualNormalizer.normalize(context.resources, BitmapDrawable(context.resources, bitmap)).also {
-            it.constantState?.let { state -> normalizedCache.put(cacheKey, state) }
+            it.constantState?.let { state ->
+                normalizedCache.put(cacheKey, state)
+                verifiedStamps.put(cacheKey, fileStamp)
+            }
         }
     }
 
@@ -196,6 +227,7 @@ internal class RemoteIconLibrary(private val context: Context) {
             require(temp.renameTo(target)) { "Não foi possível salvar o ícone" }
             installed.put(entry.packageName, entry.sha256.lowercase())
             manifestFile.writeText(installed.toString())
+            installedStamp = null
         } finally {
             temp.delete()
         }
@@ -208,22 +240,7 @@ internal class RemoteIconLibrary(private val context: Context) {
         val installed = runCatching { JSONObject(manifestFile.readText()) }.getOrDefault(JSONObject())
         installed.remove(packageName)
         manifestFile.writeText(installed.toString())
-    }
-
-    private fun sha256File(file: File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().buffered().use { input ->
-            val buffer = ByteArray(8192)
-            var total = 0L
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                total += count
-                require(total <= maxIconBytes.toLong()) { "PNG excede limite" }
-                digest.update(buffer, 0, count)
-            }
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        installedStamp = null
     }
 
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")

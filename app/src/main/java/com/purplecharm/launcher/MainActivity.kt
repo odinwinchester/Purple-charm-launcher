@@ -82,6 +82,9 @@ class MainActivity : Activity(), SensorEventListener {
     private var cachedDrawerHost: FrameLayout? = null
     private var openFolderId: String? = null
     private var pendingDrawerDrag = false
+    private val graphicsWorker = java.util.concurrent.Executors.newFixedThreadPool(2)
+    private val remoteIcons by lazy { RemoteIconLibrary(applicationContext) }
+    private var iconGeneration = 0
     private val graphicCache by lazy { GraphicResourceCache(resources) }
     private data class CachedIcon(val state: Drawable.ConstantState, val bytes: Int)
     private val iconCache = object : android.util.LruCache<String, CachedIcon>(4 * 1024 * 1024) {
@@ -670,7 +673,7 @@ class MainActivity : Activity(), SensorEventListener {
             preview.addView(ImageView(this).apply {
                 val resolved = resolveKey(key)
                 if (resolved != null) {
-                    setImageDrawable(customIcon(resolved, includeFallbackFrame = true))
+                    bindIcon(this, resolved, includeFallbackFrame = true)
                 } else {
                     // Referência preservada: não exibir pasta aparentemente vazia.
                     setImageResource(android.R.drawable.ic_menu_help)
@@ -1075,8 +1078,9 @@ class MainActivity : Activity(), SensorEventListener {
             }
             appsLoaded = false
             labelCache.clear(); searchableLabels.clear()
-            iconCache.evictAll()
+            iconGeneration++; iconCache.evictAll()
             cachedDrawerHost = null
+            cachedHomeHost = null
             loadApps()
             cleanRemovedPackages()
             if (::pages.isInitialized) {
@@ -1088,7 +1092,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun loadApps() {
         // O catálogo muda por eventos do PackageManager; reutilize-o entre Home/gaveta.
         if (appsLoaded) return
-        labelCache.clear(); searchableLabels.clear(); iconCache.evictAll()
+        labelCache.clear(); searchableLabels.clear(); iconGeneration++; iconCache.evictAll()
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
 
@@ -1527,15 +1531,32 @@ class MainActivity : Activity(), SensorEventListener {
             ""
         )
 
-    private fun customIcon(app: ResolveInfo, includeFallbackFrame: Boolean = false): Drawable {
-        val key = "${appKey(app)}:${setting("fallback_skin", "original")}:$includeFallbackFrame"
-        RemoteIconLibrary(this).installedIcon(app.activityInfo.packageName)?.let { return it }
-        iconCache.get(key)?.let { return it.state.newDrawable(resources).mutate() }
-        return IconVisualNormalizer.normalize(resources, uncachedIcon(app, includeFallbackFrame)).also { icon ->
-            val bytes = iconBytes(icon)
-            if (bytes <= iconCache.maxSize()) icon.constantState?.let { iconCache.put(key, CachedIcon(it, bytes)) }
+    private fun bindIcon(view: ImageView, app: ResolveInfo, includeFallbackFrame: Boolean = false) {
+        val skin = setting("fallback_skin", "original")
+        val key = "${appKey(app)}:$skin:$includeFallbackFrame"
+        iconCache.get(key)?.let {
+            view.setImageDrawable(it.state.newDrawable(resources).mutate())
+            return
+        }
+        val generation = iconGeneration
+        val name = searchableLabel(app)
+        val reference = java.lang.ref.WeakReference(view)
+        graphicsWorker.execute {
+            val icon = runCatching {
+                remoteIcons.installedIcon(app.activityInfo.packageName) ?:
+                    IconVisualNormalizer.normalize(resources, uncachedIcon(app, name, skin, includeFallbackFrame))
+            }.getOrNull() ?: return@execute
+            runOnUiThread {
+                if (isDestroyed || generation != iconGeneration) return@runOnUiThread
+                val bytes = iconBytes(icon)
+                if (bytes <= iconCache.maxSize()) {
+                    icon.constantState?.let { iconCache.put(key, CachedIcon(it, bytes)) }
+                }
+                reference.get()?.setImageDrawable(icon)
+            }
         }
     }
+
     // Original GO-style theme layers are applied only to unthemed application icons.
     // All three PNG resources are reused unchanged; themed icons keep their own artwork.
     private fun originalThemeFallback(icon: Drawable): Drawable {
@@ -1566,13 +1587,9 @@ class MainActivity : Activity(), SensorEventListener {
         return BitmapDrawable(resources, result)
     }
 
-    private fun uncachedIcon(app: ResolveInfo, includeFallbackFrame: Boolean): Drawable {
+    private fun uncachedIcon(app: ResolveInfo, name: String, skin: String, includeFallbackFrame: Boolean): Drawable {
         val pkg = app.activityInfo.packageName
             .lowercase(Locale.ROOT)
-
-        val name = normalize(
-            appLabel(app)
-        )
 
         val iconName = when {
 
@@ -1710,7 +1727,7 @@ class MainActivity : Activity(), SensorEventListener {
         val original = app.loadIcon(packageManager)
         // Automatically skin every unthemed app using the authentic original layers.
         // The pre-existing PNG themed icons above remain completely unchanged.
-        if (setting("fallback_skin", "original") != "ghost") {
+        if (skin != "ghost") {
             return originalThemeFallback(original)
         }
         if (!includeFallbackFrame) {
@@ -2050,7 +2067,10 @@ class MainActivity : Activity(), SensorEventListener {
             level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
             level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
             graphicCache.clear(); iconCache.evictAll(); labelCache.clear(); searchableLabels.clear()
-            if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) cachedDrawerHost = null
+            if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+                cachedDrawerHost = null
+                if (drawerOpen) cachedHomeHost = null
+            }
             androidWidgets.releaseHiddenViews()
         }
     }
@@ -2067,6 +2087,7 @@ class MainActivity : Activity(), SensorEventListener {
         folderDialog?.dismiss()
         dragSession?.cancel()
         dragSession = null
+        graphicsWorker.shutdownNow()
         super.onDestroy()
     }
     private val weatherTick = object : Runnable {
@@ -2560,7 +2581,7 @@ class MainActivity : Activity(), SensorEventListener {
     // A atualização remota só será habilitada quando o catálogo for publicado e validado.
     private fun showNewIconsMenu() {
         loadApps()
-        val library = RemoteIconLibrary(this)
+        val library = remoteIcons
         val dialog = Dialog(this)
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2633,7 +2654,7 @@ class MainActivity : Activity(), SensorEventListener {
                                             if (!dialog.isShowing) return@runOnUiThread
                                             action.isEnabled = true
                                             if (downloaded.isSuccess && downloaded.getOrDefault(false)) {
-                                                iconCache.evictAll()
+                                                iconGeneration++; iconCache.evictAll()
                                                 cachedDrawerHost = null
                                                 Toast.makeText(this, "Ícone aplicado: $title", Toast.LENGTH_SHORT).show()
                                                 dialog.dismiss()
@@ -2908,7 +2929,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun drawerAppActions(app: ResolveInfo) {
         val name = appLabel(app)
         val pkg = app.activityInfo.packageName
-        val library = RemoteIconLibrary(this)
+        val library = remoteIcons
         val hasRemoteIcon = library.installedIcon(pkg) != null
         val systemApp = (app.activityInfo.applicationInfo.flags and
             android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
@@ -2928,7 +2949,9 @@ class MainActivity : Activity(), SensorEventListener {
                             .setNegativeButton("Cancelar", null)
                             .setPositiveButton("Restaurar") { _, _ ->
                                 library.restore(pkg)
-                                iconCache.evictAll()
+                                iconGeneration++; iconCache.evictAll()
+                                cachedHomeHost = null
+                                cachedDrawerHost = null
                                 Toast.makeText(this, "Ícone original restaurado: $name", Toast.LENGTH_SHORT).show()
                                 if (drawerOpen) showDrawer() else showHome()
                             }.show()
@@ -3169,7 +3192,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
 
         val icon = ImageView(this).apply {
-            setImageDrawable(customIcon(app))
+            bindIcon(this, app)
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
 
