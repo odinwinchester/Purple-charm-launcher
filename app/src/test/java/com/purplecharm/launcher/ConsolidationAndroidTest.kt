@@ -201,6 +201,22 @@ class ConsolidationAndroidTest {
         c.pause().stop().destroy()
     }
 
+    @Test fun returningFromDrawerRetainsHomePagesAndDock() {
+        seed()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        layout(activity)
+        val originalPages = field(activity, "pages")
+        val originalDock = activity.window.decorView.findViewWithTag<View>("home_dock")
+        assertNotNull(originalDock)
+        call(activity, "showDrawer")
+        activity.onBackPressed()
+        layout(activity)
+        assertSame(originalPages, field(activity, "pages"))
+        assertSame(originalDock, activity.window.decorView.findViewWithTag<View>("home_dock"))
+        controller.pause().stop().destroy()
+    }
+
     @Test fun drawerCategoriesUseOnePackedGridWithNonoverlappingHeaderAndSearch() {
         seed(); val c = Robolectric.buildActivity(MainActivity::class.java).setup(); val a = c.get()
         @Suppress("UNCHECKED_CAST")

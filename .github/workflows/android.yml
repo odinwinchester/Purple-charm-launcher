@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main, "codex/weather-widgets"]
   workflow_dispatch:
+    inputs:
+      sign_candidate:
+        description: Assinar o candidato v15 sem criar Release
+        type: boolean
+        default: false
 
 jobs:
   safe-selftests:
@@ -74,8 +79,10 @@ jobs:
 
   signed-release:
     name: APK oficial assinado
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/development/v15-performance' && inputs.sign_candidate == true) }}
     needs: safe-selftests
+    env:
+      CANDIDATE_VERSION: ${{ github.ref == 'refs/heads/main' && '14' || '15' }}
     runs-on: ubuntu-24.04
     environment: android-signing
     permissions:
@@ -114,10 +121,11 @@ jobs:
           keytool -exportcert -alias purple-charm-release -keystore "$RUNNER_TEMP/purple-release.jks" -storepass:file "$RUNNER_TEMP/store.pass" -file "$RUNNER_TEMP/cert.der" >/dev/null 2>&1
           ACTUAL_CERT="$(openssl dgst -sha256 "$RUNNER_TEMP/cert.der" | awk '{print tolower($NF)}')"
           test "$ACTUAL_CERT" = "$EXPECTED_CERT"
+          test "$ACTUAL_CERT" = 44f2adc5bc2f78dbde2186ab85efa7de79136bf48638f6ac0fde8af7020004f4
           echo "PURPLE_KEYSTORE_PATH=$RUNNER_TEMP/purple-release.jks" >> "$GITHUB_ENV"
           echo "PURPLE_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "PURPLE_VERSION_CODE=14" >> "$GITHUB_ENV"
-          echo "PURPLE_VERSION_NAME=14" >> "$GITHUB_ENV"
+          echo "PURPLE_VERSION_CODE=$CANDIDATE_VERSION" >> "$GITHUB_ENV"
+          echo "PURPLE_VERSION_NAME=$CANDIDATE_VERSION" >> "$GITHUB_ENV"
           echo "EXPECTED_SIGNING_CERT=$EXPECTED_CERT" >> "$GITHUB_ENV"
       - name: Compilar release com assinatura oficial
         run: gradle :app:assembleRelease --stacktrace
@@ -140,16 +148,17 @@ jobs:
           fi
           test "$ACTUAL_CERT" = "$EXPECTED_SIGNING_CERT" || { echo "Certificado do APK não corresponde ao certificado oficial esperado."; exit 1; }
           BADGING="$("$SDK_BUILD_TOOLS/aapt" dump badging "$APK")"
-          printf '%s\n' "$BADGING" | grep -q "versionCode='14'" || { echo "versionCode incorreto."; exit 1; }
+          printf '%s\n' "$BADGING" | grep -q "versionCode='$CANDIDATE_VERSION'" || { echo "versionCode incorreto."; exit 1; }
           printf '%s\n' "$BADGING" | grep -q "package: name='com.purplecharm.launcher'" || { echo "applicationId incorreto."; exit 1; }
-          printf '%s\n' "$BADGING" | grep -F "versionName='14'" || { echo "versionName incorreto."; exit 1; }
+          printf '%s\n' "$BADGING" | grep -F "versionName='$CANDIDATE_VERSION'" || { echo "versionName incorreto."; exit 1; }
           mkdir -p dist
-          cp "$APK" dist/Purple-Charm-v14-OFFICIAL-RELEASE.apk
-      - name: Publicar APK oficial
+          cp "$APK" "dist/Purple-Charm-v$CANDIDATE_VERSION-OFFICIAL-RELEASE.apk"
+          sha256sum "dist/Purple-Charm-v$CANDIDATE_VERSION-OFFICIAL-RELEASE.apk"
+      - name: Armazenar APK oficial como artefato
         uses: actions/upload-artifact@v4
         with:
-          name: Purple-Charm-v14-OFFICIAL-RELEASE
-          path: dist/Purple-Charm-v14-OFFICIAL-RELEASE.apk
+          name: Purple-Charm-v${{ env.CANDIDATE_VERSION }}-OFFICIAL-RELEASE
+          path: dist/Purple-Charm-v${{ env.CANDIDATE_VERSION }}-OFFICIAL-RELEASE.apk
           if-no-files-found: error
       - name: Apagar chave e senha temporárias
         if: always()
