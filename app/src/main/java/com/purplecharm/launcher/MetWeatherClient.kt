@@ -54,6 +54,15 @@ internal object MetSymbols {
 internal class MetWeatherClient(private val prefs: SharedPreferences) {
     private val loading = AtomicBoolean(false)
     @Volatile private var retryAfter = 0L
+    private data class ParsedSeries(val body: String, val points: org.json.JSONArray?)
+    @Volatile private var parsedSeries: ParsedSeries? = null
+
+    private fun cachedSeries(): org.json.JSONArray? {
+        val body = cachedBody ?: return null
+        parsedSeries?.takeIf { it.body == body }?.let { return it.points }
+        return runCatching { series(body) }.getOrNull().also { parsedSeries = ParsedSeries(body, it) }
+    }
+
     private val cachedBody: String? get() = prefs.getString("met_forecast_json", null)
     @Volatile private var retryLocation: String? = null
     fun locationChanged() { retryAfter = 0L }
@@ -70,6 +79,7 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
 
     @Synchronized fun clearForecast() {
         retryAfter = 0L
+        parsedSeries = null
         prefs.edit().remove("met_forecast_json").remove("met_forecast_location").remove("met_forecast_city")
             .remove("gothic_weather_expires").remove("gothic_weather_last_modified").remove("met_forecast_received").remove("met_weather_error").apply()
     }
@@ -87,24 +97,24 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
 
     fun current(now: Long = System.currentTimeMillis()): WeatherForecast? {
         if (!matchingLocation()) return null
-        return cachedBody?.let { parse(it, now) }
+        return cachedSeries()?.let { parse(it, now) }
     }
 
     /** Last actual cached point, explicitly marked stale by callers; never a live reading. */
     fun lastKnown(now: Long = System.currentTimeMillis()): WeatherForecast? {
         if (location() == null || prefs.getString("met_forecast_location", null) == null) return null
-        return cachedBody?.let { parseLastKnown(it, now) }
+        return cachedSeries()?.let { parseLastKnown(it, now) }
     }
 
     fun upcoming(now: Long = System.currentTimeMillis()): List<WeatherForecast> {
         if (!matchingLocation()) return emptyList()
-        return cachedBody?.let { parseUpcoming(it, now) } ?: emptyList()
+        return cachedSeries()?.let { parseUpcoming(it, now) } ?: emptyList()
     }
 
     /** Forecast points across the next five calendar days, independently of the hourly panel. */
     fun upcomingDays(now: Long = System.currentTimeMillis()): List<WeatherForecast> {
         if (!matchingLocation()) return emptyList()
-        return cachedBody?.let { parseUpcomingDays(it, now) } ?: emptyList()
+        return cachedSeries()?.let { parseUpcomingDays(it, now) } ?: emptyList()
     }
 
     fun refresh(force: Boolean = false, onChanged: () -> Unit): Boolean {
@@ -137,7 +147,8 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                     }
                 } else if (status == 200 || status == 203) {
                     val body = connection.inputStream.bufferedReader().use { it.readText() }
-                    require(parse(body, System.currentTimeMillis()) != null) { "Invalid forecast" }
+                    val points = series(body)
+                    require(parse(points, System.currentTimeMillis()) != null) { "Invalid forecast" }
                     synchronized(this) {
                         // Discard an old request if the user changed or disabled the location.
                         if (location() == key) {
@@ -150,6 +161,7 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
                             connection.getHeaderField("Last-Modified")?.let {
                                 editor.putString("gothic_weather_last_modified", it)
                             }
+                            parsedSeries = ParsedSeries(body, points)
                             editor.apply()
                         }
                     }
@@ -213,8 +225,10 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
             )
         }
 
-        internal fun parseUpcomingDays(body: String, now: Long): List<WeatherForecast> = try {
-            val series = series(body)
+        internal fun parseUpcomingDays(body: String, now: Long): List<WeatherForecast> =
+            runCatching { parseUpcomingDays(series(body), now) }.getOrElse { emptyList() }
+
+        private fun parseUpcomingDays(series: org.json.JSONArray, now: Long): List<WeatherForecast> = try {
             val end = now + 6L * 24 * 60 * 60_000L
             val result = mutableListOf<WeatherForecast>()
             for (i in 0 until series.length()) {
@@ -226,9 +240,11 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
             result
         } catch (_: Exception) { emptyList() }
 
-        internal fun parseUpcoming(body: String, now: Long): List<WeatherForecast> = try {
+        internal fun parseUpcoming(body: String, now: Long): List<WeatherForecast> =
+            runCatching { parseUpcoming(series(body), now) }.getOrElse { emptyList() }
+
+        private fun parseUpcoming(series: org.json.JSONArray, now: Long): List<WeatherForecast> = try {
             // Future forecast points remain usable even when the current point has expired.
-            val series = series(body)
             val result = mutableListOf<WeatherForecast>()
             for (i in 0 until series.length()) {
                 val item = series.getJSONObject(i)
@@ -240,8 +256,10 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
         } catch (_: Exception) { emptyList() }
 
         /** Historical fallback: explicitly stale, never future or wrong-unit data. */
-        internal fun parseLastKnown(body: String, now: Long): WeatherForecast? = try {
-            val points = series(body)
+        internal fun parseLastKnown(body: String, now: Long): WeatherForecast? =
+            runCatching { parseLastKnown(series(body), now) }.getOrElse { null }
+
+        private fun parseLastKnown(points: org.json.JSONArray, now: Long): WeatherForecast? = try {
             var selected: JSONObject? = null
             for (i in 0 until points.length()) {
                 val item = points.getJSONObject(i)
@@ -253,8 +271,10 @@ internal class MetWeatherClient(private val prefs: SharedPreferences) {
             }
         } catch (_: Exception) { null }
 
-        internal fun parse(body: String, now: Long): WeatherForecast? = try {
-            val series = series(body)
+        internal fun parse(body: String, now: Long): WeatherForecast? =
+            runCatching { parse(series(body), now) }.getOrElse { null }
+
+        private fun parse(series: org.json.JSONArray, now: Long): WeatherForecast? = try {
             var selected: JSONObject? = null
             for (i in 0 until series.length()) {
                 val point = series.getJSONObject(i)
