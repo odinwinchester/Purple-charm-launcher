@@ -78,6 +78,7 @@ class MainActivity : Activity(), SensorEventListener {
     private val workspaceMime = "application/vnd.purplecharm.workspace-item"
     private var folderDialog: FolderSurface? = null
     private lateinit var homeHost: FrameLayout
+    private var cachedHomeHost: FrameLayout? = null
     private var cachedDrawerHost: FrameLayout? = null
     private var openFolderId: String? = null
     private var pendingDrawerDrag = false
@@ -93,7 +94,10 @@ class MainActivity : Activity(), SensorEventListener {
         else -> (icon.intrinsicWidth.coerceAtLeast(1).toLong() * icon.intrinsicHeight.coerceAtLeast(1) * 4)
             .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     }.coerceAtLeast(1)
-    private val labelCache = android.util.LruCache<String, String>(128)
+    private val labelCache = mutableMapOf<String, String>()
+    private val searchableLabels = mutableMapOf<String, String>()
+    private fun searchableLabel(app: ResolveInfo): String =
+        searchableLabels.getOrPut(appKey(app)) { normalize(appLabel(app)) }
     private var optionsDialog: Dialog? = null
     private var lastCelestialKey: String? = null
     private fun appLabel(app: ResolveInfo): String = labelCache.get(appKey(app)) ?:
@@ -1070,7 +1074,7 @@ class MainActivity : Activity(), SensorEventListener {
                 pendingRemovedPackages.remove(changedPackage)
             }
             appsLoaded = false
-            labelCache.evictAll()
+            labelCache.clear(); searchableLabels.clear()
             iconCache.evictAll()
             cachedDrawerHost = null
             loadApps()
@@ -1084,7 +1088,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun loadApps() {
         // O catálogo muda por eventos do PackageManager; reutilize-o entre Home/gaveta.
         if (appsLoaded) return
-        labelCache.evictAll(); iconCache.evictAll()
+        labelCache.clear(); searchableLabels.clear(); iconCache.evictAll()
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
 
@@ -1097,10 +1101,8 @@ class MainActivity : Activity(), SensorEventListener {
         apps.addAll(
             found.filter {
                 it.activityInfo.packageName != packageName
-            }.sortedBy {
-                it.loadLabel(packageManager)
-                    .toString().lowercase(Locale.ROOT)
-            }
+            }.map { it to appLabel(it).lowercase(Locale.ROOT) }
+                .sortedBy { it.second }.map { it.first }
         )
         installedLauncherComponents = apps.map(::appKey).toSet()
         appsLoaded = true
@@ -1892,6 +1894,7 @@ class MainActivity : Activity(), SensorEventListener {
         }
 
         val root = buildRoot()
+        cachedHomeHost = homeHost
 
         // Layout clássico: ícones e wallpaper têm prioridade visual.
         // O título permanece disponível nas configurações.
@@ -2046,7 +2049,7 @@ class MainActivity : Activity(), SensorEventListener {
         if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
             level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
             level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-            graphicCache.clear(); iconCache.evictAll(); labelCache.evictAll()
+            graphicCache.clear(); iconCache.evictAll(); labelCache.clear(); searchableLabels.clear()
             if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) cachedDrawerHost = null
             androidWidgets.releaseHiddenViews()
         }
@@ -2059,7 +2062,7 @@ class MainActivity : Activity(), SensorEventListener {
         weatherHandler.removeCallbacks(weatherTick)
         weatherLocation.close()
         androidWidgets.close()
-        graphicCache.clear(); iconCache.evictAll(); labelCache.evictAll()
+        graphicCache.clear(); iconCache.evictAll(); labelCache.clear(); searchableLabels.clear()
         optionsDialog?.dismiss()
         folderDialog?.dismiss()
         dragSession?.cancel()
@@ -2631,6 +2634,7 @@ class MainActivity : Activity(), SensorEventListener {
                                             action.isEnabled = true
                                             if (downloaded.isSuccess && downloaded.getOrDefault(false)) {
                                                 iconCache.evictAll()
+                                                cachedDrawerHost = null
                                                 Toast.makeText(this, "Ícone aplicado: $title", Toast.LENGTH_SHORT).show()
                                                 dialog.dismiss()
                                                 showHome()
@@ -2647,8 +2651,12 @@ class MainActivity : Activity(), SensorEventListener {
                         list.addView(row)
                     }
                     // Prévia sequencial: evita downloads simultâneos e picos de memória.
-                    if (available.isNotEmpty()) Thread {
+                    if (available.isNotEmpty()) {
+                        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
+                        dialog.setOnDismissListener { cancelled.set(true) }
+                        Thread {
                         available.forEachIndexed { index, entry ->
+                            if (cancelled.get()) return@Thread
                             val bitmap = runCatching { library.previewBitmap(entry) }.getOrNull()
                             runOnUiThread {
                                 if (dialog.isShowing) {
@@ -2659,7 +2667,8 @@ class MainActivity : Activity(), SensorEventListener {
                                 } else bitmap?.recycle()
                             }
                         }
-                    }.start()
+                        }.start()
+                    }
                 }
             }
         }.start()
@@ -2787,7 +2796,7 @@ class MainActivity : Activity(), SensorEventListener {
         var previousTiles = emptyMap<String, View>()
         fun refresh(query: String) {
             val term = normalize(query.trim())
-            val filtered = apps.map { it to normalize(appLabel(it)) }
+            val filtered = apps.map { it to searchableLabel(it) }
                 .filter { (_, name) -> term.isEmpty() || name.contains(term) }
                 .sortedWith(compareBy<Pair<ResolveInfo, String>> { (_, name) ->
                     when {
@@ -3041,12 +3050,12 @@ class MainActivity : Activity(), SensorEventListener {
             val visible = if (selected == "Tudo") apps else apps.filter {
                 drawerCategory(it) == selected
             }
-            val sorted = visible.sortedBy { normalize(appLabel(it)) }
+            val sorted = visible.sortedBy(::searchableLabel)
             val grid = DrawerAppGrid(this).apply { tag = "drawer_grid" }
             val anchors = linkedMapOf<String, Int>()
             val nextDrawerTiles = linkedMapOf<String, View>()
             sorted.forEachIndexed { index, app ->
-                val letter = normalize(appLabel(app)).firstOrNull()?.uppercaseChar()?.toString() ?: "#"
+                val letter = searchableLabel(app).firstOrNull()?.uppercaseChar()?.toString() ?: "#"
                 anchors.putIfAbsent(letter, index)
                 val key = appKey(app)
                 val tile = previousDrawerTiles[key] ?: appTile(app, true, false, dense = true).apply { tag = "drawer_app_$key" }
@@ -3406,7 +3415,21 @@ class MainActivity : Activity(), SensorEventListener {
         val homePage = HomePageSelection.read(prefs, pageCount())
         if (drawerOpen) {
             pageIndex = homePage
-            showHome()
+            val cached = cachedHomeHost
+            if (cached == null || !::pages.isInitialized || pendingWorkspaceRefresh) {
+                showHome()
+            } else {
+                drawerOpen = false
+                homeHost = cached
+                backgroundImage = cached.getChildAt(0) as ImageView
+                pages.inAnimation = null
+                pages.outAnimation = null
+                pages.displayedChild = homePage
+                updateDots()
+                setContentView(cached)
+                cached.requestApplyInsets()
+                refreshCelestialView()
+            }
         } else if (pageIndex != homePage) {
             changePage(homePage)
         } else {
