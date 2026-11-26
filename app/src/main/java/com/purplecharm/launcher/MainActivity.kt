@@ -256,6 +256,10 @@ class MainActivity : Activity(), SensorEventListener {
 
     private val apps = mutableListOf<ResolveInfo>()
     private lateinit var backgroundImage: ImageView
+    private data class GalleryWallpaper(val uri: Uri, val width: Int, val height: Int)
+    private var galleryWallpaper: Pair<GalleryWallpaper, Drawable.ConstantState>? = null
+    private val wallpaperWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
+
     private lateinit var pages: ViewFlipper
     private lateinit var dots: TextView
 
@@ -1286,17 +1290,60 @@ class MainActivity : Activity(), SensorEventListener {
             "geometrico_neon" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.wallpaper_neon, wallpaper = true))
             "geometrico_original" -> backgroundImage.setImageDrawable(packagedImage(R.drawable.funbg, wallpaper = true))
             "gallery" -> {
+                val fallback = R.drawable.purple_original_wallpaper
                 val saved = prefs.getString("wallpaper_uri", null)
-                if (!saved.isNullOrEmpty()) {
-                    try {
-                        backgroundImage.setImageURI(Uri.parse(saved))
-                        if (backgroundImage.drawable != null) return
-                    } catch (_: Exception) { }
-                }
-                backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_original_wallpaper, wallpaper = true))
+                if (saved.isNullOrEmpty()) {
+                    backgroundImage.setImageDrawable(packagedImage(fallback, wallpaper = true))
+                } else loadGalleryWallpaper(Uri.parse(saved), backgroundImage, fallback)
             }
             else -> backgroundImage.setImageDrawable(packagedImage(R.drawable.purple_original_wallpaper, wallpaper = true))
         }
+    }
+
+    private fun loadGalleryWallpaper(uri: Uri, target: ImageView, fallback: Int) {
+        val metrics = resources.displayMetrics
+        val key = GalleryWallpaper(uri, metrics.widthPixels, metrics.heightPixels)
+        val current = galleryWallpaper
+        if (current?.first == key) {
+            target.setImageDrawable(current.second.newDrawable(resources))
+            return
+        }
+        val previous = current?.second?.newDrawable(resources)
+            ?: packagedImage(fallback, wallpaper = true)
+        target.setImageDrawable(previous)
+        val reference = java.lang.ref.WeakReference(target)
+        wallpaperWorker.execute {
+            val result = runCatching { decodeGalleryWallpaper(key) }.getOrNull()
+            runOnUiThread {
+                if (isDestroyed || prefs.getString("wallpaper_uri", null) != uri.toString()) return@runOnUiThread
+                val image = reference.get() ?: return@runOnUiThread
+                if (result == null) {
+                    image.setImageDrawable(packagedImage(fallback, wallpaper = true))
+                } else {
+                    result.constantState?.let { galleryWallpaper = key to it }
+                    image.setImageDrawable(result)
+                }
+            }
+        }
+    }
+
+    private fun decodeGalleryWallpaper(key: GalleryWallpaper): Drawable? {
+        fun sample(width: Int, height: Int): Int {
+            var size = 1
+            while (width / (size * 2) >= key.width && height / (size * 2) >= key.height) size *= 2
+            return size
+        }
+        if (Build.VERSION.SDK_INT >= 28) {
+            val source = android.graphics.ImageDecoder.createSource(contentResolver, key.uri)
+            return android.graphics.ImageDecoder.decodeDrawable(source) { decoder, info, _ ->
+                decoder.setTargetSampleSize(sample(info.size.width, info.size.height))
+            }
+        }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(key.uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        val options = BitmapFactory.Options().apply { inSampleSize = sample(bounds.outWidth, bounds.outHeight) }
+        val bitmap = contentResolver.openInputStream(key.uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        return bitmap?.let { android.graphics.drawable.BitmapDrawable(resources, it) }
     }
 
     private fun chooseBuiltInWallpaper(value: String) {
@@ -2067,6 +2114,7 @@ class MainActivity : Activity(), SensorEventListener {
             level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
             level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
             graphicCache.clear(); iconCache.evictAll(); labelCache.clear(); searchableLabels.clear()
+            galleryWallpaper = null
             if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
                 cachedDrawerHost = null
                 if (drawerOpen) cachedHomeHost = null
@@ -2083,10 +2131,13 @@ class MainActivity : Activity(), SensorEventListener {
         weatherLocation.close()
         androidWidgets.close()
         graphicCache.clear(); iconCache.evictAll(); labelCache.clear(); searchableLabels.clear()
+            galleryWallpaper = null
         optionsDialog?.dismiss()
         folderDialog?.dismiss()
         dragSession?.cancel()
         dragSession = null
+        galleryWallpaper = null
+        wallpaperWorker.shutdownNow()
         graphicsWorker.shutdownNow()
         super.onDestroy()
     }
